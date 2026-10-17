@@ -1,0 +1,129 @@
+import { act, renderHook } from '@testing-library/react-native';
+
+import { createRepo, type KV } from '../../data/repo';
+import { type SessionDeps, useReplaySession } from '../useReplaySession';
+
+type Listener = (e: any) => void;
+
+function fakeDeps() {
+  const listeners = new Map<string, Listener>();
+  const map = new Map<string, string>();
+  const kv: KV = { getString: (k) => map.get(k), set: (k, v) => void map.set(k, v), delete: (k) => void map.delete(k) };
+  let n = 0;
+  let t = 1000;
+  const deleted: string[] = [];
+  let pendingSave: ((v: { clipPath: string; durationMs: number }) => void) | undefined;
+  const camera = {
+    startSession: jest.fn(async () => {}),
+    stopSession: jest.fn(async () => {}),
+    saveClip: jest.fn(
+      () => new Promise<{ clipPath: string; durationMs: number }>((resolve) => (pendingSave = resolve))
+    ),
+    setGestureEnabled: jest.fn(),
+    addReplayListener: jest.fn((event: string, fn: Listener) => {
+      listeners.set(event, fn);
+      return { remove: () => listeners.delete(event) };
+    }),
+  };
+  const deps: SessionDeps = {
+    camera,
+    repo: createRepo(kv, { exists: () => true, sizeBytes: () => 1 }, () => `id-${++n}`),
+    deleteFile: (p) => void deleted.push(p),
+    haptic: jest.fn(),
+    now: () => t,
+    useRemote: () => {},
+  };
+  return {
+    deps,
+    camera,
+    deleted,
+    emit: (event: string, e: any = {}) => listeners.get(event)?.(e),
+    advance: (ms: number) => void (t += ms),
+    finishSave: (v = { clipPath: '/c.mp4', durationMs: 60000 }) => pendingSave?.(v),
+  };
+}
+
+async function started() {
+  const f = fakeDeps();
+  const view = await renderHook(() => useReplaySession(f.deps));
+  await act(() => view.result.current.start('futevolei'));
+  return { ...f, view };
+}
+
+test('trigger saves a clip and records it in the repo', async () => {
+  const { view, camera, deps, finishSave } = await started();
+
+  await act(async () => view.result.current.trigger('screen'));
+  expect(camera.saveClip).toHaveBeenCalledWith({ source: 'screen', at: 1000 });
+  await act(async () => finishSave());
+
+  const sessionId = view.result.current.state.sessionId!;
+  expect(deps.repo.listClips(sessionId)).toMatchObject([{ source: 'screen', path: '/c.mp4', durationMs: 60000 }]);
+  expect(view.result.current.state).toMatchObject({ clipCount: 1, lastSaved: { number: 1, source: 'screen' } });
+});
+
+test('ignores trigger while saving', async () => {
+  const { view, camera, advance } = await started();
+
+  await act(async () => view.result.current.trigger('screen'));
+  advance(3500); // past the bus debounce, but the first save hasn't finished
+  await act(async () => view.result.current.trigger('remote'));
+
+  expect(camera.saveClip).toHaveBeenCalledTimes(1);
+});
+
+test('native onTrigger goes through the bus', async () => {
+  const { view, camera, emit, finishSave } = await started();
+
+  await act(async () => emit('onTrigger', { source: 'gesture', at: 1 }));
+  await act(async () => finishSave());
+
+  expect(camera.saveClip).toHaveBeenCalledWith({ source: 'gesture', at: 1000 });
+  expect(view.result.current.state.lastSaved?.source).toBe('gesture');
+});
+
+test('undoLast deletes the clip file and the record', async () => {
+  const { view, deps, deleted, finishSave } = await started();
+  await act(async () => view.result.current.trigger('screen'));
+  await act(async () => finishSave());
+
+  await act(async () => view.result.current.undoLast());
+
+  expect(deleted).toEqual(['/c.mp4']);
+  expect(deps.repo.listClips(view.result.current.state.sessionId!)).toEqual([]);
+  expect(view.result.current.state.clipCount).toBe(0);
+});
+
+test('stop ends the repo session and returns its id', async () => {
+  const { view, deps, advance } = await started();
+  advance(60_000);
+
+  let id: string | undefined;
+  await act(async () => {
+    id = await view.result.current.stop();
+  });
+
+  expect(id).toBe(view.result.current.state.sessionId);
+  expect(deps.repo.getSession(id!)?.endedAt).toBe(61_000);
+  expect(view.result.current.state.phase).toBe('ended');
+});
+
+test('start failure returns to idle with the error code', async () => {
+  const f = fakeDeps();
+  f.camera.startSession.mockRejectedValueOnce(Object.assign(new Error('x'), { code: 'LOW_STORAGE' }));
+  const view = await renderHook(() => useReplaySession(f.deps));
+
+  await act(() => view.result.current.start('beachTennis'));
+
+  expect(view.result.current.state).toMatchObject({ phase: 'idle', error: 'LOW_STORAGE' });
+});
+
+test('native error ends the session in the repo and keeps the clip count', async () => {
+  const { view, deps, emit } = await started();
+
+  await act(async () => emit('onError', { code: 'ENCODER_FAILED', message: 'thermal' }));
+
+  const id = view.result.current.state.sessionId!;
+  expect(view.result.current.state).toMatchObject({ phase: 'ended', thermalStop: true });
+  expect(deps.repo.getSession(id)?.endedAt).toBeDefined();
+});

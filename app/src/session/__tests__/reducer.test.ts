@@ -1,0 +1,61 @@
+import { initialState, reducer, type SessionState } from '../reducer';
+
+const recording = (over: Partial<SessionState> = {}): SessionState => ({
+  ...reducer(reducer(initialState, { type: 'startRequested' }), { type: 'started', sessionId: 's1', startedAt: 100 }),
+  ...over,
+});
+
+test('start happy path: idle → starting → recording', () => {
+  const starting = reducer(initialState, { type: 'startRequested' });
+  expect(starting.phase).toBe('starting');
+  const rec = reducer(starting, { type: 'started', sessionId: 's1', startedAt: 100 });
+  expect(rec).toMatchObject({ phase: 'recording', sessionId: 's1', startedAt: 100, clipCount: 0 });
+});
+
+test('start failure returns to idle with the error code', () => {
+  const s = reducer(reducer(initialState, { type: 'startRequested' }), { type: 'startFailed', code: 'LOW_STORAGE' });
+  expect(s).toMatchObject({ phase: 'idle', error: 'LOW_STORAGE' });
+});
+
+test('saved increments the count and sets lastSaved', () => {
+  const s = reducer(reducer(recording(), { type: 'saveStarted' }), {
+    type: 'saved',
+    clipId: 'c1',
+    source: 'gesture',
+    at: 5,
+  });
+  expect(s).toMatchObject({ saving: false, clipCount: 1, lastSaved: { clipId: 'c1', number: 1, source: 'gesture', at: 5 } });
+});
+
+test('undone decrements the count and clears lastSaved', () => {
+  const saved = reducer(recording({ clipCount: 2 }), { type: 'saved', clipId: 'c3', source: 'screen', at: 1 });
+  const s = reducer(saved, { type: 'undone', clipId: 'c3' });
+  expect(s.clipCount).toBe(2);
+  expect(s.lastSaved).toBeUndefined();
+});
+
+test('interruption sets and clears paused', () => {
+  const paused = reducer(recording(), { type: 'interrupted' });
+  expect(paused.paused).toBe(true);
+  expect(reducer(paused, { type: 'resumed' }).paused).toBe(false);
+});
+
+test('native error ends the session keeping clips', () => {
+  const s = reducer(recording({ clipCount: 4 }), { type: 'nativeError', code: 'ENCODER_FAILED', thermal: true });
+  expect(s).toMatchObject({ phase: 'ended', error: 'ENCODER_FAILED', thermalStop: true, clipCount: 4, sessionId: 's1' });
+});
+
+test('thermal stores level and degraded', () => {
+  const s = reducer(recording(), { type: 'thermal', level: 'serious', degraded: true });
+  expect(s.thermal).toEqual({ level: 'serious', degraded: true });
+});
+
+test('stop: recording → stopping → ended', () => {
+  const stopping = reducer(recording(), { type: 'stopRequested' });
+  expect(stopping.phase).toBe('stopping');
+  expect(reducer(stopping, { type: 'stopped' }).phase).toBe('ended');
+});
+
+test('reset goes back to idle', () => {
+  expect(reducer(recording({ clipCount: 3 }), { type: 'reset' })).toEqual(initialState);
+});
