@@ -6,10 +6,11 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.media.ImageReader
 import android.os.Build
+import android.os.Handler
+import android.os.HandlerThread
 import android.os.PowerManager
 import android.os.StatFs
 import android.view.Surface
-import android.view.WindowManager
 import androidx.core.content.ContextCompat
 import expo.modules.kotlin.exception.CodedException
 import expo.modules.replaycamera.core.LowStorageException
@@ -18,87 +19,113 @@ import expo.modules.replaycamera.core.SegmentRing
 import expo.modules.replaycamera.core.StorageGuard
 import java.io.File
 import java.util.UUID
+import java.util.concurrent.Executors
 
 class ReplayException(code: String, message: String) : CodedException(code, message, null)
 
 /**
  * Ties capture, segment encoding, the ring, gesture and thermal handling together.
  * One per process; the preview view hands it a surface and a bitmap source.
+ *
+ * Threading: every state change runs on the engine thread ([post]); camera, encoder, thermal and
+ * lifecycle callbacks hop onto it. Clip copies run on [saveExecutor], so a save never stalls capture.
  */
 object ReplayEngine {
   const val WINDOW_SECONDS = 60.0
+  /** A save that hasn't seen its segment close by then is failed instead of hanging. */
+  private const val SAVE_TIMEOUT_MS = 5_000L
 
   var emit: ((String, Map<String, Any?>) -> Unit)? = null
   /** Set by the mounted ReplayCameraView. Mount the view before starting a session. */
-  var previewSurface: Surface? = null
-  var previewBitmap: (() -> Bitmap?)? = null
+  @Volatile var previewSurface: Surface? = null
+  @Volatile var previewBitmap: (() -> Bitmap?)? = null
 
+  private val engineThread = HandlerThread("replay-engine").apply { start() }
+  private val engine = Handler(engineThread.looper)
+  private val saveExecutor = Executors.newSingleThreadExecutor { Thread(it, "replay-save") }
   private val ring = SegmentRing((WINDOW_SECONDS * 1_000_000 / SegmentEncoder.SEGMENT_US).toInt(), LocalFileOps)
-  private val gesture = GestureDetector {
-    emit?.invoke("onTrigger", mapOf("source" to "gesture", "at" to System.currentTimeMillis().toDouble()))
-  }
+
+  private class PendingSave(val id: String, val run: () -> Unit, val fail: (CodedException) -> Unit)
+
+  // Engine-thread state.
+  private var context: Context? = null
   private var capture: CaptureController? = null
+  private var gesture: GestureDetector? = null
   private var encoder: SegmentEncoder? = null
   private var reader: ImageReader? = null
-  private val pendingSaves = mutableListOf<() -> Unit>()
+  private var pendingSaves = mutableListOf<PendingSave>()
   private var thermalListener: PowerManager.OnThermalStatusChangedListener? = null
-
-  private var context: Context? = null
   private var lens = "ultraWide"
   private var quality = "1080p60"
   private var degraded = false
   /** The user's intent: a session is wanted (it may be paused while the app is in the background). */
-  @Volatile var running = false
-    private set
+  private var wanted = false
+  private var starting = false
 
-  fun setGestureEnabled(enabled: Boolean) { gesture.enabled = enabled }
+  private fun post(block: () -> Unit) { engine.post(block) }
 
-  fun start(context: Context, lens: String, maxQuality: String, onReady: () -> Unit, onError: (CodedException) -> Unit) {
+  fun setGestureEnabled(enabled: Boolean) = post { gesture?.enabled = enabled }
+
+  /** Resolves right away when a session is already running or starting. */
+  fun start(context: Context, lens: String, maxQuality: String, onReady: () -> Unit, onError: (CodedException) -> Unit) = post {
+    if (wanted) return@post onReady()
     val granted = listOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO).all {
       ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
     }
-    if (!granted) return onError(ReplayException("CAMERA_PERMISSION", "Camera or microphone permission not granted"))
+    if (!granted) return@post onError(ReplayException("CAMERA_PERMISSION", "Camera or microphone permission not granted"))
     try {
       StorageGuard.check(StatFs(context.cacheDir.path).availableBytes)
     } catch (e: LowStorageException) {
-      return onError(ReplayException("LOW_STORAGE", e.message ?: "Less than 500 MB free"))
+      return@post onError(ReplayException("LOW_STORAGE", e.message ?: "Less than 500 MB free"))
     }
+    ring.clear()
     SegmentRing.purgeOrphans(ReplayPaths.buffer(context), LocalFileOps)
 
-    this.context = context
+    this.context = context.applicationContext
+    if (capture == null) capture = CaptureController(context.applicationContext)
+    if (gesture == null) gesture = GestureDetector(context.applicationContext) {
+      emit?.invoke("onTrigger", mapOf("source" to "gesture", "at" to System.currentTimeMillis().toDouble()))
+    }
     this.lens = lens
     quality = maxQuality
     degraded = false
-    running = true
-    watchThermal(context)
-    startPipeline(onReady, onError)
+    wanted = true
+    watchThermal()
+    startPipeline(onReady) { error ->
+      wanted = false
+      unwatchThermal()
+      onError(error)
+    }
   }
 
-  fun stop() {
-    running = false
+  fun stop(onStopped: () -> Unit = {}) = post {
+    wanted = false
     unwatchThermal()
-    stopPipeline()
+    stopPipeline(ReplayException("NO_SESSION", "Session stopped"))
+    onStopped()
   }
 
-  /** App went to the background: the camera is taken away, so drop the buffer. */
-  fun pause() {
-    if (!running) return
-    stopPipeline()
+  /** The activity paused (background, lock screen): the camera is taken away, so drop the buffer. */
+  fun pause() = post {
+    if (!wanted || encoder == null) return@post
+    stopPipeline(ReplayException("NO_SESSION", "Session interrupted"))
     emit?.invoke("onInterrupted", emptyMap())
   }
 
-  fun resume() {
-    if (!running || capture != null) return
-    startPipeline(onReady = { emit?.invoke("onResumed", emptyMap()) }) { emit?.invoke("onError", mapOf("code" to it.code, "message" to it.message)) }
+  fun resume() = post {
+    if (!wanted || encoder != null || starting) return@post
+    startPipeline(onReady = { emit?.invoke("onResumed", emptyMap()) }) { fail(it) }
   }
 
-  /** Forces a segment cut at the trigger, then copies the window once that segment is closed. */
-  fun saveClip(context: Context, onDone: (String, Int) -> Unit, onError: (CodedException) -> Unit) {
+  /** Forces a segment cut at the trigger, then copies the window once that segment is closed. Settles exactly once. */
+  fun saveClip(onDone: (String, Int) -> Unit, onError: (CodedException) -> Unit) = post {
     val enc = encoder
-    if (!running || enc == null) return onError(ReplayException("NO_SESSION", "No replay session is running"))
-    synchronized(pendingSaves) {
-      pendingSaves += {
-        val dest = File(ReplayPaths.clips(context), "${UUID.randomUUID()}.mp4")
+    val ctx = context
+    if (!wanted || enc == null || ctx == null) return@post onError(ReplayException("NO_SESSION", "No replay session is running"))
+    val id = UUID.randomUUID().toString()
+    pendingSaves += PendingSave(id, run = {
+      saveExecutor.execute {
+        val dest = File(ReplayPaths.clips(ctx), "$id.mp4")
         try {
           val seconds = ring.copyClip(WINDOW_SECONDS, dest, ClipConcat::concat)
           onDone(dest.path, (seconds * 1000).toInt())
@@ -107,72 +134,104 @@ object ReplayEngine {
           onError(ReplayException("ENCODER_FAILED", "$t"))
         }
       }
-    }
+    }, fail = onError)
+    engine.postDelayed({
+      val late = pendingSaves.firstOrNull { it.id == id } ?: return@postDelayed
+      pendingSaves.remove(late)
+      late.fail(ReplayException("ENCODER_FAILED", "Timed out waiting for the segment to close"))
+    }, SAVE_TIMEOUT_MS)
     enc.requestCut()
   }
 
+  /** Engine thread. */
   private fun startPipeline(onReady: () -> Unit, onError: (CodedException) -> Unit) {
     val ctx = context ?: return
+    val cap = capture ?: return
+    val gest = gesture ?: return
+    starting = true
+    val ready = { post { starting = false; onReady() } }
+    val openFailed = { message: String ->
+      post {
+        starting = false
+        stopPipeline(ReplayException("NO_SESSION", message))
+        onError(ReplayException("CAMERA_UNAVAILABLE", message))
+      }
+    }
+    val runtimeFailed = { message: String -> post { fail(ReplayException("CAMERA_UNAVAILABLE", message)) } }
     try {
-      val cap = CaptureController(ctx)
       val mode = cap.chooseMode(lens, wantHigh = quality == "1080p60" && !degraded)
       val enc = SegmentEncoder(
-        mode.size.width, mode.size.height, mode.fps, ReplayPaths.buffer(ctx), mode.clockNanos,
-        onSegment = ::onSegment,
-        onFailure = { emit?.invoke("onError", mapOf("code" to "ENCODER_FAILED", "message" to "$it")) },
+        mode.size.width, mode.size.height, mode.fps, ReplayPaths.buffer(ctx), mode.clockNanos, mode.clockIsBoottime,
+        onSegment = { segment -> post { onSegment(segment) } },
+        onFailure = { error -> post { fail(ReplayException("ENCODER_FAILED", "$error")) } },
       )
-      val rdr = gesture.createReader(rotationDegrees(ctx, mode.sensorOrientation), cap.handler)
-      cap.onDisconnected = { pause() }
-      capture = cap
+      val rdr = gest.createReader(cap.handler)
       encoder = enc
       reader = rdr
+      gest.start(mode.sensorOrientation)
       enc.start()
       val base = listOfNotNull(enc.inputSurface, previewSurface)
-      cap.open(mode, base + rdr.surface, onReady) {
+      cap.open(mode, base + rdr.surface, ready, onOpenError = {
         // Some devices can't add a third stream at this size: retry without it and sample the preview.
-        cap.close()
-        reader?.close()
-        reader = null
-        cap.open(mode, base, onReady = {
-          previewBitmap?.let(gesture::startBitmapSampling)
-          onReady()
-        }) { message ->
-          stop()
-          onError(ReplayException("CAMERA_UNAVAILABLE", message))
+        post {
+          reader?.close()
+          reader = null
+          cap.open(mode, base, onReady = {
+            previewBitmap?.let { grab -> post { gesture?.startBitmapSampling(grab) } }
+            ready()
+          }, onOpenError = openFailed, onRuntimeError = runtimeFailed)
         }
-      }
+      }, onRuntimeError = runtimeFailed)
     } catch (t: Throwable) {
-      stop()
+      starting = false
+      stopPipeline(ReplayException("NO_SESSION", "$t"))
       onError(ReplayException("CAMERA_UNAVAILABLE", "$t"))
     }
   }
 
-  private fun stopPipeline() {
-    gesture.stopBitmapSampling()
-    capture?.release()
+  /** Engine thread. Tears down capture and fails every waiting save with [reason]. */
+  private fun stopPipeline(reason: CodedException) {
+    gesture?.stop()
+    capture?.shutdown()
     encoder?.stop()
     reader?.close()
-    capture = null
     encoder = null
     reader = null
-    synchronized(pendingSaves) { pendingSaves.clear() }
+    val waiting = pendingSaves
+    pendingSaves = mutableListOf()
+    waiting.forEach { it.fail(reason) }
     ring.clear()
   }
 
-  private fun onSegment(segment: Segment) {
-    ring.append(segment)
-    val saves = synchronized(pendingSaves) { pendingSaves.toList().also { pendingSaves.clear() } }
-    saves.forEach { it() }
+  /** Engine thread. A runtime failure: tell JS and stop, so the UI never shows a dead session as recording. */
+  private fun fail(error: CodedException) {
+    if (!wanted) return
+    emit?.invoke("onError", mapOf("code" to error.code, "message" to error.message))
+    wanted = false
+    unwatchThermal()
+    stopPipeline(error)
   }
 
-  private fun watchThermal(context: Context) {
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
-    val power = context.getSystemService(Context.POWER_SERVICE) as PowerManager
-    val listener = PowerManager.OnThermalStatusChangedListener(::thermalChanged)
-    power.addThermalStatusListener(ContextCompat.getMainExecutor(context), listener)
+  /** Engine thread. */
+  private fun onSegment(segment: Segment) {
+    if (encoder == null) return LocalFileOps.delete(segment.file) // late segment of a torn-down pipeline
+    ring.append(segment)
+    val ready = pendingSaves
+    pendingSaves = mutableListOf()
+    ready.forEach { it.run() }
+  }
+
+  /** Engine thread. */
+  private fun watchThermal() {
+    val ctx = context ?: return
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q || thermalListener != null) return
+    val power = ctx.getSystemService(Context.POWER_SERVICE) as PowerManager
+    val listener = PowerManager.OnThermalStatusChangedListener { status -> post { thermalChanged(status) } }
+    power.addThermalStatusListener(ContextCompat.getMainExecutor(ctx), listener)
     thermalListener = listener
   }
 
+  /** Engine thread. */
   private fun unwatchThermal() {
     val ctx = context ?: return
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
@@ -180,7 +239,9 @@ object ReplayEngine {
     thermalListener = null
   }
 
+  /** Engine thread. */
   private fun thermalChanged(status: Int) {
+    if (!wanted) return
     val level = when {
       status >= PowerManager.THERMAL_STATUS_CRITICAL -> "critical"
       status >= PowerManager.THERMAL_STATUS_SEVERE -> "serious"
@@ -189,22 +250,15 @@ object ReplayEngine {
     }
     if (level == "critical") {
       emit?.invoke("onThermalChange", mapOf("level" to level, "degraded" to true))
-      emit?.invoke("onError", mapOf("code" to "ENCODER_FAILED", "message" to "thermal"))
-      stop()
-      return
+      return fail(ReplayException("ENCODER_FAILED", "thermal"))
     }
     if (level == "serious" && !degraded) {
       degraded = true
-      stopPipeline()
-      startPipeline(onReady = {}) { emit?.invoke("onError", mapOf("code" to it.code, "message" to it.message)) }
+      if (!starting) {
+        stopPipeline(ReplayException("NO_SESSION", "Switching to 720p30"))
+        startPipeline(onReady = {}) { fail(it) }
+      }
     }
     emit?.invoke("onThermalChange", mapOf("level" to level, "degraded" to degraded))
-  }
-
-  /** Rotation that makes a back-camera frame upright for the current display rotation. */
-  @Suppress("DEPRECATION")
-  private fun rotationDegrees(context: Context, sensorOrientation: Int): Int {
-    val display = (context.getSystemService(Context.WINDOW_SERVICE) as WindowManager).defaultDisplay
-    return (sensorOrientation - display.rotation * 90 + 360) % 360
   }
 }

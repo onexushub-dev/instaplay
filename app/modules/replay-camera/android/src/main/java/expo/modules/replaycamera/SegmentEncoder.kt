@@ -3,6 +3,7 @@ package expo.modules.replaycamera
 import android.annotation.SuppressLint
 import android.media.AudioFormat
 import android.media.AudioRecord
+import android.media.AudioTimestamp
 import android.media.MediaCodec
 import android.media.MediaCodecInfo
 import android.media.MediaFormat
@@ -10,6 +11,7 @@ import android.media.MediaMuxer
 import android.media.MediaRecorder
 import android.os.Bundle
 import android.view.Surface
+import expo.modules.replaycamera.core.AudioClock
 import expo.modules.replaycamera.core.Segment
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
@@ -17,7 +19,8 @@ import java.util.concurrent.atomic.AtomicBoolean
 /**
  * Encodes camera frames (through [inputSurface]) and microphone audio, writing one MP4 per segment.
  * A segment closes on the first keyframe after [SEGMENT_US], or right away when [requestCut] is called.
- * [clockNanos] must be the camera's timestamp clock, so audio and video share one time base.
+ * [clockNanos] must be the camera's timestamp clock ([clockIsBoottime] says which one), so audio
+ * and video share one time base.
  */
 class SegmentEncoder(
   width: Int,
@@ -25,6 +28,7 @@ class SegmentEncoder(
   fps: Int,
   private val bufferDir: File,
   private val clockNanos: () -> Long,
+  private val clockIsBoottime: Boolean,
   private val onSegment: (Segment) -> Unit,
   private val onFailure: (Throwable) -> Unit,
 ) {
@@ -132,16 +136,35 @@ class SegmentEncoder(
     }
   }
 
+  /**
+   * Audio is stamped by frame count from an anchor on the camera clock: the hardware timestamp when
+   * the device offers one, else the moment of the first read. Stamping each chunk with "now" after a
+   * blocking read would put the sound ~100ms behind the picture.
+   */
   private fun audioLoop() = guarded {
     val record = audioRecord!!
     val info = MediaCodec.BufferInfo()
+    val stamp = AudioTimestamp()
+    val timebase = if (clockIsBoottime) AudioTimestamp.TIMEBASE_BOOTTIME else AudioTimestamp.TIMEBASE_MONOTONIC
+    var framesRead = 0L
+    var anchorNanos = -1L
+    var anchorFrame = 0L
     while (running.get()) {
       val inIdx = audioCodec.dequeueInputBuffer(10_000)
       if (inIdx >= 0) {
         val buf = audioCodec.getInputBuffer(inIdx)!!
-        val read = record.read(buf, buf.capacity())
-        val pts = clockNanos() / 1_000
-        audioCodec.queueInputBuffer(inIdx, 0, read.coerceAtLeast(0), pts, 0)
+        val read = record.read(buf, buf.capacity()).coerceAtLeast(0)
+        val frames = read / 2L // 16-bit mono
+        if (record.getTimestamp(stamp, timebase) == AudioRecord.SUCCESS) {
+          anchorNanos = stamp.nanoTime
+          anchorFrame = stamp.framePosition
+        } else if (anchorNanos < 0) {
+          anchorNanos = clockNanos() - frames * 1_000_000_000L / SAMPLE_RATE
+          anchorFrame = framesRead
+        }
+        val pts = AudioClock.ptsUs(anchorNanos, anchorFrame, framesRead, SAMPLE_RATE)
+        framesRead += frames
+        audioCodec.queueInputBuffer(inIdx, 0, read, pts, 0)
       }
       while (true) {
         val outIdx = audioCodec.dequeueOutputBuffer(info, 0)

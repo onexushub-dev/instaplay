@@ -45,13 +45,15 @@ export default function SpikeScreen() {
   const [mb, setMb] = useState(0);
   const [maxMb, setMaxMb] = useState(0);
   const [log, setLog] = useState<string[]>([]);
+  const [received, setReceived] = useState(0);
+  const [starting, setStarting] = useState(false);
   const saving = useRef(false);
 
   const note = (line: string) =>
     setLog((l) => [`${new Date().toLocaleTimeString()} ${line}`, ...l].slice(0, 6));
 
   async function save(source: TriggerSource) {
-    if (saving.current) return;
+    if (saving.current) return note(`gatilho ${source} ignorado: já salvando`);
     saving.current = true;
     try {
       const clip = await saveClip({ source, at: Date.now() });
@@ -66,7 +68,12 @@ export default function SpikeScreen() {
     }
   }
 
-  const onTrigger = useEffectEvent((source: TriggerSource) => save(source));
+  // Every native trigger is counted on arrival, so a missed X and a failed save can be told apart.
+  const onTrigger = useEffectEvent((source: TriggerSource) => {
+    setReceived((n) => n + 1);
+    note(`gatilho recebido: ${source}`);
+    save(source);
+  });
 
   useEffect(() => {
     const subs = [
@@ -78,7 +85,11 @@ export default function SpikeScreen() {
       }),
       addReplayListener('onInterrupted', () => note('interrompido')),
       addReplayListener('onResumed', () => note('retomado')),
-      addReplayListener('onError', (e) => note(`erro: ${e.code} ${e.message}`)),
+      // Native errors after start always end the session.
+      addReplayListener('onError', (e) => {
+        setStartedAt(null);
+        note(`erro (sessão encerrada): ${e.code} ${e.message}`);
+      }),
     ];
     return () => subs.forEach((s) => s.remove());
   }, []);
@@ -104,16 +115,21 @@ export default function SpikeScreen() {
       note('parado');
       return;
     }
-    if (!(await requestPermissions())) return note('permissão negada');
+    if (starting) return;
+    setStarting(true);
     try {
+      if (!(await requestPermissions())) return note('permissão negada');
       await startSession({ lens: 'ultraWide', maxQuality: '1080p60' });
       setStartedAt(Date.now());
       setClips(0);
       setCounts(EMPTY_COUNTS);
+      setReceived(0);
       setMaxMb(0);
       note('gravando');
     } catch (e: any) {
       note(`erro ao iniciar: ${e?.code ?? e}`);
+    } finally {
+      setStarting(false);
     }
   }
 
@@ -128,7 +144,8 @@ export default function SpikeScreen() {
           {lastMs === null ? '-' : `${(lastMs / 1000).toFixed(1)}s`}
         </Text>
         <Text style={styles.stat}>
-          tela {counts.screen} · gesto {counts.gesture} · controle {counts.remote} · relógio {counts.watch}
+          salvos: tela {counts.screen} · gesto {counts.gesture} · controle {counts.remote} · relógio{' '}
+          {counts.watch} · gatilhos recebidos {received}
         </Text>
         <Text style={styles.stat}>
           temp {thermal}
@@ -141,7 +158,10 @@ export default function SpikeScreen() {
         ))}
       </View>
       <View style={styles.actions}>
-        <Pressable style={[styles.button, styles.toggle]} onPress={toggle}>
+        <Pressable
+          style={[styles.button, styles.toggle, starting && styles.disabled]}
+          disabled={starting}
+          onPress={toggle}>
           <Text style={styles.buttonText}>{running ? 'Parar' : 'Iniciar'}</Text>
         </Pressable>
         <Pressable

@@ -17,7 +17,14 @@ import android.view.Surface
 
 /** Picks lens and mode, then streams the camera into the given surfaces (encoder + optional preview). */
 class CaptureController(context: Context) {
-  data class Mode(val cameraId: String, val size: Size, val fps: Int, val sensorOrientation: Int, val clockNanos: () -> Long)
+  data class Mode(
+    val cameraId: String,
+    val size: Size,
+    val fps: Int,
+    val sensorOrientation: Int,
+    val clockIsBoottime: Boolean,
+    val clockNanos: () -> Long,
+  )
 
   private val manager = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
   private val thread = HandlerThread("replay-camera").apply { start() }
@@ -25,7 +32,8 @@ class CaptureController(context: Context) {
   private var device: CameraDevice? = null
   private var session: CameraCaptureSession? = null
 
-  var onDisconnected: (() -> Unit)? = null
+  /** Bumped by every open/close; callbacks from an older open close what they opened and stop. */
+  @Volatile private var generation = 0
 
   /** Ultra-wide = the back camera with the shortest focal length. 1080p60 when asked and supported, else 30fps (720p when not asked). */
   fun chooseMode(lens: String, wantHigh: Boolean): Mode {
@@ -49,51 +57,69 @@ class CaptureController(context: Context) {
       CameraCharacteristics.SENSOR_INFO_TIMESTAMP_SOURCE_REALTIME
     val clock: () -> Long = if (realtime) SystemClock::elapsedRealtimeNanos else System::nanoTime
     val sensor = chars.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 90
-    return Mode(id, size, fps, sensor, clock)
+    return Mode(id, size, fps, sensor, realtime, clock)
   }
 
+  /**
+   * Opens the camera and streams into [surfaces]. Exactly one of [onReady] / [onOpenError] is called for the open;
+   * failures after [onReady] (disconnect, camera error) go to [onRuntimeError] instead.
+   */
   @SuppressLint("MissingPermission") // checked by ReplayEngine before start
-  fun open(mode: Mode, surfaces: List<Surface>, onReady: () -> Unit, onError: (String) -> Unit) {
+  fun open(
+    mode: Mode,
+    surfaces: List<Surface>,
+    onReady: () -> Unit,
+    onOpenError: (String) -> Unit,
+    onRuntimeError: (String) -> Unit,
+  ) {
+    val mine = ++generation
+    var ready = false
+    val failed = { message: String ->
+      close()
+      if (ready) onRuntimeError(message) else onOpenError(message)
+    }
     manager.openCamera(mode.cameraId, object : CameraDevice.StateCallback() {
       override fun onOpened(camera: CameraDevice) {
+        if (mine != generation) return camera.close()
         device = camera
         @Suppress("DEPRECATION")
         camera.createCaptureSession(surfaces, object : CameraCaptureSession.StateCallback() {
           override fun onConfigured(s: CameraCaptureSession) {
+            if (mine != generation) return s.close()
             session = s
             val request = camera.createCaptureRequest(CameraDevice.TEMPLATE_RECORD).apply {
               surfaces.forEach(::addTarget)
               set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, Range(mode.fps, mode.fps))
             }.build()
             s.setRepeatingRequest(request, null, handler)
+            ready = true
             onReady()
           }
 
-          override fun onConfigureFailed(s: CameraCaptureSession) = onError("capture session configuration failed")
+          override fun onConfigureFailed(s: CameraCaptureSession) = failed("capture session configuration failed")
         }, handler)
       }
 
       override fun onDisconnected(camera: CameraDevice) {
-        close()
-        onDisconnected?.invoke()
+        if (mine == generation) failed("camera disconnected") else camera.close()
       }
 
       override fun onError(camera: CameraDevice, error: Int) {
-        close()
-        onError("camera error $error")
+        if (mine == generation) failed("camera error $error") else camera.close()
       }
     }, handler)
   }
 
-  fun close() {
+  private fun close() {
     runCatching { session?.close() }
     runCatching { device?.close() }
     session = null
     device = null
   }
 
-  fun release() {
-    close()
-    thread.quitSafely()
+  /** Closes the current camera; one still opening is closed as soon as it arrives. The thread stays for the next open. */
+  fun shutdown() {
+    generation++
+    handler.post { close() }
   }
 }

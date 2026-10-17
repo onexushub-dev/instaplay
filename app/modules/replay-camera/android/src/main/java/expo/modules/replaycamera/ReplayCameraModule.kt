@@ -35,13 +35,12 @@ class ReplayCameraModule : Module() {
       ReplayEngine.start(context, opts.lens, opts.maxQuality, onReady = { promise.resolve(null) }, onError = promise::reject)
     }
 
-    AsyncFunction("stopSession") {
-      ReplayEngine.stop()
+    AsyncFunction("stopSession") { promise: Promise ->
+      ReplayEngine.stop { promise.resolve(null) }
     }
 
     AsyncFunction("saveClip") { _: SaveClipOptions, promise: Promise ->
       ReplayEngine.saveClip(
-        context,
         onDone = { path, ms -> promise.resolve(mapOf("clipPath" to path, "durationMs" to ms)) },
         onError = promise::reject,
       )

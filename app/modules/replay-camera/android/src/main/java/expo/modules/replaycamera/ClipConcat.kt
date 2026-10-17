@@ -2,54 +2,69 @@ package expo.modules.replaycamera
 
 import android.media.MediaCodec
 import android.media.MediaExtractor
+import android.media.MediaFormat
 import android.media.MediaMuxer
 import expo.modules.replaycamera.core.Segment
+import expo.modules.replaycamera.core.TimelineRemap
 import java.io.File
 import java.nio.ByteBuffer
 
-/** Remuxes segment MP4s into one file, without re-encoding. Each segment's samples are shifted to follow the previous one. */
+/** Remuxes segment MP4s into one 0-based file, without re-encoding. Timing rules live in [TimelineRemap]. */
 object ClipConcat {
   fun concat(segments: List<Segment>, dest: File) {
     require(segments.isNotEmpty()) { "no segments to save" }
     val muxer = MediaMuxer(dest.path, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
-    val trackMap = mutableMapOf<String, Int>()
+    val outTracks = mutableMapOf<String, Int>()
+    val remap = TimelineRemap()
     val buffer = ByteBuffer.allocate(4 * 1024 * 1024)
     val info = MediaCodec.BufferInfo()
-    var offsetUs = 0L
     try {
       segments.forEachIndexed { index, segment ->
+        remap.beginSegment(firstVideoTimeUs(segment.file))
         val extractor = MediaExtractor().apply { setDataSource(segment.file.path) }
         try {
-          val localTracks = (0 until extractor.trackCount).associateWith { i ->
+          val mimes = (0 until extractor.trackCount).associateWith { i ->
             val format = extractor.getTrackFormat(i)
-            val mime = format.getString(android.media.MediaFormat.KEY_MIME)!!
-            if (index == 0) trackMap[mime] = muxer.addTrack(format)
+            val mime = format.getString(MediaFormat.KEY_MIME)!!
+            if (index == 0) outTracks[mime] = muxer.addTrack(format)
             extractor.selectTrack(i)
             mime
           }
           if (index == 0) muxer.start()
 
-          var firstPts = -1L
           while (true) {
             val size = extractor.readSampleData(buffer, 0)
             if (size < 0) break
-            val pts = extractor.sampleTime
-            if (firstPts < 0) firstPts = pts
-            val outTrack = trackMap[localTracks[extractor.sampleTrackIndex]]
-            if (outTrack != null) {
-              info.set(0, size, offsetUs + (pts - firstPts).coerceAtLeast(0), extractor.sampleFlags)
+            val mime = mimes[extractor.sampleTrackIndex]
+            val outTrack = outTracks[mime]
+            val pts = mime?.let { remap.map(it, extractor.sampleTime) }
+            if (outTrack != null && pts != null) {
+              info.set(0, size, pts, extractor.sampleFlags)
               muxer.writeSampleData(outTrack, buffer, info)
             }
             extractor.advance()
           }
-          offsetUs += (segment.duration * 1_000_000).toLong()
         } finally {
           extractor.release()
         }
+        remap.endSegment((segment.duration * 1_000_000).toLong())
       }
     } finally {
       runCatching { muxer.stop() }
       muxer.release()
+    }
+  }
+
+  private fun firstVideoTimeUs(file: File): Long {
+    val extractor = MediaExtractor().apply { setDataSource(file.path) }
+    try {
+      val video = (0 until extractor.trackCount).first {
+        extractor.getTrackFormat(it).getString(MediaFormat.KEY_MIME)!!.startsWith("video/")
+      }
+      extractor.selectTrack(video)
+      return extractor.sampleTime.coerceAtLeast(0)
+    } finally {
+      extractor.release()
     }
   }
 }

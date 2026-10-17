@@ -1,16 +1,19 @@
 package expo.modules.replaycamera
 
+import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.ImageFormat
 import android.media.ImageReader
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.view.OrientationEventListener
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.pose.PoseDetection
 import com.google.mlkit.vision.pose.PoseLandmark
 import com.google.mlkit.vision.pose.defaults.PoseDetectorOptions
 import expo.modules.replaycamera.core.HoldTracker
+import expo.modules.replaycamera.core.ImageRotation
 import expo.modules.replaycamera.core.Point
 import expo.modules.replaycamera.core.Pose
 import expo.modules.replaycamera.core.XGesture
@@ -21,8 +24,9 @@ import com.google.mlkit.vision.pose.Pose as MlPose
  * Runs ML Kit pose detection on ~5 frames per second and fires [onGesture] when the X is held.
  * Frames come from a small ImageReader on the capture session, or, when the device can't add
  * that third stream, from bitmaps of the preview (see [startBitmapSampling]).
+ * Frame rotation follows the phone's physical position (the UI is portrait-locked), read from the accelerometer.
  */
-class GestureDetector(private val onGesture: () -> Unit) {
+class GestureDetector(context: Context, private val onGesture: () -> Unit) {
   companion object {
     private const val SAMPLE_MS = 200L
   }
@@ -36,8 +40,28 @@ class GestureDetector(private val onGesture: () -> Unit) {
   private var lastSample = 0L
   private val main = Handler(Looper.getMainLooper())
   private var bitmapSampler: Runnable? = null
+  /** Clockwise device rotation from its natural (portrait) position; landscape until the sensor says otherwise. */
+  @Volatile private var deviceDegrees = 90
+  @Volatile private var sensorOrientation = 90
+  private val orientation = object : OrientationEventListener(context) {
+    override fun onOrientationChanged(degrees: Int) {
+      ImageRotation.snap(degrees)?.let { deviceDegrees = it }
+    }
+  }
 
-  fun createReader(rotationDegrees: Int, handler: Handler): ImageReader =
+  private val rotation get() = ImageRotation.forBackCamera(sensorOrientation, deviceDegrees)
+
+  fun start(sensorOrientation: Int) {
+    this.sensorOrientation = sensorOrientation
+    if (orientation.canDetectOrientation()) orientation.enable()
+  }
+
+  fun stop() {
+    orientation.disable()
+    stopBitmapSampling()
+  }
+
+  fun createReader(handler: Handler): ImageReader =
     ImageReader.newInstance(640, 360, ImageFormat.YUV_420_888, 2).apply {
       setOnImageAvailableListener({ reader ->
         val image = reader.acquireLatestImage() ?: return@setOnImageAvailableListener
@@ -47,7 +71,7 @@ class GestureDetector(private val onGesture: () -> Unit) {
           return@setOnImageAvailableListener
         }
         lastSample = now
-        detect(InputImage.fromMediaImage(image, rotationDegrees), now) { image.close() }
+        detect(InputImage.fromMediaImage(image, rotation), now) { image.close() }
       }, handler)
     }
 
@@ -58,7 +82,8 @@ class GestureDetector(private val onGesture: () -> Unit) {
       override fun run() {
         val bitmap = if (enabled && !busy.get()) grab() else null
         if (bitmap != null && busy.compareAndSet(false, true)) {
-          detect(InputImage.fromBitmap(bitmap, 0), SystemClock.elapsedRealtime()) {}
+          // The preview shows the raw sensor buffer, so it needs the same rotation as camera frames.
+          detect(InputImage.fromBitmap(bitmap, rotation), SystemClock.elapsedRealtime()) {}
         }
         main.postDelayed(this, SAMPLE_MS)
       }
