@@ -1,5 +1,7 @@
 package expo.modules.replaycamera
 
+import android.Manifest
+import expo.modules.interfaces.permissions.PermissionsStatus
 import expo.modules.kotlin.Promise
 import expo.modules.kotlin.exception.Exceptions
 import expo.modules.kotlin.modules.Module
@@ -45,7 +47,20 @@ class ReplayCameraModule : Module() {
       )
     }
 
-    Function("setGestureEnabled") { _: Boolean -> }
+    Function("setGestureEnabled") { enabled: Boolean -> ReplayEngine.setGestureEnabled(enabled) }
+
+    AsyncFunction("requestPermissions") { promise: Promise ->
+      val permissions = appContext.permissions ?: return@AsyncFunction promise.resolve(false)
+      permissions.askForPermissions(
+        { results -> promise.resolve(results.values.all { it.status == PermissionsStatus.GRANTED }) },
+        Manifest.permission.CAMERA,
+        Manifest.permission.RECORD_AUDIO,
+      )
+    }
+
+    OnActivityEntersBackground { ReplayEngine.pause() }
+
+    OnActivityEntersForeground { ReplayEngine.resume() }
 
     View(ReplayCameraView::class) {}
   }

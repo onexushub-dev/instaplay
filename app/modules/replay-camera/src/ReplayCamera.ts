@@ -8,6 +8,11 @@ import type {
 
 // Native rejections carry `code` (a ReplayErrorCode), so callers can branch on it.
 
+/** Asks for camera and microphone; resolves true when the camera is granted. */
+export function requestPermissions(): Promise<boolean> {
+  return ReplayCameraModule.requestPermissions();
+}
+
 export function startSession(opts: SessionOptions): Promise<void> {
   return ReplayCameraModule.startSession(opts);
 }

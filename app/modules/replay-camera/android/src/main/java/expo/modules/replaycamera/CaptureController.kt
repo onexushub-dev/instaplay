@@ -17,11 +17,11 @@ import android.view.Surface
 
 /** Picks lens and mode, then streams the camera into the given surfaces (encoder + optional preview). */
 class CaptureController(context: Context) {
-  data class Mode(val cameraId: String, val size: Size, val fps: Int, val clockNanos: () -> Long)
+  data class Mode(val cameraId: String, val size: Size, val fps: Int, val sensorOrientation: Int, val clockNanos: () -> Long)
 
   private val manager = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
   private val thread = HandlerThread("replay-camera").apply { start() }
-  private val handler = Handler(thread.looper)
+  val handler = Handler(thread.looper)
   private var device: CameraDevice? = null
   private var session: CameraCaptureSession? = null
 
@@ -48,7 +48,8 @@ class CaptureController(context: Context) {
     val realtime = chars.get(CameraCharacteristics.SENSOR_INFO_TIMESTAMP_SOURCE) ==
       CameraCharacteristics.SENSOR_INFO_TIMESTAMP_SOURCE_REALTIME
     val clock: () -> Long = if (realtime) SystemClock::elapsedRealtimeNanos else System::nanoTime
-    return Mode(id, size, fps, clock)
+    val sensor = chars.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 90
+    return Mode(id, size, fps, sensor, clock)
   }
 
   @SuppressLint("MissingPermission") // checked by ReplayEngine before start
@@ -89,5 +90,10 @@ class CaptureController(context: Context) {
     runCatching { device?.close() }
     session = null
     device = null
+  }
+
+  fun release() {
+    close()
+    thread.quitSafely()
   }
 }

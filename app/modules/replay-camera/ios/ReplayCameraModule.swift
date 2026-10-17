@@ -67,7 +67,13 @@ public class ReplayCameraModule: Module {
       }
     }
 
-    Function("setGestureEnabled") { (_: Bool) in }
+    Function("setGestureEnabled") { (enabled: Bool) in
+      self.engine.gesture.enabled = enabled
+    }
+
+    AsyncFunction("requestPermissions") { (promise: Promise) in
+      ReplayEngine.requestPermissions { promise.resolve($0) }
+    }
 
     View(ReplayCameraView.self) {}
   }

@@ -15,11 +15,13 @@ class ReplayCameraView(context: Context, appContext: AppContext) : ExpoView(cont
       override fun onSurfaceTextureAvailable(st: SurfaceTexture, width: Int, height: Int) {
         st.setDefaultBufferSize(1920, 1080)
         ReplayEngine.previewSurface = Surface(st)
+        ReplayEngine.previewBitmap = { if (isAvailable) getBitmap(640, 360) else null }
       }
 
       override fun onSurfaceTextureDestroyed(st: SurfaceTexture): Boolean {
         ReplayEngine.previewSurface?.release()
         ReplayEngine.previewSurface = null
+        ReplayEngine.previewBitmap = null
         return true
       }
 

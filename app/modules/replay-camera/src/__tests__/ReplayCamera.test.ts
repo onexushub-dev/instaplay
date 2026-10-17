@@ -6,11 +6,12 @@ jest.mock('expo', () => {
     saveClip: jest.fn(),
     setGestureEnabled: jest.fn(),
     addListener: jest.fn(),
+    requestPermissions: jest.fn(),
   };
   return { requireNativeModule: () => mockNative, NativeModule: class {} };
 });
 
-import { saveClip, startSession } from '../ReplayCamera';
+import { requestPermissions, saveClip, startSession } from '../ReplayCamera';
 
 const mockNative = jest.requireMock('expo').requireNativeModule();
 
@@ -35,4 +36,10 @@ test('startSession rejects with LOW_STORAGE when native refuses for space', asyn
     code: 'LOW_STORAGE',
   });
   expect(mockNative.startSession).toHaveBeenCalledWith({ lens: 'ultraWide', maxQuality: '1080p60' });
+});
+
+test('requestPermissions resolves whether camera and microphone were granted', async () => {
+  mockNative.requestPermissions.mockResolvedValue(false);
+
+  await expect(requestPermissions()).resolves.toBe(false);
 });
