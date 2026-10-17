@@ -10,25 +10,61 @@ struct SaveClipOptions: Record {
   @Field var at: Double = 0
 }
 
-final class NoSessionException: Exception {
-  override var code: String { "NO_SESSION" }
-  override var reason: String { "No replay session is running" }
+final class ReplayException: Exception {
+  private let errorCode: String
+  private let message: String
+
+  init(_ code: String, _ message: String) {
+    errorCode = code
+    self.message = message
+    super.init()
+  }
+
+  override var code: String { errorCode }
+  override var reason: String { message }
+
+  static func from(_ failure: ReplayEngine.Failure) -> ReplayException {
+    switch failure {
+    case .lowStorage: return ReplayException("LOW_STORAGE", "Less than 500 MB free")
+    case .permission: return ReplayException("CAMERA_PERMISSION", "Camera permission not granted")
+    case .unavailable(let e): return ReplayException("CAMERA_UNAVAILABLE", "\(e)")
+    case .noSession: return ReplayException("NO_SESSION", "No replay session is running")
+    case .encoder(let e): return ReplayException("ENCODER_FAILED", e.map { "\($0)" } ?? "encoder failed")
+    }
+  }
 }
 
 public class ReplayCameraModule: Module {
+  private var engine: ReplayEngine { ReplayEngine.shared }
+
   public func definition() -> ModuleDefinition {
     Name("ReplayCamera")
 
     Events("onTrigger", "onThermalChange", "onInterrupted", "onResumed", "onError")
 
-    AsyncFunction("startSession") { (_: SessionOptions) in
-      throw NoSessionException()
+    OnCreate {
+      self.engine.emit = { [weak self] name, body in self?.sendEvent(name, body) }
     }
 
-    AsyncFunction("stopSession") {}
+    AsyncFunction("startSession") { (opts: SessionOptions) in
+      do {
+        try self.engine.start(lens: opts.lens, maxQuality: opts.maxQuality)
+      } catch let failure as ReplayEngine.Failure {
+        throw ReplayException.from(failure)
+      }
+    }
 
-    AsyncFunction("saveClip") { (_: SaveClipOptions) -> [String: Any] in
-      throw NoSessionException()
+    AsyncFunction("stopSession") { (promise: Promise) in
+      self.engine.stop { promise.resolve(nil) }
+    }
+
+    AsyncFunction("saveClip") { (_: SaveClipOptions, promise: Promise) in
+      self.engine.saveClip { result in
+        switch result {
+        case .success(let clip): promise.resolve(["clipPath": clip.path, "durationMs": clip.durationMs])
+        case .failure(let failure): promise.reject(ReplayException.from(failure))
+        }
+      }
     }
 
     Function("setGestureEnabled") { (_: Bool) in }

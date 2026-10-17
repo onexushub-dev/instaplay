@@ -1,18 +1,20 @@
+import AVFoundation
 import ExpoModulesCore
 
-// This view will be used as a native component. Make sure to inherit from `ExpoView`
-// to apply the proper styling (e.g. border radius and shadows).
+/// Live preview of the replay session's camera.
 class ReplayCameraView: ExpoView {
-  let label = UILabel()
+  private let previewLayer = AVCaptureVideoPreviewLayer(session: ReplayEngine.shared.capture.session)
 
   required init(appContext: AppContext? = nil) {
     super.init(appContext: appContext)
     clipsToBounds = true
-    backgroundColor = UIColor(red: 0.67, green: 0.73, blue: 0.80, alpha: 1.0)
-    label.text = "ReplayCamera - native view"
-    label.textAlignment = .center
-    label.numberOfLines = 0
-    label.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-    addSubview(label)
+    backgroundColor = .black
+    previewLayer.videoGravity = .resizeAspectFill
+    layer.addSublayer(previewLayer)
+  }
+
+  override func layoutSubviews() {
+    super.layoutSubviews()
+    previewLayer.frame = bounds
   }
 }
