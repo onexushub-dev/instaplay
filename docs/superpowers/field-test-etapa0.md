@@ -2,6 +2,23 @@
 
 Objetivo: decidir se o `ReplayCamera` aguenta um jogo real antes de construir o app (spec §9).
 
+## Status (2026-10-17)
+
+Adiado por decisão do Marcus para seguir com o Plano 2. **Precisa rodar antes de qualquer piloto com jogadores.**
+
+Já conferido no iPhone 16 Pro (iOS 27.1):
+- salvar cedo/tarde, clipes 1080p60 com áudio começando em 0
+- rotação correta em pé e deitado
+- buffer ~77 MB/min a 10 Mbps
+- gesto X na horizontal a ~3 m (3/3)
+
+Ainda falta:
+- **Android inteiro**: nenhum aparelho testado
+- gesto a 5–8 m e contagem de falsos positivos (V de comemoração)
+- conferências 3, 4, 5, 7 e 8 abaixo
+- o teste de 2h ao sol
+- remover o evento de diagnóstico `onGestureDebug` antes do app final
+
 ## Preparação
 
 - Builds de release instaladas em **um iPhone** e **um Android intermediário**:
