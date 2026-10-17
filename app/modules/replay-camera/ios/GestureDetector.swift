@@ -43,16 +43,23 @@ final class GestureDetector {
       if take { lock.withLock { busy = false } }
       return
     }
-    if let g = motion.accelerometerData?.acceleration, let now = DeviceUpright.from(gravityX: g.x, gravityY: g.y) {
-      upright = now
-    }
-    let orientation = Self.orientation(for: upright)
+    let orientation = Self.orientation(for: currentUpright())
     queue.async {
       defer { self.lock.withLock { self.busy = false } }
       let request = VNDetectHumanBodyPoseRequest()
       try? VNImageRequestHandler(cvPixelBuffer: pixels, orientation: orientation).perform([request])
       let isX = (request.results ?? []).contains { XGesture.isX(Self.pose(from: $0)) }
       if self.tracker.update(isX: isX, at: t) { self.onGesture?() }
+    }
+  }
+
+  /// The phone's physical position from the latest accelerometer reading; the last known one while it lies flat.
+  func currentUpright() -> DeviceUpright {
+    lock.withLock {
+      if let g = motion.accelerometerData?.acceleration, let now = DeviceUpright.from(gravityX: g.x, gravityY: g.y) {
+        upright = now
+      }
+      return upright
     }
   }
 

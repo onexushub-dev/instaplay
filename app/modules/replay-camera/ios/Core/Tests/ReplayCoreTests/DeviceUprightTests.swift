@@ -10,3 +10,13 @@ final class DeviceUprightTests: XCTestCase {
   func test_tiltedLandscape() { XCTAssertEqual(DeviceUpright.from(gravityX: -0.8, gravityY: -0.4), .landscapeLeft) }
   func test_flat_isUnknown() { XCTAssertNil(DeviceUpright.from(gravityX: 0.1, gravityY: -0.2)) }
 }
+
+/// Back-camera buffers are natively upright with the phone in landscapeLeft (home button / camera side as Apple defines it).
+final class VideoRotationTests: XCTestCase {
+  func test_videoRotationDegreesPerUpright() {
+    XCTAssertEqual(DeviceUpright.landscapeLeft.videoRotationDegrees, 0)
+    XCTAssertEqual(DeviceUpright.portrait.videoRotationDegrees, 90)
+    XCTAssertEqual(DeviceUpright.landscapeRight.videoRotationDegrees, 180)
+    XCTAssertEqual(DeviceUpright.portraitUpsideDown.videoRotationDegrees, 270)
+  }
+}

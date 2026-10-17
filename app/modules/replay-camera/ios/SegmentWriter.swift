@@ -10,6 +10,8 @@ final class SegmentWriter: NSObject, AVAssetWriterDelegate {
   let initSegmentURL: URL
   var onSegment: ((Segment, Int) -> Void)?
   var onFailure: ((Error?) -> Void)?
+  /// Read once, at the first frame: the rotation players apply to this writer's video.
+  var rotationDegrees: () -> Int = { 0 }
 
   private let writer: AVAssetWriter
   private let videoInput: AVAssetWriterInput
@@ -32,7 +34,7 @@ final class SegmentWriter: NSObject, AVAssetWriterDelegate {
       AVVideoWidthKey: width,
       AVVideoHeightKey: height,
       AVVideoCompressionPropertiesKey: [
-        AVVideoAverageBitRateKey: fps >= 60 ? 12_000_000 : 6_000_000,
+        AVVideoAverageBitRateKey: fps >= 60 ? 10_000_000 : 6_000_000,
         AVVideoMaxKeyFrameIntervalDurationKey: Self.segmentSeconds,
         AVVideoAllowFrameReorderingKey: false,
         AVVideoExpectedSourceFrameRateKey: fps,
@@ -63,6 +65,7 @@ final class SegmentWriter: NSObject, AVAssetWriterDelegate {
   func appendVideo(_ buffer: CMSampleBuffer) {
     let time = CMSampleBufferGetPresentationTimeStamp(buffer)
     if sessionStart == nil {
+      videoInput.transform = CGAffineTransform(rotationAngle: CGFloat(rotationDegrees()) * .pi / 180)
       writer.initialSegmentStartTime = time
       guard writer.startWriting() else { return reportFailure() }
       writer.startSession(atSourceTime: time)

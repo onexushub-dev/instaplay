@@ -162,6 +162,7 @@ object ReplayEngine {
       val mode = cap.chooseMode(lens, wantHigh = quality == "1080p60" && !degraded)
       val enc = SegmentEncoder(
         mode.size.width, mode.size.height, mode.fps, ReplayPaths.buffer(ctx), mode.clockNanos, mode.clockIsBoottime,
+        rotationDegrees = { gest.rotation },
         onSegment = { segment -> post { onSegment(segment) } },
         onFailure = { error -> post { fail(ReplayException("ENCODER_FAILED", "$error")) } },
       )

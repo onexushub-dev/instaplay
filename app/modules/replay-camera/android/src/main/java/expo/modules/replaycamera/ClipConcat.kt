@@ -30,7 +30,13 @@ object ClipConcat {
             extractor.selectTrack(i)
             mime
           }
-          if (index == 0) muxer.start()
+          if (index == 0) {
+            // The segment muxers stored the phone's rotation; carry the first one's to the clip.
+            val rotation = (0 until extractor.trackCount).map(extractor::getTrackFormat)
+              .firstOrNull { it.containsKey(MediaFormat.KEY_ROTATION) }?.getInteger(MediaFormat.KEY_ROTATION) ?: 0
+            muxer.setOrientationHint(rotation)
+            muxer.start()
+          }
 
           while (true) {
             val size = extractor.readSampleData(buffer, 0)

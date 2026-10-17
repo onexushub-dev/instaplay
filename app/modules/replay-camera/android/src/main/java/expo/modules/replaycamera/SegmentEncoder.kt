@@ -29,6 +29,8 @@ class SegmentEncoder(
   private val bufferDir: File,
   private val clockNanos: () -> Long,
   private val clockIsBoottime: Boolean,
+  /** Read when each segment opens: the rotation players apply to the video. */
+  private val rotationDegrees: () -> Int,
   private val onSegment: (Segment) -> Unit,
   private val onFailure: (Throwable) -> Unit,
 ) {
@@ -59,7 +61,7 @@ class SegmentEncoder(
   init {
     val video = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, width, height).apply {
       setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
-      setInteger(MediaFormat.KEY_BIT_RATE, if (fps >= 60) 12_000_000 else 6_000_000)
+      setInteger(MediaFormat.KEY_BIT_RATE, if (fps >= 60) 10_000_000 else 6_000_000)
       setInteger(MediaFormat.KEY_FRAME_RATE, fps)
       setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1)
     }
@@ -197,6 +199,7 @@ class SegmentEncoder(
     val af = audioFormat ?: return // wait for the audio encoder so every segment has both tracks
     val file = File(bufferDir, "${index++}.mp4")
     muxer = MediaMuxer(file.path, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4).apply {
+      setOrientationHint(rotationDegrees())
       videoTrack = addTrack(vf)
       audioTrack = addTrack(af)
       start()

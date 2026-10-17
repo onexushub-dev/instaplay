@@ -10,3 +10,15 @@ public enum DeviceUpright: Equatable {
     return x < 0 ? .landscapeLeft : .landscapeRight
   }
 }
+
+extension DeviceUpright {
+  /// Clockwise rotation a player must apply to back-camera video recorded in this position.
+  public var videoRotationDegrees: Int {
+    switch self {
+    case .landscapeLeft: return 0
+    case .portrait: return 90
+    case .landscapeRight: return 180
+    case .portraitUpsideDown: return 270
+    }
+  }
+}

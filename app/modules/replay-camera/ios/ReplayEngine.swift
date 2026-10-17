@@ -151,6 +151,7 @@ final class ReplayEngine {
         saves.forEach { $0.run(current) }
       }
     }
+    writer.rotationDegrees = { [weak self] in self?.gesture.currentUpright().videoRotationDegrees ?? 0 }
     writer.onFailure = { [weak self] error in self?.fail(code: "ENCODER_FAILED", "\(error.map { "\($0)" } ?? "writer failed")") }
     self.writer = writer
   }

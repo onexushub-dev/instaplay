@@ -49,7 +49,8 @@ class GestureDetector(context: Context, private val onGesture: () -> Unit) {
     }
   }
 
-  private val rotation get() = ImageRotation.forBackCamera(sensorOrientation, deviceDegrees)
+  /** Clockwise rotation that makes a camera frame upright right now. */
+  val rotation get() = ImageRotation.forBackCamera(sensorOrientation, deviceDegrees)
 
   fun start(sensorOrientation: Int) {
     this.sensorOrientation = sensorOrientation
