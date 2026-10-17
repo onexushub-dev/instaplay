@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="expo.modules.replaycamera.core.HoldTrackerTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-10-17T20:47:10.755Z" hostname="Marcuss-MacBook-Air.local" time="0.002">
-  <properties/>
-  <testcase name="test_brokenHoldResets" classname="expo.modules.replaycamera.core.HoldTrackerTest" time="0.001"/>
-  <testcase name="test_holdFiresOnceAfter1s" classname="expo.modules.replaycamera.core.HoldTrackerTest" time="0.0"/>
-  <testcase name="test_cooldownBlocksFor3s" classname="expo.modules.replaycamera.core.HoldTrackerTest" time="0.0"/>
-  <system-out><![CDATA[]]></system-out>
-  <system-err><![CDATA[]]></system-err>
-</testsuite>

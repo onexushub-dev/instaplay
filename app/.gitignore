@@ -45,3 +45,6 @@ example
 # CNG native folders
 /ios
 /android
+
+# Gradle outputs of local modules
+modules/*/android/build/
