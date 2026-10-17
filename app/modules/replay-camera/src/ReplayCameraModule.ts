@@ -1,9 +1,17 @@
 import { NativeModule, requireNativeModule } from 'expo';
 
-import { ReplayCameraModuleEvents } from './ReplayCamera.types';
+import type {
+  ReplayCameraModuleEvents,
+  SaveClipOptions,
+  SavedClip,
+  SessionOptions,
+} from './ReplayCamera.types';
 
 declare class ReplayCameraModule extends NativeModule<ReplayCameraModuleEvents> {
-  setValueAsync(value: string): Promise<void>;
+  startSession(opts: SessionOptions): Promise<void>;
+  stopSession(): Promise<void>;
+  saveClip(opts: SaveClipOptions): Promise<SavedClip>;
+  setGestureEnabled(enabled: boolean): void;
 }
 
 export default requireNativeModule<ReplayCameraModule>('ReplayCamera');

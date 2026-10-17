@@ -1,5 +1,4 @@
-// Re-export the native module. On web, it will be resolved to ReplayCameraModule.web.ts
-// and on native platforms to ReplayCameraModule.ts
-export { default } from './src/ReplayCameraModule';
+// On web, ReplayCameraModule resolves to ReplayCameraModule.web.ts (no camera support).
+export * from './src/ReplayCamera';
 export { default as ReplayCameraView } from './src/ReplayCameraView';
 export * from './src/ReplayCamera.types';
