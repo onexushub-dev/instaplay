@@ -25,7 +25,7 @@ class ReplayCameraModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("ReplayCamera")
 
-    Events("onTrigger", "onThermalChange", "onInterrupted", "onResumed", "onError")
+    Events("onTrigger", "onThermalChange", "onInterrupted", "onResumed", "onError", "onGestureDebug")
 
     OnCreate {
       ReplayEngine.emit = { name, body -> sendEvent(name, body) }

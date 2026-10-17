@@ -47,6 +47,7 @@ export default function SpikeScreen() {
   const [log, setLog] = useState<string[]>([]);
   const [received, setReceived] = useState(0);
   const [starting, setStarting] = useState(false);
+  const [pose, setPose] = useState('');
   const saving = useRef(false);
 
   const note = (line: string) =>
@@ -83,6 +84,14 @@ export default function SpikeScreen() {
         setDegraded(e.degraded);
         note(`temperatura: ${e.level}${e.degraded ? ' (720p30)' : ''}`);
       }),
+      addReplayListener('onGestureDebug', (e) =>
+        setPose(
+          `pose: ${e.people} pessoa(s) · ${e.samples}/s · ori ${e.orientation}` +
+            (e.people > 0
+              ? ` · conf ${(e.minConf ?? 0).toFixed(2)} · faltam [${e.missing ?? ''}] · pulsos acima ${e.wristsUp ?? '?'} · cruzado ${e.crossed ?? '?'} (pulsos ${e.wristGap ?? '?'} ombros) · X ${e.isX}`
+              : '')
+        )
+      ),
       addReplayListener('onInterrupted', () => note('interrompido')),
       addReplayListener('onResumed', () => note('retomado')),
       // Native errors after start always end the session.
@@ -151,6 +160,7 @@ export default function SpikeScreen() {
           temp {thermal}
           {degraded ? ' (720p30)' : ''} · buffer {mb} MB (máx {maxMb})
         </Text>
+        {pose ? <Text style={styles.stat}>{pose}</Text> : null}
         {log.map((line) => (
           <Text key={line} style={styles.log}>
             {line}

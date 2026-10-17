@@ -22,6 +22,21 @@ export type ReplayCameraModuleEvents = {
   onInterrupted: () => void;
   onResumed: () => void;
   onError: (e: { code: ReplayErrorCode; message: string }) => void;
+  /** Diagnostic (Etapa 0): what the gesture detector saw in the last second. iOS only for now. */
+  onGestureDebug: (e: GestureDebug) => void;
+};
+
+export type GestureDebug = {
+  people: number;
+  isX: boolean;
+  orientation: number;
+  samples: number;
+  missing?: string;
+  minConf?: number;
+  wristsUp?: boolean;
+  crossed?: boolean;
+  /** Wrist distance in shoulder widths: positive = uncrossed, negative = crossed. */
+  wristGap?: number;
 };
 
 export type ReplayCameraViewProps = {

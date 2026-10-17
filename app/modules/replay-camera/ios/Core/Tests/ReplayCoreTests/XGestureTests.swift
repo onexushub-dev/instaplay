@@ -14,6 +14,15 @@ final class XGestureTests: XCTestCase {
     XCTAssertTrue(XGesture.isX(makePose(leftWrist: pt(45, 10), rightWrist: pt(55, 10))))
   }
 
+  /// At a distance the pose model sees crossed wrists as touching, slightly "uncrossed" (field data: 0.22 shoulder widths).
+  func test_wristsTogetherAboveHead_isTrue() {
+    XCTAssertTrue(XGesture.isX(makePose(leftWrist: pt(52, 10), rightWrist: pt(48, 10))))
+  }
+
+  func test_wristsAboveHeadButApart_isFalse() {
+    XCTAssertFalse(XGesture.isX(makePose(leftWrist: pt(58, 10), rightWrist: pt(42, 10))))
+  }
+
   func test_armsUpNotCrossed_isFalse() {
     XCTAssertFalse(XGesture.isX(makePose(leftWrist: pt(65, 10), rightWrist: pt(35, 10))))
   }

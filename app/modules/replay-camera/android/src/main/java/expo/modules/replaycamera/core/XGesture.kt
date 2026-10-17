@@ -1,7 +1,5 @@
 package expo.modules.replaycamera.core
 
-import kotlin.math.sign
-
 /** Image coordinates, y grows downward. */
 data class Point(val x: Double, val y: Double, val confidence: Double)
 
@@ -15,7 +13,14 @@ data class Pose(
 
 object XGesture {
   /**
-   * Both wrists above the nose and forearms crossed. Comparing the wrists' order with the
+   * Wrists closer than this (in shoulder widths, signed so crossed is negative) count as an X.
+   * At a distance the pose model can't tell crossed wrists from touching ones, so both count;
+   * a celebration "V" keeps the wrists wider than the shoulders (> 1).
+   */
+  const val MAX_WRIST_GAP = 0.6
+
+  /**
+   * Both wrists above the nose and together or crossed. Measuring the wrist gap against the
    * shoulders' order makes the check independent of camera mirroring.
    */
   fun isX(p: Pose, minConfidence: Double = 0.3): Boolean {
@@ -26,9 +31,11 @@ object XGesture {
     val nose = p.nose ?: return false
     if (listOf(lw, rw, ls, rs, nose).any { it.confidence < minConfidence }) return false
 
+    val shoulders = ls.x - rs.x
+    if (shoulders == 0.0) return false
     val wristsUp = lw.y < nose.y && rw.y < nose.y
-    val crossed = sign(lw.x - rw.x) != sign(ls.x - rs.x)
-    return wristsUp && crossed
+    val wristGap = (lw.x - rw.x) / shoulders
+    return wristsUp && wristGap < MAX_WRIST_GAP
   }
 }
 

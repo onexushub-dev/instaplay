@@ -8,6 +8,10 @@ final class GestureDetector {
   static let sampleInterval = 0.2
 
   var onGesture: (() -> Void)?
+  /// Diagnostic: about once a second, what the detector saw (Etapa 0 spike only).
+  var onDebug: (([String: Any]) -> Void)?
+  private var samples = 0
+  private var lastDebug = -Double.infinity
 
   private let queue = DispatchQueue(label: "replay.gesture", qos: .userInitiated)
   private let motion = CMMotionManager()
@@ -48,8 +52,15 @@ final class GestureDetector {
       defer { self.lock.withLock { self.busy = false } }
       let request = VNDetectHumanBodyPoseRequest()
       try? VNImageRequestHandler(cvPixelBuffer: pixels, orientation: orientation).perform([request])
-      let isX = (request.results ?? []).contains { XGesture.isX(Self.pose(from: $0)) }
+      let poses = (request.results ?? []).map(Self.pose(from:))
+      let isX = poses.contains { XGesture.isX($0) }
       if self.tracker.update(isX: isX, at: t) { self.onGesture?() }
+      self.samples += 1
+      if t - self.lastDebug >= 1 {
+        self.lastDebug = t
+        self.onDebug?(Self.debugInfo(poses: poses, isX: isX, orientation: orientation, samples: self.samples))
+        self.samples = 0
+      }
     }
   }
 
@@ -61,6 +72,26 @@ final class GestureDetector {
       }
       return upright
     }
+  }
+
+  private static func debugInfo(poses: [Pose], isX: Bool, orientation: CGImagePropertyOrientation, samples: Int) -> [String: Any] {
+    var info: [String: Any] = ["people": poses.count, "isX": isX, "orientation": Int(orientation.rawValue), "samples": samples]
+    guard let p = poses.first else { return info }
+    let points: [(String, Point?)] = [("lw", p.leftWrist), ("rw", p.rightWrist), ("ls", p.leftShoulder), ("rs", p.rightShoulder), ("nose", p.nose)]
+    info["missing"] = points.filter { $0.1 == nil }.map(\.0).joined(separator: ",")
+    info["minConf"] = points.compactMap { $0.1?.confidence }.min() ?? 0
+    if let lw = p.leftWrist, let rw = p.rightWrist, let nose = p.nose {
+      info["wristsUp"] = lw.y < nose.y && rw.y < nose.y
+    }
+    if let lw = p.leftWrist, let rw = p.rightWrist, let ls = p.leftShoulder, let rs = p.rightShoulder {
+      info["crossed"] = (lw.x - rw.x).sign != (ls.x - rs.x).sign
+      let shoulders = abs(ls.x - rs.x)
+      if shoulders > 0 {
+        // Signed: positive = wrists on their own side (uncrossed), negative = crossed; 1.0 = one shoulder width apart.
+        info["wristGap"] = ((lw.x - rw.x) / (ls.x - rs.x) * 100).rounded() / 100
+      }
+    }
+    return info
   }
 
   /// Vision points are normalized with y growing upward; XGesture expects y growing downward.

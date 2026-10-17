@@ -15,6 +15,15 @@ class XGestureTest {
     assertTrue(XGesture.isX(makePose(pt(45.0, 10.0), pt(55.0, 10.0))))
   }
 
+  /** At a distance the pose model sees crossed wrists as touching, slightly "uncrossed" (field data: 0.22 shoulder widths). */
+  @Test fun test_wristsTogetherAboveHead_isTrue() {
+    assertTrue(XGesture.isX(makePose(pt(52.0, 10.0), pt(48.0, 10.0))))
+  }
+
+  @Test fun test_wristsAboveHeadButApart_isFalse() {
+    assertFalse(XGesture.isX(makePose(pt(58.0, 10.0), pt(42.0, 10.0))))
+  }
+
   @Test fun test_armsUpNotCrossed_isFalse() {
     assertFalse(XGesture.isX(makePose(pt(65.0, 10.0), pt(35.0, 10.0))))
   }

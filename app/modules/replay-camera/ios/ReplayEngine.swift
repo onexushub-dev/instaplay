@@ -43,6 +43,7 @@ final class ReplayEngine {
       self?.gesture.consider(buffer)
     }
     capture.onAudio = { [weak self] in self?.writer?.appendAudio($0) }
+    gesture.onDebug = { [weak self] in self?.emit?("onGestureDebug", $0) }
     gesture.onGesture = { [weak self] in
       self?.emit?("onTrigger", ["source": "gesture", "at": Date().timeIntervalSince1970 * 1000])
     }
@@ -118,7 +119,8 @@ final class ReplayEngine {
 
   /// Runs on `saveQueue`; the ring pins the copied segments, so capture keeps going meanwhile.
   private func copyClip(using writer: SegmentWriter) -> SaveResult {
-    let joined = ReplayPaths.buffer.appendingPathComponent("save-\(UUID().uuidString).mp4")
+    // Outside the buffer dir, so the buffer's disk size measures the ring alone.
+    let joined = FileManager.default.temporaryDirectory.appendingPathComponent("save-\(UUID().uuidString).mp4")
     let dest = ReplayPaths.clips.appendingPathComponent("\(UUID().uuidString).mp4")
     defer { try? FileManager.default.removeItem(at: joined) }
     do {

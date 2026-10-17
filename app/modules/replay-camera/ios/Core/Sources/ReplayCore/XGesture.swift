@@ -24,7 +24,12 @@ public struct Pose: Equatable {
 }
 
 public enum XGesture {
-  /// Both wrists above the nose and forearms crossed. Comparing the wrists' order with the
+  /// Wrists closer than this (in shoulder widths, signed so crossed is negative) count as an X.
+  /// At a distance the pose model can't tell crossed wrists from touching ones, so both count;
+  /// a celebration "V" keeps the wrists wider than the shoulders (> 1).
+  public static let maxWristGap = 0.6
+
+  /// Both wrists above the nose and together or crossed. Measuring the wrist gap against the
   /// shoulders' order makes the check independent of camera mirroring.
   public static func isX(_ p: Pose, minConfidence: Double = 0.3) -> Bool {
     guard let lw = p.leftWrist, let rw = p.rightWrist,
@@ -32,9 +37,11 @@ public enum XGesture {
           [lw, rw, ls, rs, nose].allSatisfy({ $0.confidence >= minConfidence })
     else { return false }
 
+    let shoulders = ls.x - rs.x
+    guard shoulders != 0 else { return false }
     let wristsUp = lw.y < nose.y && rw.y < nose.y
-    let crossed = (lw.x - rw.x).sign != (ls.x - rs.x).sign
-    return wristsUp && crossed
+    let wristGap = (lw.x - rw.x) / shoulders
+    return wristsUp && wristGap < maxWristGap
   }
 }
 
