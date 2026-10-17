@@ -19,3 +19,12 @@ export const files: FileProbe = {
 };
 
 export const repo = createRepo(kv, files, randomUUID);
+
+/** Deletes a saved clip's file; a file that is already gone is the goal. */
+export function removeFile(path: string): void {
+  try {
+    new File(`file://${path}`).delete();
+  } catch {
+    // already gone
+  }
+}

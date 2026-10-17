@@ -1,22 +1,15 @@
 import * as Haptics from 'expo-haptics';
-import { File } from 'expo-file-system';
 import { createContext, type ReactNode, useContext } from 'react';
 
 import * as camera from '../../modules/replay-camera';
-import { repo } from '../data/mmkv';
+import { removeFile, repo } from '../data/mmkv';
 import { useVolumeRemote } from '../triggers/useVolumeRemote';
 import { type ReplaySession, type SessionDeps, useReplaySession } from './useReplaySession';
 
 const appDeps: SessionDeps = {
   camera,
   repo,
-  deleteFile: (path) => {
-    try {
-      new File(`file://${path}`).delete();
-    } catch {
-      // already gone: the goal
-    }
-  },
+  deleteFile: removeFile,
   haptic: () => void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success),
   now: Date.now,
   useRemote: useVolumeRemote,
