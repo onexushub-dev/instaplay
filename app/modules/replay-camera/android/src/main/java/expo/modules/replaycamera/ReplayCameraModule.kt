@@ -1,6 +1,7 @@
 package expo.modules.replaycamera
 
-import expo.modules.kotlin.exception.CodedException
+import expo.modules.kotlin.Promise
+import expo.modules.kotlin.exception.Exceptions
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import expo.modules.kotlin.records.Field
@@ -16,21 +17,33 @@ class SaveClipOptions : Record {
   @Field val at: Double = 0.0
 }
 
-class NoSessionException : CodedException("NO_SESSION", "No replay session is running", null)
-
-private fun <T> noSession(): T = throw NoSessionException()
-
 class ReplayCameraModule : Module() {
+  private val context get() = appContext.reactContext ?: throw Exceptions.ReactContextLost()
+
   override fun definition() = ModuleDefinition {
     Name("ReplayCamera")
 
     Events("onTrigger", "onThermalChange", "onInterrupted", "onResumed", "onError")
 
-    AsyncFunction("startSession") { _: SessionOptions -> noSession<Unit>() }
+    OnCreate {
+      ReplayEngine.emit = { name, body -> sendEvent(name, body) }
+    }
 
-    AsyncFunction("stopSession") {}
+    AsyncFunction("startSession") { opts: SessionOptions, promise: Promise ->
+      ReplayEngine.start(context, opts.lens, opts.maxQuality, onReady = { promise.resolve(null) }, onError = promise::reject)
+    }
 
-    AsyncFunction("saveClip") { _: SaveClipOptions -> noSession<Map<String, Any>>() }
+    AsyncFunction("stopSession") {
+      ReplayEngine.stop()
+    }
+
+    AsyncFunction("saveClip") { _: SaveClipOptions, promise: Promise ->
+      ReplayEngine.saveClip(
+        context,
+        onDone = { path, ms -> promise.resolve(mapOf("clipPath" to path, "durationMs" to ms)) },
+        onError = promise::reject,
+      )
+    }
 
     Function("setGestureEnabled") { _: Boolean -> }
 
