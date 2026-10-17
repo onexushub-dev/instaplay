@@ -57,6 +57,28 @@ final class SegmentRingTests: XCTestCase {
     XCTAssertEqual(passed, [url(0), url(1), url(2), url(3)])
   }
 
+  func test_segmentsUsedByCopyAreNotDeletedDuringConcat() throws {
+    let ops = FakeFileOps()
+    let ring = SegmentRing(capacity: 30, fileOps: ops)
+    for i in 0..<30 { ring.append(seg(i)) }
+    _ = try ring.copyClip(lastSeconds: 60, to: dest) { _, _ in
+      for i in 30..<60 { ring.append(seg(i)) }
+      XCTAssertTrue(ops.deleted.isEmpty)
+    }
+    XCTAssertEqual(Set(ops.deleted), Set((0..<30).map(url)))
+  }
+
+  func test_clearWhileCopyingDefersDeleteOfCopiedSegments() throws {
+    let ops = FakeFileOps()
+    let ring = SegmentRing(capacity: 30, fileOps: ops)
+    for i in 0..<3 { ring.append(seg(i)) }
+    _ = try ring.copyClip(lastSeconds: 60, to: dest) { _, _ in
+      ring.clear()
+      XCTAssertTrue(ops.deleted.isEmpty)
+    }
+    XCTAssertEqual(Set(ops.deleted), Set((0..<3).map(url)))
+  }
+
   func test_clearDeletesAll() {
     let ops = FakeFileOps()
     let ring = SegmentRing(capacity: 30, fileOps: ops)

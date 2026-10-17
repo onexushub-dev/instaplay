@@ -15,14 +15,17 @@ interface FileOps {
 
 /**
  * Rolling window of encoded segments. Evicted segments are deleted immediately,
- * so disk usage stays bounded by [capacity] segments.
+ * so disk usage stays bounded by [capacity] segments — except segments a copy is reading,
+ * whose deletion waits until that copy ends.
  */
 class SegmentRing(private val capacity: Int = 30, private val fileOps: FileOps) {
   private val segments = ArrayDeque<Segment>()
+  private val pins = mutableMapOf<File, Int>()
+  private val doomed = mutableSetOf<File>()
 
   @Synchronized fun append(segment: Segment) {
     segments.addLast(segment)
-    while (segments.size > capacity) fileOps.delete(segments.removeFirst().file)
+    while (segments.size > capacity) discard(segments.removeFirst().file)
   }
 
   /** Segments overlapping `[newestEnd - lastSeconds, newestEnd]`, oldest first. */
@@ -30,17 +33,34 @@ class SegmentRing(private val capacity: Int = 30, private val fileOps: FileOps) 
 
   /**
    * Copies the window into [dest] through [concat] and returns its duration in seconds.
-   * Holds the ring's lock so no segment of the window is evicted mid-copy.
+   * [concat] runs outside the ring's lock, so capture keeps appending meanwhile; the window's
+   * files are pinned and survive eviction or [clear] until the copy ends.
    */
-  @Synchronized fun copyClip(lastSeconds: Double, dest: File, concat: (List<Segment>, File) -> Unit): Double {
-    val picked = window(lastSeconds)
-    concat(picked, dest)
+  fun copyClip(lastSeconds: Double, dest: File, concat: (List<Segment>, File) -> Unit): Double {
+    val picked = synchronized(this) {
+      window(lastSeconds).also { w -> w.forEach { pins[it.file] = (pins[it.file] ?: 0) + 1 } }
+    }
+    try {
+      concat(picked, dest)
+    } finally {
+      synchronized(this) { picked.forEach { unpin(it.file) } }
+    }
     return picked.sumOf { it.duration }
   }
 
   @Synchronized fun clear() {
-    segments.forEach { fileOps.delete(it.file) }
+    segments.forEach { discard(it.file) }
     segments.clear()
+  }
+
+  private fun discard(file: File) {
+    if (file in pins) doomed += file else fileOps.delete(file)
+  }
+
+  private fun unpin(file: File) {
+    val left = (pins[file] ?: 1) - 1
+    if (left > 0) pins[file] = left else pins.remove(file)
+    if (left <= 0 && doomed.remove(file)) fileOps.delete(file)
   }
 
   private fun window(lastSeconds: Double): List<Segment> {

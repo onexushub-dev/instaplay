@@ -22,11 +22,14 @@ public protocol FileOps {
 }
 
 /// Rolling window of encoded segments. Evicted segments are deleted immediately,
-/// so disk usage stays bounded by `capacity` segments.
+/// so disk usage stays bounded by `capacity` segments — except segments a copy is reading,
+/// whose deletion waits until that copy ends.
 public final class SegmentRing {
   private let capacity: Int
   private let fileOps: FileOps
   private var segments: [Segment] = []
+  private var pins: [URL: Int] = [:]
+  private var doomed: Set<URL> = []
   private let queue = DispatchQueue(label: "replay.segment-ring")
 
   public init(capacity: Int = 30, fileOps: FileOps) {
@@ -38,7 +41,7 @@ public final class SegmentRing {
     queue.sync {
       segments.append(segment)
       while segments.count > capacity {
-        fileOps.delete(segments.removeFirst().url)
+        discard(segments.removeFirst().url)
       }
     }
   }
@@ -49,24 +52,38 @@ public final class SegmentRing {
   }
 
   /// Copies the window into `dest` through `concat` and returns its duration in seconds.
-  /// Runs under the ring's lock so no segment of the window is evicted mid-copy.
+  /// `concat` runs outside the ring's lock, so capture keeps appending meanwhile; the window's
+  /// files are pinned and survive eviction or `clear()` until the copy ends.
   public func copyClip(lastSeconds: Double, to dest: URL, concat: ([Segment], URL) throws -> Void) throws -> Double {
-    try queue.sync {
-      let picked = window(lastSeconds)
-      try concat(picked, dest)
-      return picked.reduce(0) { $0 + $1.duration }
+    let picked: [Segment] = queue.sync {
+      let w = window(lastSeconds)
+      w.forEach { pins[$0.url, default: 0] += 1 }
+      return w
     }
+    defer { queue.sync { picked.forEach { unpin($0.url) } } }
+    try concat(picked, dest)
+    return picked.reduce(0) { $0 + $1.duration }
   }
 
   public func clear() {
     queue.sync {
-      segments.forEach { fileOps.delete($0.url) }
+      segments.forEach { discard($0.url) }
       segments.removeAll()
     }
   }
 
   public static func purgeOrphans(dir: URL, fileOps: FileOps) {
     fileOps.list(dir).forEach { fileOps.delete($0) }
+  }
+
+  private func discard(_ url: URL) {
+    if pins[url] != nil { doomed.insert(url) } else { fileOps.delete(url) }
+  }
+
+  private func unpin(_ url: URL) {
+    let left = (pins[url] ?? 1) - 1
+    pins[url] = left > 0 ? left : nil
+    if left <= 0, doomed.remove(url) != nil { fileOps.delete(url) }
   }
 
   private func window(_ lastSeconds: Double) -> [Segment] {

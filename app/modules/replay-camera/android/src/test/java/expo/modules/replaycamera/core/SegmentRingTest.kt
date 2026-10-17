@@ -61,6 +61,28 @@ class SegmentRingTest {
     assertEquals(listOf(file(0), file(1), file(2), file(3)), passed)
   }
 
+  @Test fun test_segmentsUsedByCopyAreNotDeletedDuringConcat() {
+    val ops = FakeFileOps()
+    val ring = SegmentRing(30, ops)
+    for (i in 0 until 30) ring.append(seg(i))
+    ring.copyClip(60.0, dest) { _, _ ->
+      for (i in 30 until 60) ring.append(seg(i))
+      assertTrue(ops.deleted.isEmpty())
+    }
+    assertEquals((0 until 30).map(::file).toSet(), ops.deleted.toSet())
+  }
+
+  @Test fun test_clearWhileCopyingDefersDeleteOfCopiedSegments() {
+    val ops = FakeFileOps()
+    val ring = SegmentRing(30, ops)
+    for (i in 0 until 3) ring.append(seg(i))
+    ring.copyClip(60.0, dest) { _, _ ->
+      ring.clear()
+      assertTrue(ops.deleted.isEmpty())
+    }
+    assertEquals((0 until 3).map(::file).toSet(), ops.deleted.toSet())
+  }
+
   @Test fun test_clearDeletesAll() {
     val ops = FakeFileOps()
     val ring = SegmentRing(30, ops)
