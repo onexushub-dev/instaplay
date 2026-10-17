@@ -12,16 +12,16 @@ struct SaveClipOptions: Record {
 
 final class ReplayException: Exception {
   private let errorCode: String
-  private let message: String
+  private let detail: String
 
-  init(_ code: String, _ message: String) {
+  init(_ code: String, _ detail: String) {
     errorCode = code
-    self.message = message
+    self.detail = detail
     super.init()
   }
 
   override var code: String { errorCode }
-  override var reason: String { message }
+  override var reason: String { detail }
 
   static func from(_ failure: ReplayEngine.Failure) -> ReplayException {
     switch failure {
