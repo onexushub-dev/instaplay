@@ -20,4 +20,5 @@ Pod::Spec.new do |s|
   }
 
   s.source_files = "**/*.{h,m,mm,swift,hpp,cpp}"
+  s.exclude_files = ["Core/Package.swift", "Core/Tests/**/*", "Core/.build/**/*"]
 end

@@ -18,21 +18,19 @@ class SaveClipOptions : Record {
 
 class NoSessionException : CodedException("NO_SESSION", "No replay session is running", null)
 
+private fun <T> noSession(): T = throw NoSessionException()
+
 class ReplayCameraModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("ReplayCamera")
 
     Events("onTrigger", "onThermalChange", "onInterrupted", "onResumed", "onError")
 
-    AsyncFunction("startSession") { _: SessionOptions ->
-      throw NoSessionException()
-    }
+    AsyncFunction("startSession") { _: SessionOptions -> noSession<Unit>() }
 
     AsyncFunction("stopSession") {}
 
-    AsyncFunction("saveClip") { _: SaveClipOptions ->
-      throw NoSessionException()
-    }
+    AsyncFunction("saveClip") { _: SaveClipOptions -> noSession<Map<String, Any>>() }
 
     Function("setGestureEnabled") { _: Boolean -> }
 
