@@ -2,20 +2,27 @@ import AVFoundation
 import UniformTypeIdentifiers
 
 /// Encodes camera samples into 1s fragmented-MP4 segments and hands each finished one to `onSegment`.
-/// The initialization segment is written once per writer to `ReplayPaths.buffer/init.mp4`.
+/// File names carry the writer's `generation`, so segments of an old writer never collide with a new one's.
 final class SegmentWriter: NSObject, AVAssetWriterDelegate {
   static let segmentSeconds = 1.0
 
-  var onSegment: ((Segment) -> Void)?
+  let generation: Int
+  let initSegmentURL: URL
+  var onSegment: ((Segment, Int) -> Void)?
+  var onFailure: ((Error?) -> Void)?
 
   private let writer: AVAssetWriter
   private let videoInput: AVAssetWriterInput
-  private let audioInput: AVAssetWriterInput
+  private let audioInput: AVAssetWriterInput?
   private var sessionStart: CMTime?
   private var segmentIndex = 0
-  let initSegmentURL = ReplayPaths.buffer.appendingPathComponent("init.mp4")
+  private var reportedFailure = false
 
-  init(width: Int, height: Int, fps: Int) {
+  /// `withAudio` must be false when the capture session has no microphone input:
+  /// an input that never receives samples stalls the writer.
+  init(width: Int, height: Int, fps: Int, withAudio: Bool, generation: Int) {
+    self.generation = generation
+    initSegmentURL = ReplayPaths.buffer.appendingPathComponent("init-\(generation).mp4")
     writer = AVAssetWriter(contentType: UTType(AVFileType.mp4.rawValue)!)
     writer.outputFileTypeProfile = .mpeg4AppleHLS
     writer.preferredOutputSegmentInterval = CMTime(seconds: Self.segmentSeconds, preferredTimescale: 600)
@@ -33,17 +40,22 @@ final class SegmentWriter: NSObject, AVAssetWriterDelegate {
     ])
     videoInput.expectsMediaDataInRealTime = true
 
-    audioInput = AVAssetWriterInput(mediaType: .audio, outputSettings: [
-      AVFormatIDKey: kAudioFormatMPEG4AAC,
-      AVSampleRateKey: 44_100,
-      AVNumberOfChannelsKey: 1,
-      AVEncoderBitRateKey: 96_000,
-    ])
-    audioInput.expectsMediaDataInRealTime = true
+    if withAudio {
+      let audio = AVAssetWriterInput(mediaType: .audio, outputSettings: [
+        AVFormatIDKey: kAudioFormatMPEG4AAC,
+        AVSampleRateKey: 44_100,
+        AVNumberOfChannelsKey: 1,
+        AVEncoderBitRateKey: 96_000,
+      ])
+      audio.expectsMediaDataInRealTime = true
+      audioInput = audio
+    } else {
+      audioInput = nil
+    }
 
     super.init()
     writer.add(videoInput)
-    writer.add(audioInput)
+    if let audioInput { writer.add(audioInput) }
     writer.delegate = self
   }
 
@@ -52,27 +64,32 @@ final class SegmentWriter: NSObject, AVAssetWriterDelegate {
     let time = CMSampleBufferGetPresentationTimeStamp(buffer)
     if sessionStart == nil {
       writer.initialSegmentStartTime = time
-      guard writer.startWriting() else { return }
+      guard writer.startWriting() else { return reportFailure() }
       writer.startSession(atSourceTime: time)
       sessionStart = time
     }
     if videoInput.isReadyForMoreMediaData { videoInput.append(buffer) }
+    if writer.status == .failed { reportFailure() }
   }
 
   /// Call from the capture queue only. Audio before the first video frame is dropped.
   func appendAudio(_ buffer: CMSampleBuffer) {
-    guard sessionStart != nil, audioInput.isReadyForMoreMediaData else { return }
+    guard sessionStart != nil, let audioInput, audioInput.isReadyForMoreMediaData else { return }
     audioInput.append(buffer)
   }
 
   func finish(completion: @escaping () -> Void) {
     guard sessionStart != nil, writer.status == .writing else { return completion() }
     videoInput.markAsFinished()
-    audioInput.markAsFinished()
+    audioInput?.markAsFinished()
     writer.finishWriting(completionHandler: completion)
   }
 
-  var failed: Error? { writer.status == .failed ? writer.error : nil }
+  private func reportFailure() {
+    guard !reportedFailure else { return }
+    reportedFailure = true
+    onFailure?(writer.error)
+  }
 
   func assetWriter(_ writer: AVAssetWriter, didOutputSegmentData segmentData: Data,
                    segmentType: AVAssetSegmentType, segmentReport: AVAssetSegmentReport?) {
@@ -80,13 +97,13 @@ final class SegmentWriter: NSObject, AVAssetWriterDelegate {
     case .initialization:
       try? segmentData.write(to: initSegmentURL)
     case .separable:
-      let url = ReplayPaths.buffer.appendingPathComponent("\(segmentIndex).m4s")
+      let url = ReplayPaths.buffer.appendingPathComponent("\(generation)-\(segmentIndex).m4s")
       segmentIndex += 1
       guard (try? segmentData.write(to: url)) != nil else { return }
       let video = segmentReport?.trackReports.first { $0.mediaType == .video }
       let start = (video?.earliestPresentationTimeStamp ?? .zero) - (sessionStart ?? .zero)
       let duration = video?.duration.seconds ?? Self.segmentSeconds
-      onSegment?(Segment(url: url, startTime: start.seconds, duration: duration))
+      onSegment?(Segment(url: url, startTime: start.seconds, duration: duration), generation)
     @unknown default:
       break
     }

@@ -14,6 +14,7 @@ final class CaptureController: NSObject, AVCaptureVideoDataOutputSampleBufferDel
   private let audioOutput = AVCaptureAudioDataOutput()
   private(set) var dimensions = (width: 1920, height: 1080)
   private(set) var fps = 30
+  private(set) var hasAudio = false
 
   enum Failure: Error { case noCamera, cannotAddInput, cannotAddOutput }
 
@@ -30,10 +31,13 @@ final class CaptureController: NSObject, AVCaptureVideoDataOutputSampleBufferDel
     session.addInput(input)
     try applyFormat(camera, wantHigh: maxQuality == "1080p60")
 
-    if let mic = AVCaptureDevice.default(for: .audio), let micInput = try? AVCaptureDeviceInput(device: mic),
+    hasAudio = false
+    if AVCaptureDevice.authorizationStatus(for: .audio) == .authorized,
+       let mic = AVCaptureDevice.default(for: .audio), let micInput = try? AVCaptureDeviceInput(device: mic),
        session.canAddInput(micInput)
     {
       session.addInput(micInput)
+      hasAudio = true
     }
 
     videoOutput.alwaysDiscardsLateVideoFrames = false
