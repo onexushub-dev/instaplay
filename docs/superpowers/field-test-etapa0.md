@@ -10,6 +10,17 @@ Objetivo: decidir se o `ReplayCamera` aguenta um jogo real antes de construir o 
 - Bateria em 100%, pelo menos 2 GB livres, modo avião desligado.
 - Quadra de areia, **sol direto**, celular preso no alambrado ou na haste, atrás da linha de fundo, na altura do ombro, na horizontal.
 
+## Conferências rápidas antes do jogo (por aparelho, ~15 min)
+
+1. **Salvar cedo:** Iniciar, salvar aos 10s → clipe de ~10s que toca.
+2. **Salvar tarde:** esperar 3 min, salvar → clipe de 58–60s que **começa a tocar na hora** (sem tela preta no início) e dura o que o painel mostra.
+3. **Fim do clipe:** filmar um cronômetro, salvar → o último quadro fica a até 1s depois do toque (iOS) ou até 0,5s (Android).
+4. **Gravação contínua:** salvar 3 vezes seguidas filmando o cronômetro → o clipe seguinte não tem "buraco" logo após cada salvamento.
+5. **Som:** bater palmas na frente da câmera → som e imagem sincronizados.
+6. **Gesto na horizontal:** celular preso na horizontal, X a ~8 m → salva. Braços para cima sem cruzar, 5 vezes → não salva. Segurar o X por 4s → salva só uma vez.
+7. **Microfone negado (iOS):** negar o microfone nos Ajustes → os salvamentos continuam funcionando (clipe sem som).
+8. **Calor (iOS):** Xcode → Devices → Condition → Thermal State: Serious → painel mostra 720p30 e continua gravando.
+
 ## Protocolo (por aparelho)
 
 1. Abrir o app, tocar em **Iniciar** e conferir que o painel mostra "gravando".
