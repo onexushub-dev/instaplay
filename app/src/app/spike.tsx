@@ -1,0 +1,209 @@
+// Etapa 0 spike screen: exercises the ReplayCamera module for the field test. Not the product UI.
+import { Directory, Paths } from 'expo-file-system';
+import { useKeepAwake } from 'expo-keep-awake';
+import { useEffect, useEffectEvent, useRef, useState } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+
+import {
+  addReplayListener,
+  ReplayCameraView,
+  requestPermissions,
+  saveClip,
+  startSession,
+  stopSession,
+  type ThermalLevel,
+  type TriggerSource,
+} from '../../modules/replay-camera';
+
+const bufferDir = new Directory(Paths.cache, 'replay-buffer');
+const EMPTY_COUNTS: Record<TriggerSource, number> = { screen: 0, gesture: 0, remote: 0, watch: 0 };
+
+function bufferMb(): number {
+  try {
+    const bytes = bufferDir.list().reduce((sum, item) => sum + (item.size ?? 0), 0);
+    return Math.round(bytes / (1024 * 1024));
+  } catch {
+    return 0;
+  }
+}
+
+function clock(ms: number): string {
+  const s = Math.floor(ms / 1000);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${pad(Math.floor(s / 3600))}:${pad(Math.floor((s % 3600) / 60))}:${pad(s % 60)}`;
+}
+
+export default function SpikeScreen() {
+  useKeepAwake();
+  const [startedAt, setStartedAt] = useState<number | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+  const [clips, setClips] = useState(0);
+  const [lastMs, setLastMs] = useState<number | null>(null);
+  const [counts, setCounts] = useState(EMPTY_COUNTS);
+  const [thermal, setThermal] = useState<ThermalLevel>('nominal');
+  const [degraded, setDegraded] = useState(false);
+  const [mb, setMb] = useState(0);
+  const [maxMb, setMaxMb] = useState(0);
+  const [log, setLog] = useState<string[]>([]);
+  const [received, setReceived] = useState(0);
+  const [starting, setStarting] = useState(false);
+  const [pose, setPose] = useState('');
+  const saving = useRef(false);
+
+  const note = (line: string) =>
+    setLog((l) => [`${new Date().toLocaleTimeString()} ${line}`, ...l].slice(0, 6));
+
+  async function save(source: TriggerSource) {
+    if (saving.current) return note(`gatilho ${source} ignorado: já salvando`);
+    saving.current = true;
+    try {
+      const clip = await saveClip({ source, at: Date.now() });
+      setClips((c) => c + 1);
+      setLastMs(clip.durationMs);
+      setCounts((c) => ({ ...c, [source]: c[source] + 1 }));
+      note(`salvo via ${source}: ${(clip.durationMs / 1000).toFixed(1)}s`);
+    } catch (e: any) {
+      note(`erro ao salvar: ${e?.code ?? e}`);
+    } finally {
+      saving.current = false;
+    }
+  }
+
+  // Every native trigger is counted on arrival, so a missed X and a failed save can be told apart.
+  const onTrigger = useEffectEvent((source: TriggerSource) => {
+    setReceived((n) => n + 1);
+    note(`gatilho recebido: ${source}`);
+    save(source);
+  });
+
+  useEffect(() => {
+    const subs = [
+      addReplayListener('onTrigger', (e) => onTrigger(e.source)),
+      addReplayListener('onThermalChange', (e) => {
+        setThermal(e.level);
+        setDegraded(e.degraded);
+        note(`temperatura: ${e.level}${e.degraded ? ' (720p30)' : ''}`);
+      }),
+      addReplayListener('onGestureDebug', (e) =>
+        setPose(
+          `pose: ${e.people} pessoa(s) · ${e.samples}/s · ori ${e.orientation}` +
+            (e.people > 0
+              ? ` · conf ${(e.minConf ?? 0).toFixed(2)} · faltam [${e.missing ?? ''}] · pulsos acima ${e.wristsUp ?? '?'} · distância pulsos ${e.wristGap ?? '?'} ombros (X se < 0.6) · X ${e.isX}`
+              : '')
+        )
+      ),
+      addReplayListener('onInterrupted', () => note('interrompido')),
+      addReplayListener('onResumed', () => note('retomado')),
+      // Native errors after start always end the session.
+      addReplayListener('onError', (e) => {
+        setStartedAt(null);
+        note(`erro (sessão encerrada): ${e.code} ${e.message}`);
+      }),
+    ];
+    return () => subs.forEach((s) => s.remove());
+  }, []);
+
+  useEffect(() => {
+    if (startedAt === null) return;
+    const tick = setInterval(() => setNow(Date.now()), 1000);
+    const disk = setInterval(() => {
+      const current = bufferMb();
+      setMb(current);
+      setMaxMb((m) => Math.max(m, current));
+    }, 5000);
+    return () => {
+      clearInterval(tick);
+      clearInterval(disk);
+    };
+  }, [startedAt]);
+
+  async function toggle() {
+    if (startedAt !== null) {
+      await stopSession();
+      setStartedAt(null);
+      note('parado');
+      return;
+    }
+    if (starting) return;
+    setStarting(true);
+    try {
+      if (!(await requestPermissions())) return note('permissão negada');
+      await startSession({ lens: 'ultraWide', maxQuality: '1080p60' });
+      setStartedAt(Date.now());
+      setClips(0);
+      setCounts(EMPTY_COUNTS);
+      setReceived(0);
+      setMaxMb(0);
+      note('gravando');
+    } catch (e: any) {
+      note(`erro ao iniciar: ${e?.code ?? e}`);
+    } finally {
+      setStarting(false);
+    }
+  }
+
+  const running = startedAt !== null;
+
+  return (
+    <View style={styles.root}>
+      <ReplayCameraView style={StyleSheet.absoluteFill} />
+      <View style={styles.panel}>
+        <Text style={styles.stat}>
+          {running ? clock(now - startedAt) : '--:--:--'} · {clips} lances · último{' '}
+          {lastMs === null ? '-' : `${(lastMs / 1000).toFixed(1)}s`}
+        </Text>
+        <Text style={styles.stat}>
+          salvos: tela {counts.screen} · gesto {counts.gesture} · controle {counts.remote} · relógio{' '}
+          {counts.watch} · gatilhos recebidos {received}
+        </Text>
+        <Text style={styles.stat}>
+          temp {thermal}
+          {degraded ? ' (720p30)' : ''} · buffer {mb} MB (máx {maxMb})
+        </Text>
+        {pose ? <Text style={styles.stat}>{pose}</Text> : null}
+        {log.map((line) => (
+          <Text key={line} style={styles.log}>
+            {line}
+          </Text>
+        ))}
+      </View>
+      <View style={styles.actions}>
+        <Pressable
+          style={[styles.button, styles.toggle, starting && styles.disabled]}
+          disabled={starting}
+          onPress={toggle}>
+          <Text style={styles.buttonText}>{running ? 'Parar' : 'Iniciar'}</Text>
+        </Pressable>
+        <Pressable
+          style={[styles.button, styles.save, !running && styles.disabled]}
+          disabled={!running}
+          onPress={() => save('screen')}>
+          <Text style={styles.saveText}>Salvar</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  root: { flex: 1, backgroundColor: '#000' },
+  panel: {
+    position: 'absolute',
+    top: 56,
+    left: 12,
+    right: 12,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    gap: 4,
+  },
+  stat: { color: '#F3EFE4', fontSize: 14, fontVariant: ['tabular-nums'] },
+  log: { color: '#A9A79C', fontSize: 12 },
+  actions: { position: 'absolute', bottom: 40, left: 16, right: 16, flexDirection: 'row', gap: 12 },
+  button: { height: 64, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  toggle: { flex: 1, backgroundColor: '#1B1D18' },
+  save: { flex: 2, backgroundColor: '#D6F23F' },
+  disabled: { opacity: 0.4 },
+  buttonText: { color: '#F3EFE4', fontSize: 18, fontWeight: '700' },
+  saveText: { color: '#0F100D', fontSize: 20, fontWeight: '800' },
+});
