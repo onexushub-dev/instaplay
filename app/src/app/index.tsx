@@ -88,7 +88,7 @@ export default function SpikeScreen() {
         setPose(
           `pose: ${e.people} pessoa(s) · ${e.samples}/s · ori ${e.orientation}` +
             (e.people > 0
-              ? ` · conf ${(e.minConf ?? 0).toFixed(2)} · faltam [${e.missing ?? ''}] · pulsos acima ${e.wristsUp ?? '?'} · cruzado ${e.crossed ?? '?'} (pulsos ${e.wristGap ?? '?'} ombros) · X ${e.isX}`
+              ? ` · conf ${(e.minConf ?? 0).toFixed(2)} · faltam [${e.missing ?? ''}] · pulsos acima ${e.wristsUp ?? '?'} · distância pulsos ${e.wristGap ?? '?'} ombros (X se < 0.6) · X ${e.isX}`
               : '')
         )
       ),
