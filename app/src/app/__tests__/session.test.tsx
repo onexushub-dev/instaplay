@@ -16,6 +16,7 @@ jest.mock('../../data/mmkv', () => {
       getSession: jest.fn(),
       listClips: jest.fn(),
       sessionStats: jest.fn(),
+      renameSession: jest.fn(),
       subscribe: (fn: () => void) => {
         listeners.add(fn);
         return () => listeners.delete(fn);
@@ -96,4 +97,22 @@ test('Novo jogo resets the session and goes back to setup', async () => {
   await fireEvent.press(screen.getByRole('button', { name: 'Novo jogo' }));
   expect(reset).toHaveBeenCalled();
   expect(router.replace).toHaveBeenCalledWith('/setup');
+});
+
+test('typing a name and submitting renames the game', async () => {
+  repo.listClips.mockReturnValue([]);
+  repo.sessionStats.mockReturnValue({ clips: 0, bytes: 0, recordedMs: 0 });
+  await render(<SessionSummary />);
+  const input = screen.getByLabelText('Nome do jogo');
+  await fireEvent.changeText(input, 'Final do torneio');
+  await fireEvent(input, 'submitEditing');
+  expect(repo.renameSession).toHaveBeenCalledWith('s1', 'Final do torneio');
+});
+
+test('a named game shows its name as the title', async () => {
+  repo.getSession.mockReturnValue({ id: 's1', sport: 'futevolei', startedAt: 0, name: 'Final do torneio' });
+  repo.listClips.mockReturnValue([]);
+  repo.sessionStats.mockReturnValue({ clips: 0, bytes: 0, recordedMs: 0 });
+  await render(<SessionSummary />);
+  expect(screen.getByRole('header')).toHaveTextContent('Final do torneio');
 });

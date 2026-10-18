@@ -1,4 +1,5 @@
 import { useKeepAwake } from 'expo-keep-awake';
+import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -78,9 +79,13 @@ export default function Setup() {
 
         <SafeAreaView edges={['top']} style={styles.top}>
           <View style={styles.topRow}>
-            <View style={styles.pill}>
-              <Text style={styles.pillText}>Posicionar câmera</Text>
-            </View>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Meus jogos"
+              onPress={() => router.push('/games')}
+              style={[styles.pill, styles.pillButton]}>
+              <Text style={styles.pillText}>Meus jogos</Text>
+            </Pressable>
             <View style={styles.lens}>
               {(['ultraWide', 'wide'] as const).map((lens) => (
                 <Pressable
@@ -191,6 +196,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     borderRadius: 999,
   },
+  pillButton: { minHeight: 44, justifyContent: 'center' },
   pillText: { fontFamily: fonts.bodySemi, fontSize: 14, color: colors.text },
   lens: {
     flexDirection: 'row',

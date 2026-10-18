@@ -19,7 +19,7 @@ jest.mock('../../../modules/replay-camera', () => {
   };
 });
 jest.mock('../../triggers/useVolumeRemote', () => ({ useVolumeRemote: jest.fn() }));
-jest.mock('expo-router', () => ({ router: { replace: jest.fn(), back: jest.fn() } }));
+jest.mock('expo-router', () => ({ router: { replace: jest.fn(), back: jest.fn(), push: jest.fn() } }));
 jest.mock('expo-keep-awake', () => ({ useKeepAwake: jest.fn() }));
 jest.mock('../../data/mmkv', () => {
   let prefs = {
@@ -186,4 +186,15 @@ test('the voice tile says when this phone cannot recognize speech offline', asyn
   session({});
   await render(<Setup />);
   expect(screen.getByLabelText('Voz, Indisponível neste celular')).toBeTruthy();
+});
+
+test('Meus jogos opens the game list, and is hidden during a game', async () => {
+  session({});
+  const view = await render(<Setup />);
+  await fireEvent.press(screen.getByRole('button', { name: 'Meus jogos' }));
+  expect(router.push).toHaveBeenCalledWith('/games');
+
+  session({ phase: 'recording', sessionId: 's1', startedAt: Date.now() });
+  await view.rerender(<Setup />);
+  expect(screen.queryByRole('button', { name: 'Meus jogos' })).toBeNull();
 });
