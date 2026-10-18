@@ -79,3 +79,20 @@ test('sessionStats sums sizes of existing clips and the recorded time', () => {
   repo.endSession(s.id, 70_000);
   expect(repo.sessionStats(s.id).recordedMs).toBe(60_000);
 });
+
+test('notifies subscribers and bumps the version when clips change', () => {
+  const repo = setup({ '/a.mp4': 1 });
+  const s = repo.startSession('beachTennis', 0);
+  const fn = jest.fn();
+  const off = repo.subscribe(fn);
+  const before = repo.version();
+
+  const c = repo.addClip({ sessionId: s.id, createdAt: 1, source: 'screen', path: '/a.mp4', durationMs: 1 });
+  repo.deleteClip(c.id);
+
+  expect(fn).toHaveBeenCalledTimes(2);
+  expect(repo.version()).toBe(before + 2);
+  off();
+  repo.endSession(s.id, 5);
+  expect(fn).toHaveBeenCalledTimes(2);
+});

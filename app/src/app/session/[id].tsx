@@ -1,4 +1,5 @@
 import { router, useLocalSearchParams } from 'expo-router';
+import { useMemo, useSyncExternalStore } from 'react';
 import { FlatList, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -12,9 +13,13 @@ import { colors, fonts } from '../../theme/tokens';
 export default function SessionSummary() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { reset } = useSession();
-  const session = repo.getSession(id);
-  const clips = repo.listClips(id);
-  const stats = repo.sessionStats(id);
+  // Re-read whenever the repo changes (a clip deleted on the clip screen, a late save landing).
+  const version = useSyncExternalStore(repo.subscribe, repo.version);
+  const { session, clips, stats } = useMemo(
+    () => ({ session: repo.getSession(id), clips: repo.listClips(id), stats: repo.sessionStats(id) }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- version is the change signal
+    [id, version]
+  );
 
   function newGame() {
     reset();

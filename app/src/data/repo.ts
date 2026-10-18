@@ -27,6 +27,14 @@ export function createRepo(kv: KV, files: FileProbe, newId: () => string) {
   const write = (k: string, value: unknown) => kv.set(k, JSON.stringify(value));
   const clipIds = (sessionId: string) => read<string[]>(key.clipsOf(sessionId)) ?? [];
 
+  // Screens re-read sessions/clips when this changes (useSyncExternalStore).
+  const listeners = new Set<() => void>();
+  let version = 0;
+  const changed = () => {
+    version += 1;
+    listeners.forEach((fn) => fn());
+  };
+
   function getSession(id: string): Session | undefined {
     return read<Session>(key.session(id));
   }
@@ -44,15 +52,26 @@ export function createRepo(kv: KV, files: FileProbe, newId: () => string) {
 
     getSession,
 
+    subscribe(fn: () => void): () => void {
+      listeners.add(fn);
+      return () => void listeners.delete(fn);
+    },
+
+    version(): number {
+      return version;
+    },
+
     startSession(sport: Sport, now: number): Session {
       const session: Session = { id: newId(), sport, startedAt: now };
       write(key.session(session.id), session);
+      changed();
       return session;
     },
 
     endSession(id: string, now: number): Session {
       const session = { ...getSession(id)!, endedAt: now };
       write(key.session(id), session);
+      changed();
       return session;
     },
 
@@ -64,6 +83,7 @@ export function createRepo(kv: KV, files: FileProbe, newId: () => string) {
       };
       write(key.clip(clip.id), clip);
       write(key.clipsOf(clip.sessionId), [...clipIds(clip.sessionId), clip.id]);
+      changed();
       return clip;
     },
 
@@ -76,6 +96,7 @@ export function createRepo(kv: KV, files: FileProbe, newId: () => string) {
       if (!clip) return;
       kv.delete(key.clip(id));
       write(key.clipsOf(clip.sessionId), clipIds(clip.sessionId).filter((c) => c !== id));
+      changed();
     },
 
     /** Oldest first; clips whose file is gone (OS cleanup, undo race) are left out. */

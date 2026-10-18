@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
 
 import SessionSummary from '../session/[id]';
 
@@ -8,9 +8,26 @@ jest.mock('expo-router', () => ({
 }));
 jest.mock('../../components/useClipThumbnail', () => ({ useClipThumbnail: () => undefined }));
 jest.mock('../../session/SessionContext', () => ({ useSession: jest.fn() }));
-jest.mock('../../data/mmkv', () => ({
-  repo: { getSession: jest.fn(), listClips: jest.fn(), sessionStats: jest.fn() },
-}));
+jest.mock('../../data/mmkv', () => {
+  const listeners = new Set<() => void>();
+  let version = 0;
+  return {
+    repo: {
+      getSession: jest.fn(),
+      listClips: jest.fn(),
+      sessionStats: jest.fn(),
+      subscribe: (fn: () => void) => {
+        listeners.add(fn);
+        return () => listeners.delete(fn);
+      },
+      version: () => version,
+      __change: () => {
+        version += 1;
+        listeners.forEach((fn) => fn());
+      },
+    },
+  };
+});
 
 const { repo } = jest.requireMock('../../data/mmkv');
 const { router } = jest.requireMock('expo-router');
@@ -48,6 +65,19 @@ test('tapping a lance opens it', async () => {
   await render(<SessionSummary />);
   await fireEvent.press(screen.getByRole('button', { name: /Lance 1/ }));
   expect(router.push).toHaveBeenCalledWith('/clip/a');
+});
+
+test('re-reads the lances when one is deleted elsewhere', async () => {
+  repo.listClips.mockReturnValue([clip('a', 'gesture', 1), clip('b', 'screen', 2)]);
+  repo.sessionStats.mockReturnValue({ clips: 2, bytes: 1, recordedMs: 1 });
+  await render(<SessionSummary />);
+  expect(screen.getByRole('button', { name: /Lance 2/ })).toBeTruthy();
+
+  repo.listClips.mockReturnValue([clip('a', 'gesture', 1)]);
+  repo.sessionStats.mockReturnValue({ clips: 1, bytes: 1, recordedMs: 1 });
+  await act(async () => repo.__change());
+
+  expect(screen.queryByRole('button', { name: /Lance 2/ })).toBeNull();
 });
 
 test('a game with no lances says so', async () => {
