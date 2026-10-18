@@ -2,9 +2,12 @@ import type { ReplayErrorCode, ThermalLevel } from '../../modules/replay-camera/
 import type { TriggerSource } from '../data/schema';
 
 export type Phase = 'idle' | 'starting' | 'recording' | 'stopping' | 'ended';
+/** The camera runs from the setup screen on, so the game itself starts instantly. */
+export type CameraStatus = 'off' | 'starting' | 'on';
 
 export type SessionState = {
   phase: Phase;
+  camera: CameraStatus;
   sessionId?: string;
   startedAt?: number;
   clipCount: number;
@@ -18,6 +21,10 @@ export type SessionState = {
 };
 
 export type SessionAction =
+  | { type: 'cameraStarting' }
+  | { type: 'cameraOn' }
+  | { type: 'cameraFailed'; code: ReplayErrorCode }
+  | { type: 'cameraOff' }
   | { type: 'startRequested' }
   | { type: 'started'; sessionId: string; startedAt: number }
   | { type: 'startFailed'; code: ReplayErrorCode }
@@ -35,6 +42,7 @@ export type SessionAction =
 
 export const initialState: SessionState = {
   phase: 'idle',
+  camera: 'off',
   clipCount: 0,
   saving: false,
   paused: false,
@@ -43,12 +51,20 @@ export const initialState: SessionState = {
 
 export function reducer(state: SessionState, action: SessionAction): SessionState {
   switch (action.type) {
+    case 'cameraStarting':
+      return { ...state, camera: 'starting', error: undefined };
+    case 'cameraOn':
+      return { ...state, camera: 'on' };
+    case 'cameraFailed':
+      return { ...state, camera: 'off', error: action.code };
+    case 'cameraOff':
+      return { ...state, camera: 'off' };
     case 'startRequested':
-      return { ...initialState, phase: 'starting' };
+      return { ...initialState, camera: state.camera, phase: 'starting' };
     case 'started':
       return { ...state, phase: 'recording', sessionId: action.sessionId, startedAt: action.startedAt, clipCount: 0 };
     case 'startFailed':
-      return { ...initialState, error: action.code };
+      return { ...initialState, camera: state.camera, error: action.code };
     case 'saveStarted':
       return { ...state, saving: true };
     case 'saved': {

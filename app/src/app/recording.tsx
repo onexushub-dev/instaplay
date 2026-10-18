@@ -6,7 +6,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ReplayCameraView } from '../../modules/replay-camera';
 import { Button } from '../components/Button';
-import { RemoteIcon, WatchIcon, XArmsIcon } from '../components/icons';
+import { HoldButton } from '../components/HoldButton';
+import { RemoteIcon, TapIcon, WatchIcon, XArmsIcon } from '../components/icons';
 import { SavedOverlay } from '../components/SavedOverlay';
 import { useSession } from '../session/SessionContext';
 import { colors, fonts } from '../theme/tokens';
@@ -107,22 +108,19 @@ export default function Recording() {
         ) : null}
 
         <View pointerEvents="box-none" style={styles.bottom}>
-          <View pointerEvents="none" style={styles.hintRow}>
-            <Text style={styles.hint}>Toque na tela para salvar · últimos 60s prontos</Text>
+          <View pointerEvents="none" style={styles.hintCard}>
+            <TapIcon color={colors.accent} size={28} />
+            <View style={styles.hintText}>
+              <Text style={styles.hint}>Toque na tela para salvar o lance</Text>
+              <Text style={styles.hintSub}>Últimos 60s prontos · ou faça o X · ou use o controle</Text>
+            </View>
             <View style={styles.icons}>
-              <XArmsIcon color={colors.accent} size={18} />
-              <RemoteIcon color={colors.accent} size={18} />
-              <WatchIcon color={colors.muted} size={18} />
+              <XArmsIcon color={colors.accent} size={20} />
+              <RemoteIcon color={colors.accent} size={20} />
+              <WatchIcon color={colors.muted} size={20} />
             </View>
           </View>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Segure para encerrar o jogo"
-            delayLongPress={1000}
-            onLongPress={() => void end()}
-            style={styles.stop}>
-            <Text style={styles.stopText}>Segure para encerrar o jogo</Text>
-          </Pressable>
+          <HoldButton label="Segure para encerrar o jogo" holdingLabel="Continue segurando…" onComplete={() => void end()} />
         </View>
       </SafeAreaView>
 
@@ -146,11 +144,11 @@ const styles = StyleSheet.create({
   bannerText: { fontFamily: fonts.body, fontSize: 13, lineHeight: 18, color: colors.text },
   bold: { fontFamily: fonts.bodyBold },
   bottom: { marginTop: 'auto', gap: 8, marginBottom: 12 },
-  hintRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: glass, borderRadius: 14, paddingVertical: 8, paddingHorizontal: 12 },
-  hint: { flex: 1, fontFamily: fonts.bodySemi, fontSize: 12, color: colors.text },
-  icons: { flexDirection: 'row', gap: 10 },
-  stop: { height: 52, borderRadius: 16, backgroundColor: glass, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
-  stopText: { fontFamily: fonts.bodyBold, fontSize: 15, color: colors.text },
+  hintCard: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: glass, borderRadius: 18, paddingVertical: 14, paddingHorizontal: 16 },
+  hintText: { flex: 1, gap: 2 },
+  hint: { fontFamily: fonts.bodyBold, fontSize: 18, lineHeight: 22, color: colors.text },
+  hintSub: { fontFamily: fonts.body, fontSize: 12, color: colors.soft },
+  icons: { flexDirection: 'column', gap: 6 },
   stopped: { flex: 1, backgroundColor: colors.recordingGround, justifyContent: 'center', padding: 24, gap: 20 },
   stoppedText: { fontFamily: fonts.displayBold, fontSize: 36, color: colors.text, textAlign: 'center' },
 });

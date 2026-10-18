@@ -53,6 +53,12 @@ test('the count is shown in a small pill, not over the preview', async () => {
   expect(screen.getByText('3 lances')).toBeTruthy();
 });
 
+test('tells the player clearly how to save', async () => {
+  session({});
+  await render(<Recording />);
+  expect(screen.getByText('Toque na tela para salvar o lance')).toBeTruthy();
+});
+
 test('tapping the screen saves a lance', async () => {
   const s = session({});
   await render(<Recording />);
@@ -77,9 +83,10 @@ test('Desfazer undoes the last lance', async () => {
 test('holding the footer ends the game and opens its summary', async () => {
   const s = session({});
   await render(<Recording />);
-  await act(async () => {
-    await fireEvent(screen.getByRole('button', { name: 'Segure para encerrar o jogo' }), 'longPress');
-  });
+  jest.useFakeTimers();
+  await fireEvent(screen.getByRole('button', { name: 'Segure para encerrar o jogo' }), 'pressIn');
+  await act(async () => jest.advanceTimersByTime(1000));
+  jest.useRealTimers();
   expect(s.stop).toHaveBeenCalled();
   expect(router.replace).toHaveBeenCalledWith('/session/s1');
 });

@@ -1,7 +1,7 @@
 import { useKeepAwake } from 'expo-keep-awake';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ReplayCameraView } from '../../modules/replay-camera';
@@ -34,7 +34,13 @@ export default function Setup() {
   const session = useSession();
   const [prefs, setPrefsState] = useState<Prefs>(() => repo.getPrefs());
   const [remoteWorks, setRemoteWorks] = useState(false);
-  const { phase, error } = session.state;
+  const { phase, error, camera } = session.state;
+  const { prepare } = session;
+
+  // Live preview while positioning; the buffer starts filling now, so "Começar jogo" is instant.
+  useEffect(() => {
+    void prepare(prefs.lens);
+  }, [prepare, prefs.lens]);
 
   const update = (patch: Partial<Prefs>) => setPrefsState(repo.setPrefs(patch));
 
@@ -45,7 +51,8 @@ export default function Setup() {
     if (phase === 'recording') router.replace('/recording');
   }, [phase]);
 
-  const starting = phase === 'starting';
+  const opening = camera === 'starting';
+  const starting = phase === 'starting' || opening;
   const errorText = error ? (START_ERRORS[error] ?? 'Não foi possível abrir a câmera. Tente de novo.') : null;
 
   return (
@@ -111,7 +118,12 @@ export default function Setup() {
         </View>
 
         {errorText ? <Text style={styles.error}>{errorText}</Text> : null}
-        <Button label="Começar jogo" disabled={starting} onPress={() => session.start(prefs.sport)} />
+        <Button
+          label={opening ? 'Abrindo a câmera…' : 'Começar jogo'}
+          icon={starting ? <ActivityIndicator color={colors.onAccent} /> : undefined}
+          disabled={starting}
+          onPress={() => session.start(prefs.sport)}
+        />
       </SafeAreaView>
     </View>
   );

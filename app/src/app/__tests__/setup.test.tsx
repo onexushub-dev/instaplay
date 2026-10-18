@@ -22,7 +22,11 @@ const { useSession } = jest.requireMock('../../session/SessionContext');
 const { router } = jest.requireMock('expo-router');
 
 function session(state: object) {
-  const value = { state: { phase: 'idle', ...state }, start: jest.fn(async () => {}) };
+  const value = {
+    state: { phase: 'idle', camera: 'on', ...state },
+    start: jest.fn(async () => {}),
+    prepare: jest.fn(async () => true),
+  };
   useSession.mockReturnValue(value);
   return value;
 }
@@ -33,6 +37,26 @@ test('keeps the screen awake while the phone is being positioned', async () => {
   session({});
   await render(<Setup />);
   expect(jest.requireMock('expo-keep-awake').useKeepAwake).toHaveBeenCalled();
+});
+
+test('turns the camera on for the live preview', async () => {
+  const s = session({ camera: 'off' });
+  await render(<Setup />);
+  expect(s.prepare).toHaveBeenCalledWith('ultraWide');
+});
+
+test('changing the lens reopens the camera with it', async () => {
+  const s = session({});
+  await render(<Setup />);
+  await fireEvent.press(screen.getByRole('button', { name: '1x' }));
+  expect(s.prepare).toHaveBeenLastCalledWith('wide');
+  await fireEvent.press(screen.getByRole('button', { name: '0.5x' }));
+});
+
+test('shows that the camera is opening', async () => {
+  session({ camera: 'starting' });
+  await render(<Setup />);
+  expect(screen.getByRole('button', { name: 'Abrindo a câmera…' })).toBeDisabled();
 });
 
 test('choosing a sport stores it in prefs', async () => {

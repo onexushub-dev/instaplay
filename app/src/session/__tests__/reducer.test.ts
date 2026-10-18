@@ -67,3 +67,16 @@ test('a save that finishes after the game changed is ignored', () => {
   expect(s.clipCount).toBe(0);
   expect(s.lastSaved).toBeUndefined();
 });
+
+test('camera lifecycle: off → starting → on, and failures keep the code', () => {
+  const starting = reducer(initialState, { type: 'cameraStarting' });
+  expect(starting.camera).toBe('starting');
+  expect(reducer(starting, { type: 'cameraOn' }).camera).toBe('on');
+  const failed = reducer(starting, { type: 'cameraFailed', code: 'LOW_STORAGE' });
+  expect(failed).toMatchObject({ camera: 'off', error: 'LOW_STORAGE' });
+});
+
+test('starting a game keeps the camera that is already on', () => {
+  const on = reducer(initialState, { type: 'cameraOn' });
+  expect(reducer(on, { type: 'startRequested' }).camera).toBe('on');
+});

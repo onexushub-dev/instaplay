@@ -127,3 +127,45 @@ test('native error ends the session in the repo and keeps the clip count', async
   expect(view.result.current.state).toMatchObject({ phase: 'ended', thermalStop: true });
   expect(deps.repo.getSession(id)?.endedAt).toBeDefined();
 });
+
+test('prepare turns the camera on so starting the game is immediate', async () => {
+  const f = fakeDeps();
+  const view = await renderHook(() => useReplaySession(f.deps));
+
+  await act(() => view.result.current.prepare('ultraWide'));
+  expect(f.camera.startSession).toHaveBeenCalledTimes(1);
+  expect(view.result.current.state.camera).toBe('on');
+
+  await act(() => view.result.current.start('outro'));
+  expect(f.camera.startSession).toHaveBeenCalledTimes(1);
+  expect(view.result.current.state.phase).toBe('recording');
+});
+
+test('prepare with another lens restarts the camera', async () => {
+  const f = fakeDeps();
+  const view = await renderHook(() => useReplaySession(f.deps));
+  await act(() => view.result.current.prepare('ultraWide'));
+  await act(() => view.result.current.prepare('wide'));
+
+  expect(f.camera.stopSession).toHaveBeenCalledTimes(1);
+  expect(f.camera.startSession).toHaveBeenLastCalledWith({ lens: 'wide', maxQuality: '1080p60' });
+});
+
+test('a camera that fails to open reports its code before any game starts', async () => {
+  const f = fakeDeps();
+  f.camera.startSession.mockRejectedValueOnce(Object.assign(new Error('x'), { code: 'CAMERA_PERMISSION' }));
+  const view = await renderHook(() => useReplaySession(f.deps));
+
+  await act(() => view.result.current.prepare('ultraWide'));
+
+  expect(view.result.current.state).toMatchObject({ camera: 'off', error: 'CAMERA_PERMISSION', phase: 'idle' });
+});
+
+test('stop turns the camera off', async () => {
+  const { view, camera } = await started();
+  await act(async () => {
+    await view.result.current.stop();
+  });
+  expect(camera.stopSession).toHaveBeenCalled();
+  expect(view.result.current.state.camera).toBe('off');
+});

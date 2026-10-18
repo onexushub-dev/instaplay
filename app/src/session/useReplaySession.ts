@@ -8,7 +8,7 @@ import type {
   SessionOptions,
 } from '../../modules/replay-camera/src/ReplayCamera.types';
 import type { Repo } from '../data/repo';
-import type { Sport, TriggerSource } from '../data/schema';
+import type { Prefs, Sport, TriggerSource } from '../data/schema';
 import { createTriggerBus } from '../triggers/bus';
 import { initialState, reducer } from './reducer';
 
@@ -44,6 +44,10 @@ export function useReplaySession(deps: SessionDeps) {
     stateRef.current = state;
   }, [state]);
   const saving = useRef(false);
+  // Which lens the native camera is running with right now (undefined = off); read synchronously by start().
+  const cameraLens = useRef<Prefs['lens'] | undefined>(undefined);
+  const cameraOpening = useRef<Promise<boolean> | undefined>(undefined);
+  const cameraError = useRef<ReplayErrorCode | undefined>(undefined);
   const [bus] = useState(() => createTriggerBus({ now: deps.now }));
 
   const save = useCallback(
@@ -97,26 +101,57 @@ export function useReplaySession(deps: SessionDeps) {
 
   deps.useRemote(state.phase === 'recording', () => trigger('remote'));
 
-  const start = useCallback(
-    async (sport: Sport) => {
-      dispatch({ type: 'startRequested' });
-      const prefs = deps.repo.getPrefs();
-      try {
-        deps.camera.setGestureEnabled(prefs.gestureEnabled);
-        await deps.camera.startSession({ lens: prefs.lens, maxQuality: '1080p60' });
-        const session = deps.repo.startSession(sport, deps.now());
-        dispatch({ type: 'started', sessionId: session.id, startedAt: session.startedAt });
-      } catch (e) {
-        dispatch({ type: 'startFailed', code: errorCode(e) });
-      }
+  /** Turns the camera on (setup screen) so the preview is live and the game starts instantly. Resolves true when on. */
+  const prepare = useCallback(
+    (lens: Prefs['lens']): Promise<boolean> => {
+      if (cameraLens.current === lens) return Promise.resolve(true);
+      const open = async () => {
+        await cameraOpening.current;
+        if (cameraLens.current === lens) return true;
+        dispatch({ type: 'cameraStarting' });
+        try {
+          if (cameraLens.current !== undefined) {
+            cameraLens.current = undefined;
+            await deps.camera.stopSession();
+          }
+          deps.camera.setGestureEnabled(deps.repo.getPrefs().gestureEnabled);
+          await deps.camera.startSession({ lens, maxQuality: '1080p60' });
+          cameraLens.current = lens;
+          dispatch({ type: 'cameraOn' });
+          return true;
+        } catch (e) {
+          cameraError.current = errorCode(e);
+          dispatch({ type: 'cameraFailed', code: cameraError.current });
+          return false;
+        }
+      };
+      cameraOpening.current = open();
+      return cameraOpening.current;
     },
     [deps]
+  );
+
+  const start = useCallback(
+    async (sport: Sport) => {
+      const prefs = deps.repo.getPrefs();
+      dispatch({ type: 'startRequested' });
+      if (cameraLens.current === undefined && !(await prepare(prefs.lens))) {
+        dispatch({ type: 'startFailed', code: cameraError.current ?? 'CAMERA_UNAVAILABLE' });
+        return;
+      }
+      deps.camera.setGestureEnabled(prefs.gestureEnabled);
+      const session = deps.repo.startSession(sport, deps.now());
+      dispatch({ type: 'started', sessionId: session.id, startedAt: session.startedAt });
+    },
+    [deps, prepare]
   );
 
   const stop = useCallback(async (): Promise<string | undefined> => {
     const id = stateRef.current.sessionId;
     dispatch({ type: 'stopRequested' });
+    cameraLens.current = undefined;
     await deps.camera.stopSession().catch(() => {});
+    dispatch({ type: 'cameraOff' });
     if (id) deps.repo.endSession(id, deps.now());
     dispatch({ type: 'stopped' });
     return id;
@@ -133,7 +168,7 @@ export function useReplaySession(deps: SessionDeps) {
 
   const reset = useCallback(() => dispatch({ type: 'reset' }), []);
 
-  return { state, start, stop, trigger, undoLast, reset };
+  return { state, prepare, start, stop, trigger, undoLast, reset };
 }
 
 export type ReplaySession = ReturnType<typeof useReplaySession>;
