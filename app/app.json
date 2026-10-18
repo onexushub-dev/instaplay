@@ -13,7 +13,7 @@
       "infoPlist": {
         "NSCameraUsageDescription": "O LANCE usa a câmera para gravar seus lances.",
         "NSMicrophoneUsageDescription": "O LANCE grava o som dos seus lances.",
-        "NSSpeechRecognitionUsageDescription": "O LANCE escuta você dizer \"salva lance\" para salvar o lance sem tocar no celular."
+        "NSSpeechRecognitionUsageDescription": "O LANCE escuta você dizer \"salvar\" ou \"gravar\" para salvar o lance sem tocar no celular."
       },
       "appleTeamId": "2J67Z98LDX"
     },

@@ -39,7 +39,7 @@ export function signalSaveFailed({ sound }: { sound: boolean }): void {
   ReplayCameraModule.signalSaveFailed(sound);
 }
 
-/** Listens for "salva lance" in the game's audio (iOS; no-op on Android for now). */
+/** Listens for "salvar" or "gravar" in the game's audio (iOS; no-op on Android for now). */
 export function setVoiceEnabled(enabled: boolean): void {
   ReplayCameraModule.setVoiceEnabled(enabled);
 }

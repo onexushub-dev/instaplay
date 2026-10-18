@@ -120,7 +120,7 @@ export default function Setup() {
               <TriggerTile
                 icon={<MicIcon />}
                 title="Voz"
-                status={!voiceSupported ? 'Em breve' : prefs.voiceEnabled ? 'Diga “salva lance”' : 'Desligado'}
+                status={!voiceSupported ? 'Em breve' : prefs.voiceEnabled ? 'Diga “salvar” ou “gravar”' : 'Desligado'}
                 active={voiceSupported && prefs.voiceEnabled}
                 disabled={!voiceSupported}
                 onPress={voiceSupported ? () => void toggleVoice() : undefined}

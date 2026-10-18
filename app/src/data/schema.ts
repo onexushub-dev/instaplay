@@ -24,7 +24,7 @@ export type Prefs = {
   /** Feedback the moment a save is accepted, for a player far from the phone. */
   soundOnSave: boolean;
   flashOnSave: boolean;
-  /** "salva lance" by voice (iOS). Off until speech permission is granted. */
+  /** "salvar" / "gravar" by voice (iOS). Off until speech permission is granted. */
   voiceEnabled: boolean;
 };
 

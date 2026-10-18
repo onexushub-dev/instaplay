@@ -1,7 +1,7 @@
 import AVFoundation
 import Speech
 
-/// Listens for "salva lance" in the game's own audio (the capture session's microphone samples),
+/// Listens for "salvar" or "gravar" in the game's own audio (the capture session's microphone samples),
 /// on the device when the language allows it. Each recognition task is restarted every ~50s (Apple's
 /// limit is about a minute) and right after a command, which also clears the transcript.
 final class VoiceTrigger {
@@ -49,7 +49,7 @@ final class VoiceTrigger {
     let request = SFSpeechAudioBufferRecognitionRequest()
     request.shouldReportPartialResults = true
     request.requiresOnDeviceRecognition = recognizer.supportsOnDeviceRecognition
-    request.contextualStrings = [VoiceCommand.phrase]
+    request.contextualStrings = VoiceCommand.words
     self.request = request
     startedAt = Date()
     task = recognizer.recognitionTask(with: request) { [weak self] result, error in

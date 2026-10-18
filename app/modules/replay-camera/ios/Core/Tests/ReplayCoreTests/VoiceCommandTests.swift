@@ -2,18 +2,18 @@ import XCTest
 @testable import ReplayCore
 
 final class VoiceCommandTests: XCTestCase {
-  func test_matchesTheCommandAndCommonVariants() {
-    for phrase in ["salva lance", "Salva o lance!", "salvar lance", "salve esse lance", "ok SALVA LANCE agora"] {
+  func test_matchesSalvarOrGravar() {
+    for phrase in ["salvar", "Gravar!", "ok, SALVAR agora", "pode gravar"] {
       XCTAssertTrue(VoiceCommand.matches(phrase), phrase)
     }
   }
 
-  func test_ignoresAccentsAndExtraSpaces() {
-    XCTAssertTrue(VoiceCommand.matches("sálva   lânce"))
+  func test_ignoresAccentsAndCase() {
+    XCTAssertTrue(VoiceCommand.matches("SÁLVAR"))
   }
 
-  func test_doesNotFireOnCourtTalk() {
-    for phrase in ["que lance", "lance bonito", "salva", "salvou", "boa! lance", "salvar o jogo"] {
+  func test_doesNotFireOnOtherForms() {
+    for phrase in ["que lance", "salvou", "gravando", "salva", "grava", "gravaram", "salvaram o ponto"] {
       XCTAssertFalse(VoiceCommand.matches(phrase), phrase)
     }
   }
