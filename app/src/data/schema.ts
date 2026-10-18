@@ -21,6 +21,9 @@ export type Prefs = {
   sport: Sport;
   lens: 'ultraWide' | 'wide';
   gestureEnabled: boolean;
+  /** Feedback the moment a save is accepted, for a player far from the phone. */
+  soundOnSave: boolean;
+  flashOnSave: boolean;
 };
 
 export const DEFAULT_PREFS: Prefs = {
@@ -28,6 +31,8 @@ export const DEFAULT_PREFS: Prefs = {
   sport: 'beachTennis',
   lens: 'ultraWide',
   gestureEnabled: true,
+  soundOnSave: true,
+  flashOnSave: true,
 };
 
 /** Default cut: the last 30s of the saved 60s window (spec 3.3). */

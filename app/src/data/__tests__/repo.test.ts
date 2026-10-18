@@ -18,12 +18,14 @@ function setup(sizes: Record<string, number> = {}) {
   return createRepo(memoryKV(), fakeFiles(sizes), () => `id-${++n}`);
 }
 
-test('prefs default to onboarding not done, beach tennis, ultra-wide, gesture on', () => {
+test('prefs default to onboarding not done, beach tennis, ultra-wide, gesture on, sound and flash on', () => {
   expect(setup().getPrefs()).toEqual({
     onboardingDone: false,
     sport: 'beachTennis',
     lens: 'ultraWide',
     gestureEnabled: true,
+    soundOnSave: true,
+    flashOnSave: true,
   });
 });
 

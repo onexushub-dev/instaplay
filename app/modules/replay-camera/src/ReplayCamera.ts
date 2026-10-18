@@ -29,6 +29,16 @@ export function setGestureEnabled(enabled: boolean): void {
   ReplayCameraModule.setGestureEnabled(enabled);
 }
 
+/** Short "saved" chime and/or two blinks of the rear torch, so a player far from the phone knows. */
+export function signalSaved({ sound, flash }: { sound: boolean; flash: boolean }): void {
+  ReplayCameraModule.signalSaved(sound, flash);
+}
+
+/** Distinct low double beep when a save fails. */
+export function signalSaveFailed({ sound }: { sound: boolean }): void {
+  ReplayCameraModule.signalSaveFailed(sound);
+}
+
 export function addReplayListener<E extends keyof ReplayCameraModuleEvents>(
   event: E,
   listener: ReplayCameraModuleEvents[E]

@@ -31,6 +31,7 @@ class CaptureController(context: Context) {
   val handler = Handler(thread.looper)
   private var device: CameraDevice? = null
   private var session: CameraCaptureSession? = null
+  private var streaming: Pair<Mode, List<Surface>>? = null
 
   /** Bumped by every open/close; callbacks from an older open close what they opened and stop. */
   @Volatile private var generation = 0
@@ -92,6 +93,7 @@ class CaptureController(context: Context) {
               set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, Range(mode.fps, mode.fps))
             }.build()
             s.setRepeatingRequest(request, null, handler)
+            streaming = mode to surfaces
             ready = true
             onReady()
           }
@@ -110,11 +112,32 @@ class CaptureController(context: Context) {
     }, handler)
   }
 
+  /** Turns the rear torch on/off through the running session (the camera is ours, so CameraManager.setTorchMode can't). */
+  fun setTorch(on: Boolean) {
+    handler.post { applyTorch(on) }
+  }
+
+  private fun applyTorch(on: Boolean) {
+    val camera = device ?: return
+    val s = session ?: return
+    val (mode, surfaces) = streaming ?: return
+    if (manager.getCameraCharacteristics(mode.cameraId).get(CameraCharacteristics.FLASH_INFO_AVAILABLE) != true) return
+    runCatching {
+      val request = camera.createCaptureRequest(CameraDevice.TEMPLATE_RECORD).apply {
+        surfaces.forEach(::addTarget)
+        set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, Range(mode.fps, mode.fps))
+        set(CaptureRequest.FLASH_MODE, if (on) CaptureRequest.FLASH_MODE_TORCH else CaptureRequest.FLASH_MODE_OFF)
+      }.build()
+      s.setRepeatingRequest(request, null, handler)
+    }
+  }
+
   private fun close() {
     runCatching { session?.close() }
     runCatching { device?.close() }
     session = null
     device = null
+    streaming = null
   }
 
   /** Closes the current camera; one still opening is closed as soon as it arrives. The thread stays for the next open. */

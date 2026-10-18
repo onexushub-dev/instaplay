@@ -15,6 +15,7 @@ final class CaptureController: NSObject, AVCaptureVideoDataOutputSampleBufferDel
   private(set) var dimensions = (width: 1920, height: 1080)
   private(set) var fps = 30
   private(set) var hasAudio = false
+  private(set) var camera: AVCaptureDevice?
 
   enum Failure: Error { case noCamera, cannotAddInput, cannotAddOutput }
 
@@ -26,6 +27,7 @@ final class CaptureController: NSObject, AVCaptureVideoDataOutputSampleBufferDel
     session.sessionPreset = .inputPriority
 
     guard let camera = Self.camera(lens: lens) else { throw Failure.noCamera }
+    self.camera = camera
     let input = try AVCaptureDeviceInput(device: camera)
     guard session.canAddInput(input) else { throw Failure.cannotAddInput }
     session.addInput(input)

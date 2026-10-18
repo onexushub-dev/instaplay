@@ -20,7 +20,14 @@ jest.mock('../../triggers/useVolumeRemote', () => ({ useVolumeRemote: jest.fn() 
 jest.mock('expo-router', () => ({ router: { replace: jest.fn(), back: jest.fn() } }));
 jest.mock('expo-keep-awake', () => ({ useKeepAwake: jest.fn() }));
 jest.mock('../../data/mmkv', () => {
-  let prefs = { onboardingDone: true, sport: 'beachTennis', lens: 'ultraWide', gestureEnabled: true };
+  let prefs = {
+    onboardingDone: true,
+    sport: 'beachTennis',
+    lens: 'ultraWide',
+    gestureEnabled: true,
+    soundOnSave: true,
+    flashOnSave: true,
+  };
   return {
     repo: {
       getPrefs: () => prefs,
@@ -139,4 +146,13 @@ test('the button is disabled while the camera starts', async () => {
   session({ phase: 'starting' });
   await render(<Setup />);
   expect(screen.getByRole('button', { name: 'Começar jogo' })).toBeDisabled();
+});
+
+test('save feedback toggles: sound and flash', async () => {
+  session({});
+  await render(<Setup />);
+  await fireEvent.press(screen.getByRole('button', { name: 'Som' }));
+  expect(repo.setPrefs).toHaveBeenCalledWith({ soundOnSave: false });
+  await fireEvent.press(screen.getByRole('button', { name: 'Flash' }));
+  expect(repo.setPrefs).toHaveBeenCalledWith({ flashOnSave: false });
 });

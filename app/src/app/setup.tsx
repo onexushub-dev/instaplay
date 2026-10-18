@@ -162,6 +162,22 @@ export default function Setup() {
             </View>
           </View>
 
+          <View style={styles.feedbackRow}>
+            <Text style={styles.section}>AVISOS AO SALVAR</Text>
+            <View style={styles.chips}>
+              <Chip
+                label="Som"
+                selected={prefs.soundOnSave}
+                onPress={() => update({ soundOnSave: !prefs.soundOnSave })}
+              />
+              <Chip
+                label="Flash"
+                selected={prefs.flashOnSave}
+                onPress={() => update({ flashOnSave: !prefs.flashOnSave })}
+              />
+            </View>
+          </View>
+
           {errorText ? <Text style={styles.error}>{errorText}</Text> : null}
           <Button
             label={opening ? "Abrindo a câmera…" : "Começar jogo"}
@@ -241,4 +257,9 @@ const styles = StyleSheet.create({
   grid: { gap: 8 },
   gridRow: { flexDirection: "row", gap: 8 },
   error: { fontFamily: fonts.bodySemi, fontSize: 14, color: colors.warning },
+  feedbackRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
 });

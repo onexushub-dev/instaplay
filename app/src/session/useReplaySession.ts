@@ -19,6 +19,8 @@ export type SessionDeps = {
     stopSession(): Promise<void>;
     saveClip(opts: SaveClipOptions): Promise<SavedClip>;
     setGestureEnabled(enabled: boolean): void;
+    signalSaved(opts: { sound: boolean; flash: boolean }): void;
+    signalSaveFailed(opts: { sound: boolean }): void;
     addReplayListener<E extends keyof ReplayCameraModuleEvents>(
       event: E,
       listener: ReplayCameraModuleEvents[E]
@@ -56,6 +58,9 @@ export function useReplaySession(deps: SessionDeps) {
       if (saving.current || stateRef.current.phase !== 'recording' || !sessionId) return;
       saving.current = true;
       dispatch({ type: 'saveStarted' });
+      // Feedback right away: the 60s are already captured, the file just isn't written yet.
+      const prefs = deps.repo.getPrefs();
+      deps.camera.signalSaved({ sound: prefs.soundOnSave, flash: prefs.flashOnSave });
       try {
         const saved = await deps.camera.saveClip({ source, at });
         const clip = deps.repo.addClip({
@@ -68,6 +73,7 @@ export function useReplaySession(deps: SessionDeps) {
         deps.haptic();
         dispatch({ type: 'saved', sessionId, clipId: clip.id, source, at });
       } catch {
+        deps.camera.signalSaveFailed({ sound: prefs.soundOnSave });
         dispatch({ type: 'saveFailed', sessionId });
       } finally {
         saving.current = false;

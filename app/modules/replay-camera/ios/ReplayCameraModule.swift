@@ -71,6 +71,14 @@ public class ReplayCameraModule: Module {
       self.engine.gesture.enabled = enabled
     }
 
+    Function("signalSaved") { (sound: Bool, flash: Bool) in
+      self.engine.feedback.saved(sound: sound, flash: flash, activeCamera: self.engine.capture.camera)
+    }
+
+    Function("signalSaveFailed") { (sound: Bool) in
+      self.engine.feedback.failed(sound: sound)
+    }
+
     AsyncFunction("requestPermissions") { (promise: Promise) in
       ReplayEngine.requestPermissions { promise.resolve($0) }
     }

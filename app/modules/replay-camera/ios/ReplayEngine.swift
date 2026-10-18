@@ -14,6 +14,7 @@ final class ReplayEngine {
 
   let capture = CaptureController()
   let gesture = GestureDetector()
+  let feedback = ReplayFeedback()
   var emit: ((String, [String: Any]) -> Void)?
 
   typealias SaveResult = Result<(path: String, durationMs: Int), Failure>

@@ -20,6 +20,8 @@ function fakeDeps() {
       () => new Promise<{ clipPath: string; durationMs: number }>((resolve) => (pendingSave = resolve))
     ),
     setGestureEnabled: jest.fn(),
+    signalSaved: jest.fn(),
+    signalSaveFailed: jest.fn(),
     addReplayListener: jest.fn((event: string, fn: Listener) => {
       listeners.set(event, fn);
       return { remove: () => listeners.delete(event) };
@@ -168,4 +170,31 @@ test('stop turns the camera off', async () => {
   });
   expect(camera.stopSession).toHaveBeenCalled();
   expect(view.result.current.state.camera).toBe('off');
+});
+
+test('signals the save the moment the trigger is accepted, before the file is ready', async () => {
+  const { view, camera } = await started();
+
+  await act(async () => view.result.current.trigger('gesture'));
+
+  expect(camera.signalSaved).toHaveBeenCalledWith({ sound: true, flash: true });
+  expect(camera.saveClip).toHaveBeenCalled(); // still pending
+});
+
+test('respects the sound and flash preferences', async () => {
+  const { view, camera, deps } = await started();
+  deps.repo.setPrefs({ soundOnSave: false, flashOnSave: true });
+
+  await act(async () => view.result.current.trigger('screen'));
+
+  expect(camera.signalSaved).toHaveBeenCalledWith({ sound: false, flash: true });
+});
+
+test('a failed save plays the failure signal', async () => {
+  const { view, camera } = await started();
+  camera.saveClip.mockRejectedValueOnce(new Error('x'));
+
+  await act(async () => view.result.current.trigger('screen'));
+
+  expect(camera.signalSaveFailed).toHaveBeenCalledWith({ sound: true });
 });

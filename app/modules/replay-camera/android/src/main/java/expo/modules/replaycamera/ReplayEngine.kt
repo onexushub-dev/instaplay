@@ -43,6 +43,7 @@ object ReplayEngine {
   private val engineThread = HandlerThread("replay-engine").apply { start() }
   private val engine = Handler(engineThread.looper)
   private val saveExecutor = Executors.newSingleThreadExecutor { Thread(it, "replay-save") }
+  private val feedback = ReplayFeedback()
   private val ring = SegmentRing((WINDOW_SECONDS * 1_000_000 / SegmentEncoder.SEGMENT_US).toInt(), LocalFileOps)
 
   private class PendingSave(val id: String, val run: () -> Unit, val fail: (CodedException) -> Unit)
@@ -65,6 +66,13 @@ object ReplayEngine {
   private fun post(block: () -> Unit) { engine.post(block) }
 
   fun setGestureEnabled(enabled: Boolean) = post { gesture?.enabled = enabled }
+
+  fun signalSaved(sound: Boolean, flash: Boolean) = post {
+    val cap = capture
+    feedback.saved(sound, flash, if (encoder != null && cap != null) cap::setTorch else null)
+  }
+
+  fun signalSaveFailed(sound: Boolean) = post { feedback.failed(sound) }
 
   /** Resolves right away when a session is already running or starting. */
   fun start(context: Context, lens: String, maxQuality: String, onReady: () -> Unit, onError: (CodedException) -> Unit) = post {

@@ -48,6 +48,10 @@ class ReplayCameraModule : Module() {
 
     Function("setGestureEnabled") { enabled: Boolean -> ReplayEngine.setGestureEnabled(enabled) }
 
+    Function("signalSaved") { sound: Boolean, flash: Boolean -> ReplayEngine.signalSaved(sound, flash) }
+
+    Function("signalSaveFailed") { sound: Boolean -> ReplayEngine.signalSaveFailed(sound) }
+
     AsyncFunction("requestPermissions") { promise: Promise ->
       val permissions = appContext.permissions ?: return@AsyncFunction promise.resolve(false)
       permissions.askForPermissions(
