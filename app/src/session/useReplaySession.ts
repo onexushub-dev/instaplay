@@ -62,9 +62,9 @@ export function useReplaySession(deps: SessionDeps) {
           durationMs: saved.durationMs,
         });
         deps.haptic();
-        dispatch({ type: 'saved', clipId: clip.id, source, at });
+        dispatch({ type: 'saved', sessionId, clipId: clip.id, source, at });
       } catch {
-        dispatch({ type: 'saveFailed' });
+        dispatch({ type: 'saveFailed', sessionId });
       } finally {
         saving.current = false;
       }

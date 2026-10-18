@@ -22,8 +22,8 @@ export type SessionAction =
   | { type: 'started'; sessionId: string; startedAt: number }
   | { type: 'startFailed'; code: ReplayErrorCode }
   | { type: 'saveStarted' }
-  | { type: 'saved'; clipId: string; source: TriggerSource; at: number }
-  | { type: 'saveFailed' }
+  | { type: 'saved'; sessionId: string; clipId: string; source: TriggerSource; at: number }
+  | { type: 'saveFailed'; sessionId: string }
   | { type: 'undone'; clipId: string }
   | { type: 'interrupted' }
   | { type: 'resumed' }
@@ -52,6 +52,8 @@ export function reducer(state: SessionState, action: SessionAction): SessionStat
     case 'saveStarted':
       return { ...state, saving: true };
     case 'saved': {
+      // A save that finished after its game ended (stop → Novo jogo) must not touch the new game.
+      if (action.sessionId !== state.sessionId) return state;
       const number = state.clipCount + 1;
       return {
         ...state,
@@ -61,7 +63,7 @@ export function reducer(state: SessionState, action: SessionAction): SessionStat
       };
     }
     case 'saveFailed':
-      return { ...state, saving: false };
+      return action.sessionId === state.sessionId ? { ...state, saving: false } : state;
     case 'undone':
       return {
         ...state,
