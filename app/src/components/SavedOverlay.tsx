@@ -8,17 +8,24 @@ import { SOURCE_LABEL } from './sourceLabel';
 
 type Props = { number: number; source: TriggerSource; onUndo: () => void };
 
-/** Full-screen confirmation shown for ~2s after each save (mockup 4). */
+/**
+ * Confirmation shown for ~2s after each save: an accent frame around the screen and a compact card,
+ * so the camera picture stays visible and the rest of the screen still saves on tap.
+ */
 export function SavedOverlay({ number, source, onUndo }: Props) {
   return (
-    <View style={styles.root} accessibilityLiveRegion="assertive">
-      <View style={styles.badge}>
-        <CheckIcon />
-      </View>
-      <Text style={styles.title}>{`LANCE #${number} SALVO`}</Text>
-      <Text style={styles.via}>{`via ${SOURCE_LABEL[source]} · últimos 30s`}</Text>
-      <Text style={styles.hint}>Dá para ajustar o corte depois, dentro dos 60s guardados.</Text>
-      <View style={styles.undo}>
+    <View pointerEvents="box-none" style={styles.frame}>
+      <View style={styles.card} accessibilityLiveRegion="assertive">
+        <View style={styles.row}>
+          <View style={styles.badge}>
+            <CheckIcon size={28} />
+          </View>
+          <View style={styles.text}>
+            <Text style={styles.title}>{`LANCE #${number} SALVO`}</Text>
+            <Text style={styles.via}>{`via ${SOURCE_LABEL[source]} · últimos 30s`}</Text>
+          </View>
+        </View>
+        <Text style={styles.hint}>Dá para ajustar o corte depois, dentro dos 60s guardados.</Text>
         <Button label="Desfazer" variant="secondary" onPress={onUndo} />
       </View>
     </View>
@@ -26,23 +33,22 @@ export function SavedOverlay({ number, source, onUndo }: Props) {
 }
 
 const styles = StyleSheet.create({
-  root: {
+  frame: {
     position: 'absolute',
     top: 0,
     right: 0,
     bottom: 0,
     left: 0,
-    backgroundColor: colors.recordingGround,
-    borderWidth: 6,
+    borderWidth: 5,
     borderColor: colors.accent,
-    alignItems: 'center',
     justifyContent: 'center',
-    gap: 16,
-    padding: 24,
+    paddingHorizontal: 24,
   },
-  badge: { width: 140, height: 140, borderRadius: 70, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' },
-  title: { fontFamily: fonts.displayBold, fontSize: 52, color: colors.text, textAlign: 'center' },
-  via: { fontFamily: fonts.body, fontSize: 15, color: colors.soft },
-  hint: { fontFamily: fonts.body, fontSize: 14, color: colors.muted, textAlign: 'center', lineHeight: 20 },
-  undo: { position: 'absolute', left: 24, right: 24, bottom: 48 },
+  card: { backgroundColor: 'rgba(15,16,13,0.88)', borderRadius: 20, padding: 16, gap: 12 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  badge: { width: 48, height: 48, borderRadius: 24, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' },
+  text: { flex: 1 },
+  title: { fontFamily: fonts.displayBold, fontSize: 30, color: colors.text },
+  via: { fontFamily: fonts.body, fontSize: 14, color: colors.soft },
+  hint: { fontFamily: fonts.body, fontSize: 13, color: colors.muted, lineHeight: 18 },
 });
