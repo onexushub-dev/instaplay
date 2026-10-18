@@ -1,16 +1,14 @@
-import { useKeepAwake } from 'expo-keep-awake';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Alert, BackHandler, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { ReplayCameraView } from '../../modules/replay-camera';
-import { Button } from '../components/Button';
-import { HoldButton } from '../components/HoldButton';
-import { RemoteIcon, TapIcon, WatchIcon, XArmsIcon } from '../components/icons';
-import { SavedOverlay } from '../components/SavedOverlay';
 import { useSession } from '../session/SessionContext';
 import { colors, fonts } from '../theme/tokens';
+import { Button } from './Button';
+import { HoldButton } from './HoldButton';
+import { RemoteIcon, TapIcon, WatchIcon, XArmsIcon } from './icons';
+import { SavedOverlay } from './SavedOverlay';
 
 const OVERLAY_MS = 2000;
 
@@ -20,9 +18,11 @@ function clock(ms: number): string {
   return `${pad(Math.floor(s / 3600))}:${pad(Math.floor((s % 3600) / 60))}:${pad(s % 60)}`;
 }
 
-export default function Recording() {
-  // The phone sits untouched on the fence: auto-lock would background the app and stop recording.
-  useKeepAwake();
+/**
+ * Controls shown over the live camera while a game is recorded. The camera view itself belongs to the
+ * game screen and is never recreated, so starting the game is instant (and Android keeps its preview).
+ */
+export function RecordingPanel() {
   const { state, trigger, undoLast, stop } = useSession();
   const [now, setNow] = useState(() => Date.now());
   const [dismissed, setDismissed] = useState<string>();
@@ -70,9 +70,7 @@ export default function Recording() {
   const clips = `${state.clipCount} ${state.clipCount === 1 ? 'lance' : 'lances'}`;
 
   return (
-    <View style={styles.root}>
-      <ReplayCameraView style={StyleSheet.absoluteFill} />
-
+    <View style={StyleSheet.absoluteFill}>
       {/* The whole screen is the save button; nothing covers the picture. */}
       <Pressable
         accessibilityRole="button"
@@ -132,7 +130,6 @@ export default function Recording() {
 const glass = 'rgba(15,16,13,0.72)';
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.recordingGround },
   content: { flex: 1, paddingHorizontal: 16, gap: 10 },
   topRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 },
   pill: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: glass, paddingVertical: 8, paddingHorizontal: 12, borderRadius: 999 },

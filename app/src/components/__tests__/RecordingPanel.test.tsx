@@ -1,10 +1,8 @@
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 
-import Recording from '../recording';
+import { RecordingPanel as Recording } from '../RecordingPanel';
 
-jest.mock('../../../modules/replay-camera', () => ({ ReplayCameraView: jest.fn(() => null) }));
 jest.mock('expo-router', () => ({ router: { replace: jest.fn() } }));
-jest.mock('expo-keep-awake', () => ({ useKeepAwake: jest.fn() }));
 jest.mock('../../session/SessionContext', () => ({ useSession: jest.fn() }));
 
 const { useSession } = jest.requireMock('../../session/SessionContext');
@@ -31,21 +29,6 @@ function session(state: object) {
 }
 
 beforeEach(() => jest.clearAllMocks());
-
-test('keeps the screen awake for the whole game', async () => {
-  session({});
-  await render(<Recording />);
-  expect(jest.requireMock('expo-keep-awake').useKeepAwake).toHaveBeenCalled();
-});
-
-test('the camera preview is shown at full brightness', async () => {
-  session({});
-  await render(<Recording />);
-  const { ReplayCameraView } = jest.requireMock('../../../modules/replay-camera');
-  const { StyleSheet } = jest.requireActual('react-native');
-  const style = StyleSheet.flatten(ReplayCameraView.mock.calls.at(-1)[0].style);
-  expect(style.opacity ?? 1).toBe(1);
-});
 
 test('the count is shown in a small pill, not over the preview', async () => {
   session({ clipCount: 3 });
