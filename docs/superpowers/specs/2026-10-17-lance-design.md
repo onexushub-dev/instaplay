@@ -206,6 +206,17 @@ Preferências   { lente, duraçãoPadrão: 30, gestoAtivo, relógioPareado }
   - arenas (B2B) e patrocínio nos templates;
   - loja do kit dentro do app.
 
+### Ordem de entrega (atualizada em 2026-10-18)
+
+Decisão do Marcus: entregar todas as funcionalidades antes de cobrar.
+
+1. Plano 1: motor de câmera (feito)
+2. Plano 2: telas, gatilhos e armazenamento (feito)
+3. Plano 3: editor, Story, nome do jogo e "Meus jogos"
+4. Plano 4: apps de relógio
+5. Android no aparelho e teste de campo
+6. Último: pagamento e assinatura (seção 6). Até lá tudo fica liberado; `useEntitlement()` é o único ponto que decide o que é pago, e hoje responde "pro".
+
 ## 10. Métricas de sucesso (metas iniciais são hipóteses)
 
 | Métrica | Meta |
