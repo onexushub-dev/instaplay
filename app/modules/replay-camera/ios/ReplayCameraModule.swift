@@ -98,6 +98,10 @@ public class ReplayCameraModule: Module {
       }
     }
 
+    AsyncFunction("shareToInstagramStory") { (videoPath: String, metaAppId: String) async -> String in
+      await InstagramStory.share(videoPath: videoPath, metaAppId: metaAppId) ? "opened" : "unavailable"
+    }
+
     AsyncFunction("createThumbnail") { (clipPath: String, atMs: Double) async throws -> String in
       try await ClipThumbnail.make(clipPath: clipPath, atMs: atMs)
     }

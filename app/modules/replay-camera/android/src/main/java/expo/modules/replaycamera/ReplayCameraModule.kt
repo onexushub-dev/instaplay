@@ -73,6 +73,11 @@ class ReplayCameraModule : Module() {
       )
     }
 
+    AsyncFunction("shareToInstagramStory") { videoPath: String, metaAppId: String ->
+      val activity = appContext.currentActivity ?: return@AsyncFunction "unavailable"
+      if (runCatching { InstagramStory.share(activity, videoPath, metaAppId) }.getOrDefault(false)) "opened" else "unavailable"
+    }.runOnQueue(expo.modules.kotlin.functions.Queues.MAIN)
+
     AsyncFunction("createThumbnail") { clipPath: String, atMs: Double -> ClipThumbnail.make(clipPath, atMs) }
 
     // Voice is iOS-only for now: Android's microphone is already taken by the recorder.

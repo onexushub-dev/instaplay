@@ -66,6 +66,11 @@ export function exportClip(opts: ExportClipOptions): Promise<ExportedClip> {
   return ReplayCameraModule.exportClip(opts);
 }
 
+/** Opens Instagram's Story composer with the video; 'unavailable' without a Meta App ID or Instagram. */
+export function shareToInstagramStory(videoPath: string, metaAppId: string): Promise<'opened' | 'unavailable'> {
+  return ReplayCameraModule.shareToInstagramStory(videoPath, metaAppId);
+}
+
 export function addReplayListener<E extends keyof ReplayCameraModuleEvents>(
   event: E,
   listener: ReplayCameraModuleEvents[E]
