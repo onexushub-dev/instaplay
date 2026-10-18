@@ -5,4 +5,5 @@ export const SOURCE_LABEL: Record<TriggerSource, string> = {
   gesture: 'Braços para cima',
   remote: 'Controle',
   watch: 'Relógio',
+  voice: 'Voz',
 };

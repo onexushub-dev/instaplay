@@ -15,6 +15,8 @@ declare class ReplayCameraModule extends NativeModule<ReplayCameraModuleEvents> 
   requestPermissions(): Promise<boolean>;
   signalSaved(sound: boolean, flash: boolean): void;
   signalSaveFailed(sound: boolean): void;
+  setVoiceEnabled(enabled: boolean): void;
+  requestSpeechPermission(): Promise<boolean>;
 }
 
 export default requireNativeModule<ReplayCameraModule>('ReplayCamera');

@@ -16,7 +16,7 @@ import {
 } from '../../modules/replay-camera';
 
 const bufferDir = new Directory(Paths.cache, 'replay-buffer');
-const EMPTY_COUNTS: Record<TriggerSource, number> = { screen: 0, gesture: 0, remote: 0, watch: 0 };
+const EMPTY_COUNTS: Record<TriggerSource, number> = { screen: 0, gesture: 0, remote: 0, watch: 0, voice: 0 };
 
 function bufferMb(): number {
   try {

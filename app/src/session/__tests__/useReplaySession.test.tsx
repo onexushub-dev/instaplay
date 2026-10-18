@@ -21,6 +21,7 @@ function fakeDeps() {
     ),
     setGestureEnabled: jest.fn(),
     signalSaved: jest.fn(),
+    setVoiceEnabled: jest.fn(),
     signalSaveFailed: jest.fn(),
     addReplayListener: jest.fn((event: string, fn: Listener) => {
       listeners.set(event, fn);
@@ -197,4 +198,14 @@ test('a failed save plays the failure signal', async () => {
   await act(async () => view.result.current.trigger('screen'));
 
   expect(camera.signalSaveFailed).toHaveBeenCalledWith({ sound: true });
+});
+
+test('starting a game applies the voice preference', async () => {
+  const f = fakeDeps();
+  f.deps.repo.setPrefs({ voiceEnabled: true });
+  const view = await renderHook(() => useReplaySession(f.deps));
+
+  await act(() => view.result.current.start('beachTennis'));
+
+  expect(f.camera.setVoiceEnabled).toHaveBeenLastCalledWith(true);
 });

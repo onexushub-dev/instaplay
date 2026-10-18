@@ -1,15 +1,15 @@
 import { useKeepAwake } from 'expo-keep-awake';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { ReplayCameraView } from '../../modules/replay-camera';
+import { ReplayCameraView, requestSpeechPermission } from '../../modules/replay-camera';
 import type { ReplayErrorCode } from '../../modules/replay-camera/src/ReplayCamera.types';
 import { Button } from '../components/Button';
 import { Chip } from '../components/Chip';
 import { CourtGuide } from '../components/CourtGuide';
 import { RecordingPanel } from '../components/RecordingPanel';
-import { RemoteIcon, TapIcon, WatchIcon, ArmsUpIcon } from '../components/icons';
+import { ArmsUpIcon, MicIcon, RemoteIcon, WatchIcon } from '../components/icons';
 import { TriggerTile } from '../components/TriggerTile';
 import { repo } from '../data/mmkv';
 import type { Prefs, Sport } from '../data/schema';
@@ -34,6 +34,15 @@ export default function Setup() {
   const session = useSession();
   const [prefs, setPrefsState] = useState<Prefs>(() => repo.getPrefs());
   const [remoteWorks, setRemoteWorks] = useState(false);
+  const [speechDenied, setSpeechDenied] = useState(false);
+  const voiceSupported = Platform.OS === 'ios';
+
+  async function toggleVoice() {
+    if (prefs.voiceEnabled) return update({ voiceEnabled: false });
+    const granted = await requestSpeechPermission();
+    setSpeechDenied(!granted);
+    if (granted) update({ voiceEnabled: true });
+  }
   const { phase, error, camera } = session.state;
   const { prepare } = session;
 
@@ -108,7 +117,14 @@ export default function Setup() {
           <Text style={styles.section}>COMO SALVAR O LANCE</Text>
           <View style={styles.grid}>
             <View style={styles.gridRow}>
-              <TriggerTile icon={<TapIcon />} title="Tela" status="Sempre ativa" />
+              <TriggerTile
+                icon={<MicIcon />}
+                title="Voz"
+                status={!voiceSupported ? 'Em breve' : prefs.voiceEnabled ? 'Diga “salva lance”' : 'Desligado'}
+                active={voiceSupported && prefs.voiceEnabled}
+                disabled={!voiceSupported}
+                onPress={voiceSupported ? () => void toggleVoice() : undefined}
+              />
               <TriggerTile
                 icon={<ArmsUpIcon />}
                 title="Braços para cima"
@@ -127,6 +143,8 @@ export default function Setup() {
               <TriggerTile icon={<WatchIcon />} title="Relógio" status="Em breve" disabled />
             </View>
           </View>
+
+          {speechDenied ? <Text style={styles.error}>Libere o reconhecimento de fala em Ajustes.</Text> : null}
 
           <View style={styles.feedbackRow}>
             <Text style={styles.section}>AVISOS AO SALVAR</Text>

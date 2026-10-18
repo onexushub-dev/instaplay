@@ -24,6 +24,8 @@ export type Prefs = {
   /** Feedback the moment a save is accepted, for a player far from the phone. */
   soundOnSave: boolean;
   flashOnSave: boolean;
+  /** "salva lance" by voice (iOS). Off until speech permission is granted. */
+  voiceEnabled: boolean;
 };
 
 export const DEFAULT_PREFS: Prefs = {
@@ -33,6 +35,7 @@ export const DEFAULT_PREFS: Prefs = {
   gestureEnabled: true,
   soundOnSave: true,
   flashOnSave: true,
+  voiceEnabled: false,
 };
 
 /** Default cut: the last 30s of the saved 60s window (spec 3.3). */

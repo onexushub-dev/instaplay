@@ -15,6 +15,7 @@ final class ReplayEngine {
   let capture = CaptureController()
   let gesture = GestureDetector()
   let feedback = ReplayFeedback()
+  let voice = VoiceTrigger()
   var emit: ((String, [String: Any]) -> Void)?
 
   typealias SaveResult = Result<(path: String, durationMs: Int), Failure>
@@ -43,7 +44,13 @@ final class ReplayEngine {
       self?.writer?.appendVideo(buffer)
       self?.gesture.consider(buffer)
     }
-    capture.onAudio = { [weak self] in self?.writer?.appendAudio($0) }
+    capture.onAudio = { [weak self] buffer in
+      self?.writer?.appendAudio(buffer)
+      self?.voice.consider(buffer)
+    }
+    voice.onCommand = { [weak self] in
+      self?.emit?("onTrigger", ["source": "voice", "at": Date().timeIntervalSince1970 * 1000])
+    }
     gesture.onDebug = { [weak self] in self?.emit?("onGestureDebug", $0) }
     gesture.onGesture = { [weak self] in
       self?.emit?("onTrigger", ["source": "gesture", "at": Date().timeIntervalSince1970 * 1000])
@@ -88,6 +95,7 @@ final class ReplayEngine {
     observers.forEach(NotificationCenter.default.removeObserver)
     observers.removeAll()
     gesture.stop()
+    voice.stop()
     capture.stop()
     capture.queue.async {
       self.failPendingSaves(.noSession)

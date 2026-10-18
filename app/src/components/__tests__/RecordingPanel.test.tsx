@@ -93,3 +93,9 @@ test('a native error says recording stopped and offers the saved lances', async 
   await fireEvent.press(screen.getByRole('button', { name: 'Ver lances' }));
   expect(router.replace).toHaveBeenCalledWith('/session/s1');
 });
+
+test('a lance saved by voice says so', async () => {
+  session({ clipCount: 1, lastSaved: { clipId: 'c1', number: 1, source: 'voice', at: Date.now() } });
+  await render(<Recording />);
+  expect(screen.getByText('via Voz · últimos 30s')).toBeTruthy();
+});

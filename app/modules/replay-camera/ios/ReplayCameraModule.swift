@@ -75,6 +75,14 @@ public class ReplayCameraModule: Module {
       self.engine.feedback.saved(sound: sound, flash: flash, activeCamera: self.engine.capture.camera)
     }
 
+    Function("setVoiceEnabled") { (enabled: Bool) in
+      self.engine.voice.setEnabled(enabled)
+    }
+
+    AsyncFunction("requestSpeechPermission") { (promise: Promise) in
+      VoiceTrigger.requestPermission { promise.resolve($0) }
+    }
+
     Function("signalSaveFailed") { (sound: Bool) in
       self.engine.feedback.failed(sound: sound)
     }

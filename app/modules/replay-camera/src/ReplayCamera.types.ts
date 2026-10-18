@@ -2,7 +2,7 @@ import type { StyleProp, ViewStyle } from 'react-native';
 
 export type Lens = 'ultraWide' | 'wide';
 export type Quality = '1080p60' | '720p30';
-export type TriggerSource = 'screen' | 'gesture' | 'remote' | 'watch';
+export type TriggerSource = 'screen' | 'gesture' | 'remote' | 'watch' | 'voice';
 export type ThermalLevel = 'nominal' | 'fair' | 'serious' | 'critical';
 export type ReplayErrorCode =
   | 'LOW_STORAGE'

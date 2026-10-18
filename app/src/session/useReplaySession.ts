@@ -19,6 +19,7 @@ export type SessionDeps = {
     stopSession(): Promise<void>;
     saveClip(opts: SaveClipOptions): Promise<SavedClip>;
     setGestureEnabled(enabled: boolean): void;
+    setVoiceEnabled(enabled: boolean): void;
     signalSaved(opts: { sound: boolean; flash: boolean }): void;
     signalSaveFailed(opts: { sound: boolean }): void;
     addReplayListener<E extends keyof ReplayCameraModuleEvents>(
@@ -146,6 +147,7 @@ export function useReplaySession(deps: SessionDeps) {
         return;
       }
       deps.camera.setGestureEnabled(prefs.gestureEnabled);
+      deps.camera.setVoiceEnabled(prefs.voiceEnabled);
       const session = deps.repo.startSession(sport, deps.now());
       dispatch({ type: 'started', sessionId: session.id, startedAt: session.startedAt });
     },

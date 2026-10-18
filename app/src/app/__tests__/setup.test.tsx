@@ -7,6 +7,7 @@ jest.mock('../../../modules/replay-camera', () => {
   const mounts = { count: 0, style: undefined as unknown };
   return {
     __mounts: mounts,
+    requestSpeechPermission: jest.fn(async () => true),
     ReplayCameraView: (props: { style?: unknown }) => {
       mounts.style = props.style;
       useEffect(() => {
@@ -27,6 +28,7 @@ jest.mock('../../data/mmkv', () => {
     gestureEnabled: true,
     soundOnSave: true,
     flashOnSave: true,
+    voiceEnabled: false,
   };
   return {
     repo: {
@@ -155,4 +157,25 @@ test('save feedback toggles: sound and flash', async () => {
   expect(repo.setPrefs).toHaveBeenCalledWith({ soundOnSave: false });
   await fireEvent.press(screen.getByRole('button', { name: 'Flash' }));
   expect(repo.setPrefs).toHaveBeenCalledWith({ flashOnSave: false });
+});
+
+test('turning voice on asks for speech permission first', async () => {
+  const camera = jest.requireMock('../../../modules/replay-camera');
+  session({});
+  await render(<Setup />);
+  await fireEvent.press(screen.getByRole('button', { name: /^Voz/ }));
+  expect(camera.requestSpeechPermission).toHaveBeenCalled();
+  expect(repo.setPrefs).toHaveBeenCalledWith({ voiceEnabled: true });
+});
+
+test('voice stays off when speech permission is denied', async () => {
+  const camera = jest.requireMock('../../../modules/replay-camera');
+  camera.requestSpeechPermission.mockResolvedValueOnce(false);
+  repo.setPrefs({ voiceEnabled: false });
+  jest.clearAllMocks();
+  session({});
+  await render(<Setup />);
+  await fireEvent.press(screen.getByRole('button', { name: /^Voz/ }));
+  expect(repo.setPrefs).not.toHaveBeenCalledWith({ voiceEnabled: true });
+  expect(screen.getByText('Libere o reconhecimento de fala em Ajustes.')).toBeTruthy();
 });

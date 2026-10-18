@@ -39,6 +39,16 @@ export function signalSaveFailed({ sound }: { sound: boolean }): void {
   ReplayCameraModule.signalSaveFailed(sound);
 }
 
+/** Listens for "salva lance" in the game's audio (iOS; no-op on Android for now). */
+export function setVoiceEnabled(enabled: boolean): void {
+  ReplayCameraModule.setVoiceEnabled(enabled);
+}
+
+/** Asks for speech recognition; resolves true when granted (always false on Android for now). */
+export function requestSpeechPermission(): Promise<boolean> {
+  return ReplayCameraModule.requestSpeechPermission();
+}
+
 export function addReplayListener<E extends keyof ReplayCameraModuleEvents>(
   event: E,
   listener: ReplayCameraModuleEvents[E]

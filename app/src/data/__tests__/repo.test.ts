@@ -26,6 +26,7 @@ test('prefs default to onboarding not done, beach tennis, ultra-wide, gesture on
     gestureEnabled: true,
     soundOnSave: true,
     flashOnSave: true,
+    voiceEnabled: false,
   });
 });
 
