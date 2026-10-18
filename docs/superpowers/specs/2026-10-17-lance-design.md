@@ -213,9 +213,10 @@ Decisão do Marcus: entregar todas as funcionalidades antes de cobrar.
 1. Plano 1: motor de câmera (feito)
 2. Plano 2: telas, gatilhos e armazenamento (feito)
 3. Plano 3: editor, Story, nome do jogo e "Meus jogos"
-4. Plano 4: apps de relógio
-5. Android no aparelho e teste de campo
-6. Último: pagamento e assinatura (seção 6). Até lá tudo fica liberado; `useEntitlement()` é o único ponto que decide o que é pago, e hoje responde "pro".
+4. Plano 4: modos de uso — "Esporte" vira "Modo", com Quadra (atual) e **Academia** (musculação, crossfit, funcional, outro). Cada modo define padrões que o jogador pode mudar: Academia desliga o gesto "braços para cima" (exercícios acima da cabeça o disparariam), usa voz/controle/tela, buffer de 2 min com corte padrão do tamanho da série, lente 1x e templates de treino (exercício, carga, "Recorde pessoal"). A estrutura comporta outros modos depois (skate, corrida, dança, família).
+5. Plano 5: apps de relógio
+6. Android no aparelho e teste de campo
+7. Último: pagamento e assinatura (seção 6). Até lá tudo fica liberado; `useEntitlement()` é o único ponto que decide o que é pago, e hoje responde "pro".
 
 ## 10. Métricas de sucesso (metas iniciais são hipóteses)
 
