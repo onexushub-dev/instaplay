@@ -19,6 +19,18 @@ class SaveClipOptions : Record {
   @Field val at: Double = 0.0
 }
 
+class ExportClipOptions : Record {
+  @Field val clipPath: String = ""
+  @Field val startMs: Double = 0.0
+  @Field val endMs: Double = 0.0
+  @Field val speed: Double = 1.0
+  @Field val muted: Boolean = false
+  @Field val width: Int = 1080
+  @Field val height: Int = 1920
+  @Field val overlayPngPath: String? = null
+  @Field val background: String = "#0F100D"
+}
+
 class ReplayCameraModule : Module() {
   private val context get() = appContext.reactContext ?: throw Exceptions.ReactContextLost()
 
@@ -49,6 +61,17 @@ class ReplayCameraModule : Module() {
     Function("setGestureEnabled") { enabled: Boolean -> ReplayEngine.setGestureEnabled(enabled) }
 
     Function("signalSaved") { sound: Boolean, flash: Boolean -> ReplayEngine.signalSaved(sound, flash) }
+
+    AsyncFunction("exportClip") { o: ExportClipOptions, promise: Promise ->
+      ClipExporter.export(
+        context,
+        ClipExporter.Options(
+          o.clipPath, o.startMs.toLong(), o.endMs.toLong(), o.speed.toFloat(), o.muted, o.width, o.height, o.overlayPngPath,
+        ),
+        onDone = { path, ms -> promise.resolve(mapOf("path" to path, "durationMs" to ms)) },
+        onError = { promise.reject(ReplayException("ENCODER_FAILED", "$it")) },
+      )
+    }
 
     AsyncFunction("createThumbnail") { clipPath: String, atMs: Double -> ClipThumbnail.make(clipPath, atMs) }
 
