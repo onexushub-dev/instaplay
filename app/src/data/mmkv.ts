@@ -11,6 +11,7 @@ export const kv: KV = {
   getString: (k) => storage.getString(k),
   set: (k, v) => storage.set(k, v),
   delete: (k) => void storage.remove(k),
+  keys: () => storage.getAllKeys(),
 };
 
 /** Clip paths are absolute filesystem paths from the native module. */

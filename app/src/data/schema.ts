@@ -4,7 +4,9 @@ export type { TriggerSource };
 
 export type Sport = 'beachTennis' | 'futevolei' | 'voleiPraia' | 'outro';
 
-export type Session = { id: string; sport: Sport; startedAt: number; endedAt?: number };
+export type Session = { id: string; sport: Sport; startedAt: number; endedAt?: number; name?: string };
+
+export const MAX_GAME_NAME = 40;
 
 export type Clip = {
   id: string;
@@ -14,6 +16,8 @@ export type Clip = {
   path: string;
   durationMs: number;
   trim: { startMs: number; endMs: number };
+  /** Editor choices; absent = no slow motion, with sound. */
+  edit?: { slowmo: boolean; muted: boolean };
 };
 
 export type Prefs = {

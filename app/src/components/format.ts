@@ -1,4 +1,4 @@
-import type { Sport } from '../data/schema';
+import type { Session, Sport } from '../data/schema';
 
 export const SPORT_LABEL: Record<Sport, string> = {
   beachTennis: 'Beach tennis',
@@ -35,4 +35,11 @@ export function dayAndTime(at: number, now = Date.now()): string {
 export function seconds(ms: number): string {
   const s = Math.round(ms / 1000);
   return `${Math.floor(s / 60)}:${pad(s % 60)}`;
+}
+
+/** A game's name, or "<Esporte> · DD/MM, HH:MM". */
+export function sessionLabel(session: Session, now = Date.now()): string {
+  if (session.name) return session.name;
+  const d = new Date(session.startedAt);
+  return `${SPORT_LABEL[session.sport]} · ${pad(d.getDate())}/${pad(d.getMonth() + 1)}, ${timeOfDay(session.startedAt)}`;
 }

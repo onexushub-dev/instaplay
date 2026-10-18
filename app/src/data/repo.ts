@@ -1,9 +1,11 @@
-import { type Clip, DEFAULT_PREFS, DEFAULT_TRIM_MS, type Prefs, type Session, type Sport } from './schema';
+import { type Clip, DEFAULT_PREFS, DEFAULT_TRIM_MS, MAX_GAME_NAME, type Prefs, type Session, type Sport } from './schema';
 
 export interface KV {
   getString(key: string): string | undefined;
   set(key: string, value: string): void;
   delete(key: string): void;
+  /** All stored keys; used once to rebuild the game index for data saved before it existed. */
+  keys?(): string[];
 }
 
 export interface FileProbe {
@@ -16,7 +18,9 @@ const key = {
   session: (id: string) => `lance:v1:session:${id}`,
   clip: (id: string) => `lance:v1:clip:${id}`,
   clipsOf: (sessionId: string) => `lance:v1:clips-of:${sessionId}`,
+  sessions: 'lance:v1:sessions',
 };
+const SESSION_PREFIX = 'lance:v1:session:';
 
 /** Sessions and clips stored on the phone, one JSON value per record. IDs are UUIDs, ready for a future account. */
 export function createRepo(kv: KV, files: FileProbe, newId: () => string) {
@@ -37,6 +41,14 @@ export function createRepo(kv: KV, files: FileProbe, newId: () => string) {
 
   function getSession(id: string): Session | undefined {
     return read<Session>(key.session(id));
+  }
+
+  function sessionIds(): string[] {
+    const ids = read<string[]>(key.sessions);
+    if (ids) return ids;
+    const found = (kv.keys?.() ?? []).filter((k) => k.startsWith(SESSION_PREFIX)).map((k) => k.slice(SESSION_PREFIX.length));
+    write(key.sessions, found);
+    return found;
   }
 
   return {
@@ -62,8 +74,10 @@ export function createRepo(kv: KV, files: FileProbe, newId: () => string) {
     },
 
     startSession(sport: Sport, now: number): Session {
+      const ids = sessionIds(); // before writing, so a first-time rebuild doesn't list this game twice
       const session: Session = { id: newId(), sport, startedAt: now };
       write(key.session(session.id), session);
+      write(key.sessions, [...ids, session.id]);
       changed();
       return session;
     },
@@ -73,6 +87,36 @@ export function createRepo(kv: KV, files: FileProbe, newId: () => string) {
       write(key.session(id), session);
       changed();
       return session;
+    },
+
+    /** Trims and cuts the name to MAX_GAME_NAME; a blank name removes it. */
+    renameSession(id: string, name: string): Session {
+      const trimmed = name.trim().slice(0, MAX_GAME_NAME);
+      const { name: _old, ...rest } = getSession(id)!;
+      const session: Session = trimmed ? { ...rest, name: trimmed } : rest;
+      write(key.session(id), session);
+      changed();
+      return session;
+    },
+
+    /** Games with at least one existing clip, newest first. */
+    listSessions(): { session: Session; clips: number; firstClip?: Clip }[] {
+      return sessionIds()
+        .map((id) => getSession(id))
+        .filter((s): s is Session => s !== undefined)
+        .map((session) => {
+          const clips = this.listClips(session.id);
+          return { session, clips: clips.length, firstClip: clips[0] };
+        })
+        .filter((g) => g.clips > 0)
+        .sort((a, b) => b.session.startedAt - a.session.startedAt);
+    },
+
+    updateClip(id: string, patch: { trim?: Clip['trim']; edit?: Clip['edit'] }): Clip {
+      const clip = { ...read<Clip>(key.clip(id))!, ...patch };
+      write(key.clip(id), clip);
+      changed();
+      return clip;
     },
 
     addClip(input: Omit<Clip, 'id' | 'trim'>): Clip {

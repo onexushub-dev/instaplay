@@ -1,11 +1,11 @@
 import { createRepo, type FileProbe, type KV } from '../repo';
 
-function memoryKV(): KV {
-  const map = new Map<string, string>();
+function memoryKV(map = new Map<string, string>()): KV {
   return {
     getString: (k) => map.get(k),
     set: (k, v) => void map.set(k, v),
     delete: (k) => void map.delete(k),
+    keys: () => [...map.keys()],
   };
 }
 
@@ -98,4 +98,54 @@ test('notifies subscribers and bumps the version when clips change', () => {
   off();
   repo.endSession(s.id, 5);
   expect(fn).toHaveBeenCalledTimes(2);
+});
+
+test('renameSession trims and stores the name', () => {
+  const repo = setup();
+  const s = repo.startSession('futevolei', 0);
+  expect(repo.renameSession(s.id, '  Final do torneio  ').name).toBe('Final do torneio');
+  expect(repo.getSession(s.id)?.name).toBe('Final do torneio');
+});
+
+test('a blank name removes it', () => {
+  const repo = setup();
+  const s = repo.startSession('futevolei', 0);
+  repo.renameSession(s.id, 'Treino');
+  expect(repo.renameSession(s.id, '   ').name).toBeUndefined();
+});
+
+test('names are cut at 40 characters', () => {
+  const repo = setup();
+  const s = repo.startSession('futevolei', 0);
+  expect(repo.renameSession(s.id, 'x'.repeat(60)).name).toHaveLength(40);
+});
+
+test('listSessions skips games without clips and lists newest first', () => {
+  const repo = setup({ '/a.mp4': 1, '/b.mp4': 1 });
+  const old = repo.startSession('beachTennis', 1000);
+  repo.startSession('outro', 2000); // no clips
+  const recent = repo.startSession('futevolei', 3000);
+  repo.addClip({ sessionId: old.id, createdAt: 1, source: 'screen', path: '/a.mp4', durationMs: 1 });
+  repo.addClip({ sessionId: recent.id, createdAt: 2, source: 'screen', path: '/b.mp4', durationMs: 1 });
+  const games = repo.listSessions();
+  expect(games.map((g) => g.session.id)).toEqual([recent.id, old.id]);
+  expect(games[0]).toMatchObject({ clips: 1, firstClip: { path: '/b.mp4' } });
+});
+
+test('updateClip stores the new trim and edit', () => {
+  const repo = setup({ '/a.mp4': 1 });
+  const s = repo.startSession('beachTennis', 0);
+  const c = repo.addClip({ sessionId: s.id, createdAt: 1, source: 'screen', path: '/a.mp4', durationMs: 60000 });
+  repo.updateClip(c.id, { trim: { startMs: 10000, endMs: 25000 }, edit: { slowmo: true, muted: false } });
+  expect(repo.getClip(c.id)).toMatchObject({ trim: { startMs: 10000, endMs: 25000 }, edit: { slowmo: true, muted: false } });
+});
+
+test('listSessions finds games stored before the game index existed', () => {
+  const map = new Map<string, string>();
+  const old = { id: 'old', sport: 'beachTennis', startedAt: 5, endedAt: 9 };
+  map.set('lance:v1:session:old', JSON.stringify(old));
+  map.set('lance:v1:clip:c1', JSON.stringify({ id: 'c1', sessionId: 'old', createdAt: 6, source: 'screen', path: '/a.mp4', durationMs: 1, trim: { startMs: 0, endMs: 1 } }));
+  map.set('lance:v1:clips-of:old', JSON.stringify(['c1']));
+  const repo = createRepo(memoryKV(map), fakeFiles({ '/a.mp4': 1 }), () => 'x');
+  expect(repo.listSessions().map((g) => g.session.id)).toEqual(['old']);
 });
