@@ -39,7 +39,10 @@ test('a volume press calls onPress once and restores the starting level', async 
   expect(lib.VolumeManager.showNativeVolumeUI).toHaveBeenCalledWith({ enabled: false });
   expect(lib.__state.listeners.size).toBe(1);
 
+  const later = Date.now() + 1000; // a real press comes well after the initial parking
+  jest.spyOn(Date, 'now').mockReturnValue(later);
   await act(async () => press(0.5625));
+  jest.restoreAllMocks();
 
   expect(onPress).toHaveBeenCalledTimes(1);
   expect(lib.VolumeManager.setVolume).toHaveBeenLastCalledWith(0.5, expect.anything());
@@ -63,4 +66,29 @@ test('unmounting stops listening and shows the system volume UI again', async ()
 test('disabled does nothing', async () => {
   await renderHook(() => useVolumeRemote(false, jest.fn()));
   expect(lib.VolumeManager.addVolumeListener).not.toHaveBeenCalled();
+});
+
+test('volume steps (Android) do not turn our own parking into a press', async () => {
+  const steps = (v: number) => Math.round(v * 15) / 15;
+  lib.__state.volume = steps(1);
+  lib.VolumeManager.setVolume.mockImplementation(async (v: number) => {
+    lib.__state.volume = steps(v); // the OS lands on the nearest step and reports that
+    lib.__state.listeners.forEach((l: Listener) => l({ volume: lib.__state.volume }));
+  });
+  lib.VolumeManager.getVolume.mockImplementation(async () => ({ volume: lib.__state.volume }));
+  const onPress = jest.fn();
+
+  await renderHook(() => useVolumeRemote(true, onPress));
+  await act(async () => {});
+
+  expect(onPress).not.toHaveBeenCalled();
+});
+
+test('leaving restores the volume the phone had before', async () => {
+  lib.__state.volume = 0.95; // near max, so the hook parks it at 0.5 meanwhile
+  const { unmount } = await renderHook(() => useVolumeRemote(true, jest.fn()));
+  await act(async () => {});
+  await act(async () => unmount());
+  expect(lib.VolumeManager.setVolume).toHaveBeenCalledWith(0.5, expect.anything());
+  expect(lib.VolumeManager.setVolume).toHaveBeenLastCalledWith(0.95, expect.anything());
 });
