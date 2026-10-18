@@ -17,6 +17,7 @@ declare class ReplayCameraModule extends NativeModule<ReplayCameraModuleEvents> 
   signalSaveFailed(sound: boolean): void;
   setVoiceEnabled(enabled: boolean): void;
   requestSpeechPermission(): Promise<boolean>;
+  createThumbnail(clipPath: string, atMs: number): Promise<string>;
 }
 
 export default requireNativeModule<ReplayCameraModule>('ReplayCamera');

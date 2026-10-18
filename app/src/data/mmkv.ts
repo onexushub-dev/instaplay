@@ -3,6 +3,7 @@ import { File } from 'expo-file-system';
 import { createMMKV } from 'react-native-mmkv';
 
 import { createRepo, type FileProbe, type KV } from './repo';
+import { thumbnailPath } from './thumbnailPath';
 
 const storage = createMMKV({ id: 'lance' });
 
@@ -20,11 +21,13 @@ export const files: FileProbe = {
 
 export const repo = createRepo(kv, files, randomUUID);
 
-/** Deletes a saved clip's file; a file that is already gone is the goal. */
+/** Deletes a saved clip's file and its cached thumbnail; files already gone are the goal. */
 export function removeFile(path: string): void {
-  try {
-    new File(`file://${path}`).delete();
-  } catch {
-    // already gone
+  for (const p of [path, thumbnailPath(path)]) {
+    try {
+      new File(`file://${p}`).delete();
+    } catch {
+      // already gone
+    }
   }
 }

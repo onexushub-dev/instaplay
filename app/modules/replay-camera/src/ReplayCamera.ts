@@ -49,6 +49,11 @@ export function requestSpeechPermission(): Promise<boolean> {
   return ReplayCameraModule.requestSpeechPermission();
 }
 
+/** Writes a JPEG frame of the clip at `atMs` next to it (<clip>.jpg, reused if present) and resolves its path. */
+export function createThumbnail(clipPath: string, atMs: number): Promise<string> {
+  return ReplayCameraModule.createThumbnail(clipPath, atMs);
+}
+
 export function addReplayListener<E extends keyof ReplayCameraModuleEvents>(
   event: E,
   listener: ReplayCameraModuleEvents[E]

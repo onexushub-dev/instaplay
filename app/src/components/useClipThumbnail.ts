@@ -1,30 +1,31 @@
-import { createVideoPlayer, type VideoThumbnail } from 'expo-video';
 import { useEffect, useState } from 'react';
 
-const cache = new Map<string, VideoThumbnail>();
+import { createThumbnail } from '../../modules/replay-camera';
 
-/** One frame of a saved clip, generated lazily and cached for the app's lifetime. */
-export function useClipThumbnail(path: string, atMs: number): VideoThumbnail | undefined {
+const cache = new Map<string, string>();
+
+/**
+ * A frame of a saved clip, made natively once and cached as a .jpg next to the clip.
+ * Returns a file uri for expo-image, or undefined while it is being made (or if it can't be).
+ */
+export function useClipThumbnail(path: string, atMs: number): string | undefined {
   const key = `${path}@${atMs}`;
-  const [thumb, setThumb] = useState(() => cache.get(key));
+  const [uri, setUri] = useState(() => cache.get(key));
 
   useEffect(() => {
     if (cache.has(key)) return;
     let alive = true;
-    const player = createVideoPlayer({ uri: `file://${path}` });
-    player
-      .generateThumbnailsAsync(atMs / 1000, { maxWidth: 400 })
-      .then(([first]) => {
-        if (!first) return;
-        cache.set(key, first);
-        if (alive) setThumb(first);
+    createThumbnail(path, atMs)
+      .then((thumbPath) => {
+        const fileUri = `file://${thumbPath}`;
+        cache.set(key, fileUri);
+        if (alive) setUri(fileUri);
       })
-      .catch(() => {})
-      .finally(() => player.release());
+      .catch(() => {});
     return () => {
       alive = false;
     };
   }, [key, path, atMs]);
 
-  return thumb;
+  return uri;
 }

@@ -75,6 +75,10 @@ public class ReplayCameraModule: Module {
       self.engine.feedback.saved(sound: sound, flash: flash, activeCamera: self.engine.capture.camera)
     }
 
+    AsyncFunction("createThumbnail") { (clipPath: String, atMs: Double) async throws -> String in
+      try await ClipThumbnail.make(clipPath: clipPath, atMs: atMs)
+    }
+
     Function("setVoiceEnabled") { (enabled: Bool) in
       self.engine.voice.setEnabled(enabled)
     }

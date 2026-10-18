@@ -19,7 +19,7 @@ export function ClipCard({ clip, number, onPress }: Props) {
       onPress={onPress}
       style={styles.card}>
       <View style={styles.thumb}>
-        {thumb ? <Image source={thumb} style={StyleSheet.absoluteFill} contentFit="cover" /> : null}
+        {thumb ? <Image source={{ uri: thumb }} style={StyleSheet.absoluteFill} contentFit="cover" /> : null}
         <View style={[styles.tag, { left: 8, top: 8 }]}>
           <Text style={styles.tagText}>{`#${number}`}</Text>
         </View>

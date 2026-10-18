@@ -50,6 +50,8 @@ class ReplayCameraModule : Module() {
 
     Function("signalSaved") { sound: Boolean, flash: Boolean -> ReplayEngine.signalSaved(sound, flash) }
 
+    AsyncFunction("createThumbnail") { clipPath: String, atMs: Double -> ClipThumbnail.make(clipPath, atMs) }
+
     // Voice is iOS-only for now: Android's microphone is already taken by the recorder.
     Function("setVoiceEnabled") { _: Boolean -> }
 
