@@ -12,6 +12,8 @@ Já conferido no iPhone 16 Pro (iOS 27.1):
 - buffer ~77 MB/min a 10 Mbps
 - gesto X na horizontal a ~3 m (3/3)
 
+Plano 2 (telas + gatilhos): fluxo completo conferido no iPhone em 2026-10-18 — boas-vindas → posicionar → salvar por tela/gesto/controle → desfazer → fim de jogo → player.
+
 Ainda falta:
 - **Android inteiro**: nenhum aparelho testado
 - gesto a 5–8 m e contagem de falsos positivos (V de comemoração)
