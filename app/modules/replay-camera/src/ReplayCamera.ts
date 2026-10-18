@@ -1,5 +1,7 @@
 import ReplayCameraModule from './ReplayCameraModule';
 import type {
+  ExportClipOptions,
+  ExportedClip,
   ReplayCameraModuleEvents,
   SaveClipOptions,
   SavedClip,
@@ -57,6 +59,11 @@ export function requestSpeechPermission(): Promise<boolean> {
 /** Writes a JPEG frame of the clip at `atMs` next to it (<clip>.jpg, reused if present) and resolves its path. */
 export function createThumbnail(clipPath: string, atMs: number): Promise<string> {
   return ReplayCameraModule.createThumbnail(clipPath, atMs);
+}
+
+/** Renders the cut (optionally slowed/muted) into a width×height video with the overlay on top. */
+export function exportClip(opts: ExportClipOptions): Promise<ExportedClip> {
+  return ReplayCameraModule.exportClip(opts);
 }
 
 export function addReplayListener<E extends keyof ReplayCameraModuleEvents>(

@@ -34,6 +34,18 @@ final class ReplayException: Exception {
   }
 }
 
+struct ExportClipOptions: Record {
+  @Field var clipPath: String = ""
+  @Field var startMs: Double = 0
+  @Field var endMs: Double = 0
+  @Field var speed: Double = 1
+  @Field var muted: Bool = false
+  @Field var width: Int = 1080
+  @Field var height: Int = 1920
+  @Field var overlayPngPath: String?
+  @Field var background: String = "#0F100D"
+}
+
 public class ReplayCameraModule: Module {
   private var engine: ReplayEngine { ReplayEngine.shared }
 
@@ -73,6 +85,17 @@ public class ReplayCameraModule: Module {
 
     Function("signalSaved") { (sound: Bool, flash: Bool) in
       self.engine.feedback.saved(sound: sound, flash: flash, activeCamera: self.engine.capture.camera)
+    }
+
+    AsyncFunction("exportClip") { (o: ExportClipOptions) async throws -> [String: Any] in
+      do {
+        let result = try await ClipExporter.export(.init(
+          clipPath: o.clipPath, startMs: o.startMs, endMs: o.endMs, speed: o.speed, muted: o.muted,
+          width: o.width, height: o.height, overlayPngPath: o.overlayPngPath, background: UIColor(hex: o.background)))
+        return ["path": result.path, "durationMs": result.durationMs]
+      } catch {
+        throw ReplayException("ENCODER_FAILED", "\(error)")
+      }
     }
 
     AsyncFunction("createThumbnail") { (clipPath: String, atMs: Double) async throws -> String in

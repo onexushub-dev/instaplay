@@ -1,6 +1,8 @@
 import { NativeModule, requireNativeModule } from 'expo';
 
 import type {
+  ExportClipOptions,
+  ExportedClip,
   ReplayCameraModuleEvents,
   SaveClipOptions,
   SavedClip,
@@ -19,6 +21,7 @@ declare class ReplayCameraModule extends NativeModule<ReplayCameraModuleEvents> 
   requestSpeechPermission(): Promise<boolean>;
   isVoiceSupported(): boolean;
   createThumbnail(clipPath: string, atMs: number): Promise<string>;
+  exportClip(opts: ExportClipOptions): Promise<ExportedClip>;
 }
 
 export default requireNativeModule<ReplayCameraModule>('ReplayCamera');

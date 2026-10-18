@@ -40,6 +40,22 @@ export type GestureDebug = {
   wristGap?: number;
 };
 
+export type ExportClipOptions = {
+  clipPath: string;
+  startMs: number;
+  endMs: number;
+  speed: 1 | 0.5;
+  muted: boolean;
+  width: number;
+  height: number;
+  /** Full-frame PNG drawn over the video (the Story template bands). */
+  overlayPngPath?: string;
+  /** '#RRGGBB' behind the video where the overlay is transparent. */
+  background: string;
+};
+
+export type ExportedClip = { path: string; durationMs: number };
+
 export type ReplayCameraViewProps = {
   style?: StyleProp<ViewStyle>;
 };
