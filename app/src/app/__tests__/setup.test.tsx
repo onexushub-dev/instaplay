@@ -8,6 +8,7 @@ jest.mock('../../../modules/replay-camera', () => {
   return {
     __mounts: mounts,
     requestSpeechPermission: jest.fn(async () => true),
+    isVoiceSupported: jest.fn(() => true),
     ReplayCameraView: (props: { style?: unknown }) => {
       mounts.style = props.style;
       useEffect(() => {
@@ -178,4 +179,11 @@ test('voice stays off when speech permission is denied', async () => {
   await fireEvent.press(screen.getByRole('button', { name: /^Voz/ }));
   expect(repo.setPrefs).not.toHaveBeenCalledWith({ voiceEnabled: true });
   expect(screen.getByText('Libere o reconhecimento de fala em Ajustes.')).toBeTruthy();
+});
+
+test('the voice tile says when this phone cannot recognize speech offline', async () => {
+  jest.requireMock('../../../modules/replay-camera').isVoiceSupported.mockReturnValueOnce(false);
+  session({});
+  await render(<Setup />);
+  expect(screen.getByLabelText('Voz, Indisponível neste celular')).toBeTruthy();
 });

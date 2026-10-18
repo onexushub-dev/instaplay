@@ -55,6 +55,8 @@ class ReplayCameraModule : Module() {
     // Voice is iOS-only for now: Android's microphone is already taken by the recorder.
     Function("setVoiceEnabled") { _: Boolean -> }
 
+    Function("isVoiceSupported") { false }
+
     AsyncFunction("requestSpeechPermission") { false }
 
     Function("signalSaveFailed") { sound: Boolean -> ReplayEngine.signalSaveFailed(sound) }

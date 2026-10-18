@@ -79,6 +79,8 @@ public class ReplayCameraModule: Module {
       try await ClipThumbnail.make(clipPath: clipPath, atMs: atMs)
     }
 
+    Function("isVoiceSupported") { VoiceTrigger.isSupported }
+
     Function("setVoiceEnabled") { (enabled: Bool) in
       self.engine.voice.setEnabled(enabled)
     }

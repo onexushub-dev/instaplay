@@ -21,7 +21,7 @@ enum ClipThumbnail {
     guard let jpeg = UIImage(cgImage: image).jpegData(compressionQuality: 0.75) else {
       throw CocoaError(.fileWriteUnknown)
     }
-    try jpeg.write(to: URL(fileURLWithPath: out))
+    try jpeg.write(to: URL(fileURLWithPath: out), options: .atomic) // never a half-written file to reuse
     return out
   }
 }

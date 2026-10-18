@@ -11,6 +11,9 @@ import Vision
 final class GestureDetector {
   static let sampleInterval = 0.25
   static let maxPeople = 4
+  /// When the phone is hot (720p30 mode), sample less and look at fewer people.
+  static let hotSampleInterval = 0.5
+  static let hotMaxPeople = 2
 
   var onGesture: (() -> Void)?
   /// Diagnostic: about once a second, what the detector saw (Etapa 0 spike only).
@@ -21,6 +24,7 @@ final class GestureDetector {
   private let tracker = HoldTracker()
   private let lock = NSLock()
   private var _enabled = true
+  private var _degraded = false
   private var busy = false
   private var lastSample = -Double.infinity
   private var upright: DeviceUpright = .landscapeLeft
@@ -30,6 +34,11 @@ final class GestureDetector {
   var enabled: Bool {
     get { lock.withLock { _enabled } }
     set { lock.withLock { _enabled = newValue } }
+  }
+
+  var degraded: Bool {
+    get { lock.withLock { _degraded } }
+    set { lock.withLock { _degraded = newValue } }
   }
 
   func start() {
@@ -53,7 +62,8 @@ final class GestureDetector {
   func consider(_ buffer: CMSampleBuffer) {
     let t = CMSampleBufferGetPresentationTimeStamp(buffer).seconds
     let take: Bool = lock.withLock {
-      guard _enabled, !busy, t - lastSample >= Self.sampleInterval else { return false }
+      let interval = _degraded ? Self.hotSampleInterval : Self.sampleInterval
+      guard _enabled, !busy, t - lastSample >= interval else { return false }
       busy = true
       lastSample = t
       return true
@@ -63,9 +73,10 @@ final class GestureDetector {
       return
     }
     let image = CIImage(cvPixelBuffer: pixels).oriented(Self.orientation(for: currentUpright()))
+    let maxPeople = degraded ? Self.hotMaxPeople : Self.maxPeople
     queue.async {
       defer { self.lock.withLock { self.busy = false } }
-      let poses = Self.poses(in: image)
+      let poses = Self.poses(in: image, maxPeople: maxPeople)
       let isUp = poses.contains { ArmsUp.isUp($0) }
       if self.tracker.update(isX: isUp, at: t) { self.onGesture?() }
       self.samples += 1
@@ -78,7 +89,7 @@ final class GestureDetector {
   }
 
   /// Poses in pixel units (y down) of their own crop: ArmsUp only compares lengths within one body.
-  private static func poses(in image: CIImage) -> [Pose] {
+  private static func poses(in image: CIImage, maxPeople: Int) -> [Pose] {
     let people = VNDetectHumanRectanglesRequest()
     people.upperBodyOnly = false
     try? VNImageRequestHandler(ciImage: image).perform([people])
@@ -124,7 +135,7 @@ final class GestureDetector {
       }
     }
     if let le = p.leftElbow, let re = p.rightElbow, let ls = p.leftShoulder, let rs = p.rightShoulder {
-      info["wristsUp"] = le.y < ls.y && re.y < rs.y
+      info["elbowsUp"] = le.y < ls.y && re.y < rs.y
     }
     return info
   }

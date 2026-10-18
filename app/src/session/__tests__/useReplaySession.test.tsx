@@ -209,3 +209,24 @@ test('starting a game applies the voice preference', async () => {
 
   expect(f.camera.setVoiceEnabled).toHaveBeenLastCalledWith(true);
 });
+
+test('after a native error the camera is reopened for the next game', async () => {
+  const { view, camera, emit } = await started();
+  await act(async () => emit('onError', { code: 'ENCODER_FAILED', message: 'thermal' }));
+  await act(async () => view.result.current.reset());
+
+  await act(() => view.result.current.prepare('ultraWide'));
+
+  expect(camera.startSession).toHaveBeenCalledTimes(2);
+});
+
+test('the gesture only runs during the game, not while positioning', async () => {
+  const f = fakeDeps();
+  const view = await renderHook(() => useReplaySession(f.deps));
+
+  await act(() => view.result.current.prepare('ultraWide'));
+  expect(f.camera.setGestureEnabled).toHaveBeenLastCalledWith(false);
+
+  await act(() => view.result.current.start('beachTennis'));
+  expect(f.camera.setGestureEnabled).toHaveBeenLastCalledWith(true);
+});

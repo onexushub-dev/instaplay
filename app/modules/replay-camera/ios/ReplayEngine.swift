@@ -80,6 +80,7 @@ final class ReplayEngine {
     self.lens = lens
     let hot = ProcessInfo.processInfo.thermalState.rawValue >= ProcessInfo.ThermalState.serious.rawValue
     degraded = hot
+    gesture.degraded = hot
     do { try capture.configure(lens: lens, maxQuality: hot ? "720p30" : maxQuality) } catch { throw Failure.unavailable(error) }
     capture.queue.sync { startWriter() }
     gesture.start()
@@ -236,6 +237,7 @@ final class ReplayEngine {
     }
     if state == .serious && !degraded {
       degraded = true
+      gesture.degraded = true
       capture.stop()
       capture.queue.async {
         self.failPendingSaves(.noSession)

@@ -24,3 +24,12 @@ Itens adiados nas revisões finais. Nada aqui bloqueia o uso, mas vale resolver 
 - Promessas sem tratamento (onboarding, háptico).
 - Debounce do barramento atravessa jogos.
 - Android: abrir a câmera antes da superfície da prévia estar pronta pode deixar a prévia preta — verificar no aparelho.
+
+## Gesto, voz e avisos (revisão de 2026-10-18)
+- Miniatura usa sempre o quadro do primeiro corte; depois de editar o corte ela não acompanha (aceitável).
+- Voz: ~1–2s de fala se perdem a cada reinício de 50s; um comando bem na virada pode passar.
+- Gesto: com muita gente no quadro, os 4 maiores são analisados; jogadores do lado de lá podem ficar de fora.
+- Android: a ultra-wide geralmente não tem flash e não há alternativa (sem piscada na 0.5x).
+- Android: `applyTorch` reconstrói a requisição de captura à mão; compartilhar um único construtor com `open()`.
+- iOS: a troca de saída para o alto-falante a cada som pode mudar o microfone usado quando há fone Bluetooth.
+- Bloco "Voz" não detecta permissão de fala revogada nos Ajustes.

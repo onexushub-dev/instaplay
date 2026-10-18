@@ -1,9 +1,9 @@
 import { useKeepAwake } from 'expo-keep-awake';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { ReplayCameraView, requestSpeechPermission } from '../../modules/replay-camera';
+import { isVoiceSupported, ReplayCameraView, requestSpeechPermission } from '../../modules/replay-camera';
 import type { ReplayErrorCode } from '../../modules/replay-camera/src/ReplayCamera.types';
 import { Button } from '../components/Button';
 import { Chip } from '../components/Chip';
@@ -35,7 +35,8 @@ export default function Setup() {
   const [prefs, setPrefsState] = useState<Prefs>(() => repo.getPrefs());
   const [remoteWorks, setRemoteWorks] = useState(false);
   const [speechDenied, setSpeechDenied] = useState(false);
-  const voiceSupported = Platform.OS === 'ios';
+  // Offline recognition only: court audio is never streamed to a server.
+  const [voiceSupported] = useState(() => isVoiceSupported());
 
   async function toggleVoice() {
     if (prefs.voiceEnabled) return update({ voiceEnabled: false });
@@ -120,7 +121,7 @@ export default function Setup() {
               <TriggerTile
                 icon={<MicIcon />}
                 title="Voz"
-                status={!voiceSupported ? 'Em breve' : prefs.voiceEnabled ? 'Diga “salvar” ou “gravar”' : 'Desligado'}
+                status={!voiceSupported ? 'Indisponível neste celular' : prefs.voiceEnabled ? 'Diga “salvar” ou “gravar”' : 'Desligado'}
                 active={voiceSupported && prefs.voiceEnabled}
                 disabled={!voiceSupported}
                 onPress={voiceSupported ? () => void toggleVoice() : undefined}

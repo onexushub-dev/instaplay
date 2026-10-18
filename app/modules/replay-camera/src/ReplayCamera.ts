@@ -44,6 +44,11 @@ export function setVoiceEnabled(enabled: boolean): void {
   ReplayCameraModule.setVoiceEnabled(enabled);
 }
 
+/** True when this phone can recognize "salvar"/"gravar" offline (iOS with the on-device pt-BR model). */
+export function isVoiceSupported(): boolean {
+  return ReplayCameraModule.isVoiceSupported();
+}
+
 /** Asks for speech recognition; resolves true when granted (always false on Android for now). */
 export function requestSpeechPermission(): Promise<boolean> {
   return ReplayCameraModule.requestSpeechPermission();

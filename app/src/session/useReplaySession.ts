@@ -96,6 +96,10 @@ export function useReplaySession(deps: SessionDeps) {
       ),
       camera.addReplayListener('onError', (e) => {
         // The native side has already stopped; keep what was saved and end the game.
+        // Forget the camera too, so the next prepare() really reopens it.
+        cameraLens.current = undefined;
+        cameraOpening.current = undefined;
+        dispatch({ type: 'cameraOff' });
         const id = stateRef.current.sessionId;
         if (id) repo.endSession(id, now());
         dispatch({ type: 'nativeError', code: e.code, thermal: e.message === 'thermal' });
@@ -121,7 +125,8 @@ export function useReplaySession(deps: SessionDeps) {
             cameraLens.current = undefined;
             await deps.camera.stopSession();
           }
-          deps.camera.setGestureEnabled(deps.repo.getPrefs().gestureEnabled);
+          // Body-pose detection is heavy: it only runs once the game starts.
+          deps.camera.setGestureEnabled(false);
           await deps.camera.startSession({ lens, maxQuality: '1080p60' });
           cameraLens.current = lens;
           dispatch({ type: 'cameraOn' });

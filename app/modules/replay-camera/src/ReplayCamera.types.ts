@@ -34,6 +34,7 @@ export type GestureDebug = {
   missing?: string;
   minConf?: number;
   wristsUp?: boolean;
+  elbowsUp?: boolean;
   crossed?: boolean;
   /** Wrist distance in shoulder widths: positive = uncrossed, negative = crossed. */
   wristGap?: number;

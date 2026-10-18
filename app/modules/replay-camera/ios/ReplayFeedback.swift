@@ -34,11 +34,22 @@ final class ReplayFeedback {
       .first { $0.hasTorch && $0.isTorchModeSupported(.on) }
     guard let device else { return }
     queue.async {
-      for on in [true, false, true, false] {
-        guard (try? device.lockForConfiguration()) != nil else { return }
-        if on { try? device.setTorchModeOn(level: 1) } else { device.torchMode = .off }
-        device.unlockForConfiguration()
+      for on in [true, false, true] {
+        // A step that can't lock (the camera is being reconfigured) is skipped, never left half-done.
+        if (try? device.lockForConfiguration()) != nil {
+          if on { try? device.setTorchModeOn(level: 1) } else { device.torchMode = .off }
+          device.unlockForConfiguration()
+        }
         Thread.sleep(forTimeInterval: 0.12)
+      }
+      // Always end dark, even if an earlier step failed.
+      for _ in 0..<5 {
+        if (try? device.lockForConfiguration()) != nil {
+          device.torchMode = .off
+          device.unlockForConfiguration()
+          return
+        }
+        Thread.sleep(forTimeInterval: 0.05)
       }
     }
   }
