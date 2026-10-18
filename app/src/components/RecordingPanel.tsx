@@ -7,7 +7,7 @@ import { useSession } from '../session/SessionContext';
 import { colors, fonts } from '../theme/tokens';
 import { Button } from './Button';
 import { HoldButton } from './HoldButton';
-import { RemoteIcon, TapIcon, WatchIcon, XArmsIcon } from './icons';
+import { RemoteIcon, TapIcon, WatchIcon, ArmsUpIcon } from './icons';
 import { SavedOverlay } from './SavedOverlay';
 
 const OVERLAY_MS = 2000;
@@ -110,10 +110,10 @@ export function RecordingPanel() {
             <TapIcon color={colors.accent} size={28} />
             <View style={styles.hintText}>
               <Text style={styles.hint}>Toque na tela para salvar o lance</Text>
-              <Text style={styles.hintSub}>Últimos 60s prontos · ou faça o X · ou use o controle</Text>
+              <Text style={styles.hintSub}>Últimos 60s prontos · ou levante os braços · ou use o controle</Text>
             </View>
             <View style={styles.icons}>
-              <XArmsIcon color={colors.accent} size={20} />
+              <ArmsUpIcon color={colors.accent} size={20} />
               <RemoteIcon color={colors.accent} size={20} />
               <WatchIcon color={colors.muted} size={20} />
             </View>

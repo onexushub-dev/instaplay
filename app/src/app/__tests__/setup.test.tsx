@@ -100,7 +100,7 @@ test('choosing a sport stores it in prefs', async () => {
 test('the gesture tile toggles the gesture preference', async () => {
   session({});
   await render(<Setup />);
-  await fireEvent.press(screen.getByRole('button', { name: /Gesto X/ }));
+  await fireEvent.press(screen.getByRole('button', { name: /Braços para cima/ }));
   expect(repo.setPrefs).toHaveBeenCalledWith({ gestureEnabled: false });
 });
 

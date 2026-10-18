@@ -6,44 +6,45 @@ data class Point(val x: Double, val y: Double, val confidence: Double)
 data class Pose(
   val leftWrist: Point?,
   val rightWrist: Point?,
+  val leftElbow: Point?,
+  val rightElbow: Point?,
   val leftShoulder: Point?,
   val rightShoulder: Point?,
   val nose: Point?,
 )
 
-object XGesture {
-  /**
-   * Wrists closer than this (in shoulder widths, signed so crossed is negative) count as an X.
-   * At a distance the pose model can't tell crossed wrists from touching ones, so both count;
-   * a celebration "V" keeps the wrists wider than the shoulders (> 1).
-   */
-  const val MAX_WRIST_GAP = 0.6
+/**
+ * The save gesture: both arms raised straight up. Big body geometry, so it stays readable when the
+ * player is small in the frame; HoldTracker requires it held still, which filters blocks and celebrations.
+ */
+object ArmsUp {
+  /** How far above the nose both wrists must be, in shoulder widths. */
+  const val MIN_WRIST_RISE = 0.5
 
-  /**
-   * Both wrists above the nose and together or crossed. Measuring the wrist gap against the
-   * shoulders' order makes the check independent of camera mirroring.
-   */
-  fun isX(p: Pose, minConfidence: Double = 0.3): Boolean {
+  fun isUp(p: Pose, minConfidence: Double = 0.3): Boolean {
     val lw = p.leftWrist ?: return false
     val rw = p.rightWrist ?: return false
+    val le = p.leftElbow ?: return false
+    val re = p.rightElbow ?: return false
     val ls = p.leftShoulder ?: return false
     val rs = p.rightShoulder ?: return false
     val nose = p.nose ?: return false
-    if (listOf(lw, rw, ls, rs, nose).any { it.confidence < minConfidence }) return false
+    if (listOf(lw, rw, le, re, ls, rs, nose).any { it.confidence < minConfidence }) return false
 
-    val shoulders = ls.x - rs.x
-    if (shoulders == 0.0) return false
-    val wristsUp = lw.y < nose.y && rw.y < nose.y
-    val wristGap = (lw.x - rw.x) / shoulders
-    return wristsUp && wristGap < MAX_WRIST_GAP
+    val shoulderWidth = kotlin.math.abs(ls.x - rs.x)
+    if (shoulderWidth == 0.0) return false
+    val wristLine = nose.y - MIN_WRIST_RISE * shoulderWidth
+    val wristsHigh = lw.y < wristLine && rw.y < wristLine
+    val elbowsUp = le.y < ls.y && re.y < rs.y
+    return wristsHigh && elbowsUp
   }
 }
 
 /**
- * Fires once when the X is held for [holdSeconds]. After firing, the arms must drop
+ * Fires once when the gesture is held for [holdSeconds]. After firing, the arms must drop
  * and [cooldownSeconds] must pass before it can fire again.
  */
-class HoldTracker(private val holdSeconds: Double = 1.0, private val cooldownSeconds: Double = 3.0) {
+class HoldTracker(private val holdSeconds: Double = 1.5, private val cooldownSeconds: Double = 3.0) {
   private var holdStart: Double? = null
   private var cooldownUntil = Double.NEGATIVE_INFINITY
   private var awaitingRelease = false

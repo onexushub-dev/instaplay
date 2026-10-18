@@ -12,40 +12,42 @@ public struct Point: Equatable {
 }
 
 public struct Pose: Equatable {
-  public let leftWrist, rightWrist, leftShoulder, rightShoulder, nose: Point?
+  public let leftWrist, rightWrist, leftElbow, rightElbow, leftShoulder, rightShoulder, nose: Point?
 
-  public init(leftWrist: Point?, rightWrist: Point?, leftShoulder: Point?, rightShoulder: Point?, nose: Point?) {
+  public init(leftWrist: Point?, rightWrist: Point?, leftElbow: Point?, rightElbow: Point?,
+              leftShoulder: Point?, rightShoulder: Point?, nose: Point?) {
     self.leftWrist = leftWrist
     self.rightWrist = rightWrist
+    self.leftElbow = leftElbow
+    self.rightElbow = rightElbow
     self.leftShoulder = leftShoulder
     self.rightShoulder = rightShoulder
     self.nose = nose
   }
 }
 
-public enum XGesture {
-  /// Wrists closer than this (in shoulder widths, signed so crossed is negative) count as an X.
-  /// At a distance the pose model can't tell crossed wrists from touching ones, so both count;
-  /// a celebration "V" keeps the wrists wider than the shoulders (> 1).
-  public static let maxWristGap = 0.6
+/// The save gesture: both arms raised straight up. Big body geometry, so it stays readable when the
+/// player is small in the frame; HoldTracker requires it held still, which filters blocks and celebrations.
+public enum ArmsUp {
+  /// How far above the nose both wrists must be, in shoulder widths.
+  public static let minWristRise = 0.5
 
-  /// Both wrists above the nose and together or crossed. Measuring the wrist gap against the
-  /// shoulders' order makes the check independent of camera mirroring.
-  public static func isX(_ p: Pose, minConfidence: Double = 0.3) -> Bool {
-    guard let lw = p.leftWrist, let rw = p.rightWrist,
+  public static func isUp(_ p: Pose, minConfidence: Double = 0.3) -> Bool {
+    guard let lw = p.leftWrist, let rw = p.rightWrist, let le = p.leftElbow, let re = p.rightElbow,
           let ls = p.leftShoulder, let rs = p.rightShoulder, let nose = p.nose,
-          [lw, rw, ls, rs, nose].allSatisfy({ $0.confidence >= minConfidence })
+          [lw, rw, le, re, ls, rs, nose].allSatisfy({ $0.confidence >= minConfidence })
     else { return false }
 
-    let shoulders = ls.x - rs.x
-    guard shoulders != 0 else { return false }
-    let wristsUp = lw.y < nose.y && rw.y < nose.y
-    let wristGap = (lw.x - rw.x) / shoulders
-    return wristsUp && wristGap < maxWristGap
+    let shoulderWidth = abs(ls.x - rs.x)
+    guard shoulderWidth > 0 else { return false }
+    let wristLine = nose.y - minWristRise * shoulderWidth
+    let wristsHigh = lw.y < wristLine && rw.y < wristLine
+    let elbowsUp = le.y < ls.y && re.y < rs.y
+    return wristsHigh && elbowsUp
   }
 }
 
-/// Fires once when the X is held for `holdSeconds`. After firing, the arms must drop
+/// Fires once when the gesture is held for `holdSeconds`. After firing, the arms must drop
 /// and `cooldownSeconds` must pass before it can fire again.
 public final class HoldTracker {
   private let holdSeconds: Double
@@ -54,7 +56,7 @@ public final class HoldTracker {
   private var cooldownUntil = -Double.infinity
   private var awaitingRelease = false
 
-  public init(holdSeconds: Double = 1.0, cooldownSeconds: Double = 3.0) {
+  public init(holdSeconds: Double = 1.5, cooldownSeconds: Double = 3.0) {
     self.holdSeconds = holdSeconds
     self.cooldownSeconds = cooldownSeconds
   }

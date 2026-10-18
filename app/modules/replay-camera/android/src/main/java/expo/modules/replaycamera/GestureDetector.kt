@@ -16,12 +16,12 @@ import expo.modules.replaycamera.core.HoldTracker
 import expo.modules.replaycamera.core.ImageRotation
 import expo.modules.replaycamera.core.Point
 import expo.modules.replaycamera.core.Pose
-import expo.modules.replaycamera.core.XGesture
+import expo.modules.replaycamera.core.ArmsUp
 import java.util.concurrent.atomic.AtomicBoolean
 import com.google.mlkit.vision.pose.Pose as MlPose
 
 /**
- * Runs ML Kit pose detection on ~5 frames per second and fires [onGesture] when the X is held.
+ * Runs ML Kit pose detection on ~5 frames per second and fires [onGesture] when both arms are held up.
  * Frames come from a small ImageReader on the capture session, or, when the device can't add
  * that third stream, from bitmaps of the preview (see [startBitmapSampling]).
  * Frame rotation follows the phone's physical position (the UI is portrait-locked), read from the accelerometer.
@@ -101,7 +101,7 @@ class GestureDetector(context: Context, private val onGesture: () -> Unit) {
   private fun detect(image: InputImage, nowMs: Long, release: () -> Unit) {
     detector.process(image)
       .addOnSuccessListener { pose ->
-        if (tracker.update(XGesture.isX(toPose(pose)), nowMs / 1000.0)) onGesture()
+        if (tracker.update(ArmsUp.isUp(toPose(pose)), nowMs / 1000.0)) onGesture()
       }
       .addOnCompleteListener {
         release()
@@ -109,7 +109,7 @@ class GestureDetector(context: Context, private val onGesture: () -> Unit) {
       }
   }
 
-  /** ML Kit positions are pixels in the upright image, y growing downward, as XGesture expects. */
+  /** ML Kit positions are pixels in the upright image, y growing downward, as ArmsUp expects. */
   private fun toPose(pose: MlPose): Pose {
     fun point(type: Int): Point? = pose.getPoseLandmark(type)?.let {
       Point(it.position.x.toDouble(), it.position.y.toDouble(), it.inFrameLikelihood.toDouble())
@@ -117,6 +117,8 @@ class GestureDetector(context: Context, private val onGesture: () -> Unit) {
     return Pose(
       leftWrist = point(PoseLandmark.LEFT_WRIST),
       rightWrist = point(PoseLandmark.RIGHT_WRIST),
+      leftElbow = point(PoseLandmark.LEFT_ELBOW),
+      rightElbow = point(PoseLandmark.RIGHT_ELBOW),
       leftShoulder = point(PoseLandmark.LEFT_SHOULDER),
       rightShoulder = point(PoseLandmark.RIGHT_SHOULDER),
       nose = point(PoseLandmark.NOSE),

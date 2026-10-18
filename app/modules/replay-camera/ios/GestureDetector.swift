@@ -1,17 +1,20 @@
 import AVFoundation
+import CoreImage
 import CoreMotion
 import Vision
 
-/// Samples camera frames at ~5 fps, runs body-pose detection and fires `onGesture` when the X is held.
+/// Samples camera frames at ~4 fps and fires `onGesture` when a player holds both arms up.
 /// Frame orientation follows the phone's physical position (accelerometer), not the UI, which is portrait-locked.
+///
+/// Far from the phone a player is only ~100 px tall, too small for body pose on the whole frame. So each
+/// sample first finds the people (works at a distance), then runs pose on an enlarged crop around each one.
 final class GestureDetector {
-  static let sampleInterval = 0.2
+  static let sampleInterval = 0.25
+  static let maxPeople = 4
 
   var onGesture: (() -> Void)?
   /// Diagnostic: about once a second, what the detector saw (Etapa 0 spike only).
   var onDebug: (([String: Any]) -> Void)?
-  private var samples = 0
-  private var lastDebug = -Double.infinity
 
   private let queue = DispatchQueue(label: "replay.gesture", qos: .userInitiated)
   private let motion = CMMotionManager()
@@ -21,6 +24,8 @@ final class GestureDetector {
   private var busy = false
   private var lastSample = -Double.infinity
   private var upright: DeviceUpright = .landscapeLeft
+  private var samples = 0
+  private var lastDebug = -Double.infinity
 
   var enabled: Bool {
     get { lock.withLock { _enabled } }
@@ -33,6 +38,16 @@ final class GestureDetector {
   }
 
   func stop() { motion.stopAccelerometerUpdates() }
+
+  /// The phone's physical position from the latest accelerometer reading; the last known one while it lies flat.
+  func currentUpright() -> DeviceUpright {
+    lock.withLock {
+      if let g = motion.accelerometerData?.acceleration, let now = DeviceUpright.from(gravityX: g.x, gravityY: g.y) {
+        upright = now
+      }
+      return upright
+    }
+  }
 
   /// Call from the capture queue with every video frame; most are skipped.
   func consider(_ buffer: CMSampleBuffer) {
@@ -47,61 +62,71 @@ final class GestureDetector {
       if take { lock.withLock { busy = false } }
       return
     }
-    let orientation = Self.orientation(for: currentUpright())
+    let image = CIImage(cvPixelBuffer: pixels).oriented(Self.orientation(for: currentUpright()))
     queue.async {
       defer { self.lock.withLock { self.busy = false } }
-      let request = VNDetectHumanBodyPoseRequest()
-      try? VNImageRequestHandler(cvPixelBuffer: pixels, orientation: orientation).perform([request])
-      let poses = (request.results ?? []).map(Self.pose(from:))
-      let isX = poses.contains { XGesture.isX($0) }
-      if self.tracker.update(isX: isX, at: t) { self.onGesture?() }
+      let poses = Self.poses(in: image)
+      let isUp = poses.contains { ArmsUp.isUp($0) }
+      if self.tracker.update(isX: isUp, at: t) { self.onGesture?() }
       self.samples += 1
       if t - self.lastDebug >= 1 {
         self.lastDebug = t
-        self.onDebug?(Self.debugInfo(poses: poses, isX: isX, orientation: orientation, samples: self.samples))
+        self.onDebug?(Self.debugInfo(poses: poses, isUp: isUp, samples: self.samples))
         self.samples = 0
       }
     }
   }
 
-  /// The phone's physical position from the latest accelerometer reading; the last known one while it lies flat.
-  func currentUpright() -> DeviceUpright {
-    lock.withLock {
-      if let g = motion.accelerometerData?.acceleration, let now = DeviceUpright.from(gravityX: g.x, gravityY: g.y) {
-        upright = now
-      }
-      return upright
+  /// Poses in pixel units (y down) of their own crop: ArmsUp only compares lengths within one body.
+  private static func poses(in image: CIImage) -> [Pose] {
+    let people = VNDetectHumanRectanglesRequest()
+    people.upperBodyOnly = false
+    try? VNImageRequestHandler(ciImage: image).perform([people])
+    let boxes = (people.results ?? [])
+      .map(\.boundingBox)
+      .sorted { $0.width * $0.height > $1.width * $1.height }
+      .prefix(maxPeople)
+
+    // Nobody found (e.g. very close, partly out of frame): fall back to the whole frame.
+    let crops = boxes.isEmpty ? [image.extent] : boxes.map { PersonCrop.rect(person: $0, in: image.extent) }
+    return crops.compactMap { rect in
+      let crop = image.cropped(to: rect).transformed(by: CGAffineTransform(translationX: -rect.minX, y: -rect.minY))
+      let request = VNDetectHumanBodyPoseRequest()
+      try? VNImageRequestHandler(ciImage: crop).perform([request])
+      return request.results?.first.map { pose(from: $0, size: rect.size) }
     }
   }
 
-  private static func debugInfo(poses: [Pose], isX: Bool, orientation: CGImagePropertyOrientation, samples: Int) -> [String: Any] {
-    var info: [String: Any] = ["people": poses.count, "isX": isX, "orientation": Int(orientation.rawValue), "samples": samples]
-    guard let p = poses.first else { return info }
-    let points: [(String, Point?)] = [("lw", p.leftWrist), ("rw", p.rightWrist), ("ls", p.leftShoulder), ("rs", p.rightShoulder), ("nose", p.nose)]
-    info["missing"] = points.filter { $0.1 == nil }.map(\.0).joined(separator: ",")
-    info["minConf"] = points.compactMap { $0.1?.confidence }.min() ?? 0
-    if let lw = p.leftWrist, let rw = p.rightWrist, let nose = p.nose {
-      info["wristsUp"] = lw.y < nose.y && rw.y < nose.y
-    }
-    if let lw = p.leftWrist, let rw = p.rightWrist, let ls = p.leftShoulder, let rs = p.rightShoulder {
-      info["crossed"] = (lw.x - rw.x).sign != (ls.x - rs.x).sign
-      let shoulders = abs(ls.x - rs.x)
-      if shoulders > 0 {
-        // Signed: positive = wrists on their own side (uncrossed), negative = crossed; 1.0 = one shoulder width apart.
-        info["wristGap"] = ((lw.x - rw.x) / (ls.x - rs.x) * 100).rounded() / 100
-      }
-    }
-    return info
-  }
-
-  /// Vision points are normalized with y growing upward; XGesture expects y growing downward.
-  private static func pose(from observation: VNHumanBodyPoseObservation) -> Pose {
+  private static func pose(from observation: VNHumanBodyPoseObservation, size: CGSize) -> Pose {
     func point(_ name: VNHumanBodyPoseObservation.JointName) -> Point? {
       guard let p = try? observation.recognizedPoint(name) else { return nil }
-      return Point(x: Double(p.location.x), y: 1 - Double(p.location.y), confidence: Double(p.confidence))
+      return Point(x: Double(p.location.x * size.width), y: Double((1 - p.location.y) * size.height),
+                   confidence: Double(p.confidence))
     }
     return Pose(leftWrist: point(.leftWrist), rightWrist: point(.rightWrist),
+                leftElbow: point(.leftElbow), rightElbow: point(.rightElbow),
                 leftShoulder: point(.leftShoulder), rightShoulder: point(.rightShoulder), nose: point(.nose))
+  }
+
+  private static func debugInfo(poses: [Pose], isUp: Bool, samples: Int) -> [String: Any] {
+    var info: [String: Any] = ["people": poses.count, "isX": isUp, "orientation": 0, "samples": samples]
+    guard let p = poses.first else { return info }
+    let points: [(String, Point?)] = [("lw", p.leftWrist), ("rw", p.rightWrist), ("le", p.leftElbow),
+                                      ("re", p.rightElbow), ("ls", p.leftShoulder), ("rs", p.rightShoulder),
+                                      ("nose", p.nose)]
+    info["missing"] = points.filter { $0.1 == nil }.map(\.0).joined(separator: ",")
+    info["minConf"] = points.compactMap { $0.1?.confidence }.min() ?? 0
+    if let lw = p.leftWrist, let rw = p.rightWrist, let nose = p.nose, let ls = p.leftShoulder, let rs = p.rightShoulder {
+      let width = abs(ls.x - rs.x)
+      if width > 0 {
+        // How far the lower wrist is above the nose, in shoulder widths (needs > 0.5).
+        info["wristGap"] = ((nose.y - max(lw.y, rw.y)) / width * 100).rounded() / 100
+      }
+    }
+    if let le = p.leftElbow, let re = p.rightElbow, let ls = p.leftShoulder, let rs = p.rightShoulder {
+      info["wristsUp"] = le.y < ls.y && re.y < rs.y
+    }
+    return info
   }
 
   /// Back-camera buffers are natively upright with the home button on the right (landscapeLeft).

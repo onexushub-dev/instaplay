@@ -53,7 +53,7 @@ test('a saved lance shows the overlay with its number and source', async () => {
   session({ clipCount: 3, lastSaved: { clipId: 'c3', number: 3, source: 'gesture', at: Date.now() } });
   await render(<Recording />);
   expect(screen.getByText('LANCE #3 SALVO')).toBeTruthy();
-  expect(screen.getByText('via Gesto X · últimos 30s')).toBeTruthy();
+  expect(screen.getByText('via Braços para cima · últimos 30s')).toBeTruthy();
 });
 
 test('Desfazer undoes the last lance', async () => {

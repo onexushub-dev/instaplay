@@ -5,13 +5,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { requestPermissions } from '../../modules/replay-camera';
 import { Button } from '../components/Button';
-import { PhoneIcon, ShareIcon, ShieldIcon, XArmsIcon } from '../components/icons';
+import { PhoneIcon, ShareIcon, ShieldIcon, ArmsUpIcon } from '../components/icons';
 import { repo } from '../data/mmkv';
 import { colors, fonts } from '../theme/tokens';
 
 const STEPS = [
   { Icon: PhoneIcon, text: 'Prenda o celular na grade ou na areia, atrás da linha de fundo.' },
-  { Icon: XArmsIcon, text: 'Fez um lance bom? Braços em X, toque no relógio ou no controle.' },
+  { Icon: ArmsUpIcon, text: 'Fez um lance bom? Braços para cima, toque no relógio ou no controle.' },
   { Icon: ShareIcon, text: 'Poste direto no Story do Instagram.' },
 ];
 
