@@ -5,6 +5,7 @@ import Setup from '../setup';
 jest.mock('../../../modules/replay-camera', () => ({ ReplayCameraView: () => null }));
 jest.mock('../../triggers/useVolumeRemote', () => ({ useVolumeRemote: jest.fn() }));
 jest.mock('expo-router', () => ({ router: { replace: jest.fn(), back: jest.fn() } }));
+jest.mock('expo-keep-awake', () => ({ useKeepAwake: jest.fn() }));
 jest.mock('../../data/mmkv', () => {
   let prefs = { onboardingDone: true, sport: 'beachTennis', lens: 'ultraWide', gestureEnabled: true };
   return {
@@ -27,6 +28,12 @@ function session(state: object) {
 }
 
 beforeEach(() => jest.clearAllMocks());
+
+test('keeps the screen awake while the phone is being positioned', async () => {
+  session({});
+  await render(<Setup />);
+  expect(jest.requireMock('expo-keep-awake').useKeepAwake).toHaveBeenCalled();
+});
 
 test('choosing a sport stores it in prefs', async () => {
   session({});

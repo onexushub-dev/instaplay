@@ -1,3 +1,4 @@
+import { useKeepAwake } from 'expo-keep-awake';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
@@ -29,6 +30,7 @@ const START_ERRORS: Partial<Record<ReplayErrorCode, string>> = {
 };
 
 export default function Setup() {
+  useKeepAwake();
   const session = useSession();
   const [prefs, setPrefsState] = useState<Prefs>(() => repo.getPrefs());
   const [remoteWorks, setRemoteWorks] = useState(false);

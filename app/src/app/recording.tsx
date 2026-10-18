@@ -1,3 +1,4 @@
+import { useKeepAwake } from 'expo-keep-awake';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Alert, BackHandler, Pressable, StyleSheet, Text, View } from 'react-native';
@@ -19,6 +20,8 @@ function clock(ms: number): string {
 }
 
 export default function Recording() {
+  // The phone sits untouched on the fence: auto-lock would background the app and stop recording.
+  useKeepAwake();
   const { state, trigger, undoLast, stop } = useSession();
   const [now, setNow] = useState(() => Date.now());
   const [dismissed, setDismissed] = useState<string>();

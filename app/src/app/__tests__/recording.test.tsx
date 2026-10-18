@@ -4,6 +4,7 @@ import Recording from '../recording';
 
 jest.mock('../../../modules/replay-camera', () => ({ ReplayCameraView: () => null }));
 jest.mock('expo-router', () => ({ router: { replace: jest.fn() } }));
+jest.mock('expo-keep-awake', () => ({ useKeepAwake: jest.fn() }));
 jest.mock('../../session/SessionContext', () => ({ useSession: jest.fn() }));
 
 const { useSession } = jest.requireMock('../../session/SessionContext');
@@ -30,6 +31,12 @@ function session(state: object) {
 }
 
 beforeEach(() => jest.clearAllMocks());
+
+test('keeps the screen awake for the whole game', async () => {
+  session({});
+  await render(<Recording />);
+  expect(jest.requireMock('expo-keep-awake').useKeepAwake).toHaveBeenCalled();
+});
 
 test('tapping the screen saves a lance', async () => {
   const s = session({});
