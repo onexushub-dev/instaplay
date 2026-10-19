@@ -5,6 +5,7 @@ private let accent = Color(red: 0.839, green: 0.949, blue: 0.247) // #D6F23F
 
 struct ContentView: View {
   @StateObject private var link = WatchLink()
+  @Environment(\.scenePhase) private var scenePhase
 
   var body: some View {
     Group {
@@ -19,6 +20,14 @@ struct ContentView: View {
       case let .recording(clipCount, startedAt):
         VStack(spacing: 6) {
           HStack {
+            Button {
+              link.setPreview(!link.previewOn)
+            } label: {
+              Image(systemName: link.previewOn ? "camera.fill" : "camera")
+            }
+            .buttonStyle(.plain)
+            .frame(width: 32, height: 32)
+            .accessibilityLabel(link.previewOn ? "Fechar câmera" : "Ver câmera")
             if let startedAt {
               TimelineView(.periodic(from: .now, by: 1)) { context in
                 Text(WatchModel.elapsed(since: startedAt, now: context.date)).monospacedDigit()
@@ -28,12 +37,26 @@ struct ContentView: View {
             Text(WatchModel.countLabel(clipCount)).foregroundStyle(accent)
           }
           .font(.system(.footnote, design: .rounded).weight(.bold))
+          if link.previewOn {
+            // What the phone's camera sees, to check the framing from the court.
+            Group {
+              if let picture = link.picture {
+                Image(uiImage: picture).resizable().scaledToFit()
+              } else {
+                ProgressView()
+              }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+          }
           SaveButton(enabled: true, action: link.sendSave)
         }
       }
     }
     .padding(.horizontal, 6)
     .background(ground)
+    // A watch screen that sleeps or an app that leaves the front stops asking for pictures.
+    .onChange(of: scenePhase) { _, phase in if phase != .active { link.setPreview(false) } }
   }
 }
 

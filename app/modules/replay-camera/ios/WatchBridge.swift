@@ -16,6 +16,16 @@ final class WatchBridge: NSObject, WCSessionDelegate {
     return session.isWatchAppInstalled ? "ready" : "notInstalled"
   }
 
+  /// The picture stream for the watch's camera view; the watch asks for it with `preview` messages.
+  var preview: WatchPreview? {
+    didSet {
+      preview?.onFrame = { [weak self] data in
+        guard let session = self?.session, session.isReachable else { return }
+        session.sendMessageData(data, replyHandler: nil, errorHandler: nil)
+      }
+    }
+  }
+
   func activate() {
     guard let session, session.delegate == nil else { return }
     session.delegate = self
@@ -46,7 +56,10 @@ final class WatchBridge: NSObject, WCSessionDelegate {
   func sessionDidDeactivate(_ session: WCSession) { session.activate() }
 
   func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
-    guard case .save? = WatchMessage.decode(message) else { return }
-    emit?("onTrigger", ["source": "watch", "at": Date().timeIntervalSince1970 * 1000])
+    switch WatchMessage.decode(message) {
+    case .save?: emit?("onTrigger", ["source": "watch", "at": Date().timeIntervalSince1970 * 1000])
+    case let .preview(on)?: preview?.ask(on)
+    default: break
+    }
   }
 }

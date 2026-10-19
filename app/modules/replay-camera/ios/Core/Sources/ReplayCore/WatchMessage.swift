@@ -9,6 +9,9 @@ public enum WatchMessage: Equatable {
   case state(recording: Bool, clipCount: Int, startedAt: Double?)
   /// Phone → watch: how the last save ended.
   case result(saved: Bool)
+  /// Watch → phone: show (true) or stop (false) the camera view. Sent again every second while it is open.
+  /// The pictures themselves travel as raw data (`sendMessageData`), not as messages.
+  case preview(on: Bool)
 
   public var payload: [String: Any] {
     switch self {
@@ -20,12 +23,18 @@ public enum WatchMessage: Equatable {
       return out
     case let .result(saved):
       return ["result": saved ? "saved" : "failed"]
+    case let .preview(on):
+      return ["preview": on]
     }
   }
 
   /// nil for anything unknown or malformed: a stray message must never crash or save a clip.
   public static func decode(_ payload: [String: Any]) -> WatchMessage? {
     if let cmd = payload["cmd"] as? String { return cmd == "save" ? .save : nil }
+    if payload["preview"] != nil {
+      guard let on = payload["preview"] as? Bool else { return nil }
+      return .preview(on: on)
+    }
     if let result = payload["result"] as? String {
       switch result {
       case "saved": return .result(saved: true)

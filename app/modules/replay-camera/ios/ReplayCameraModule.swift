@@ -59,6 +59,7 @@ public class ReplayCameraModule: Module {
     OnCreate {
       self.engine.emit = { [weak self] name, body in self?.sendEvent(name, body) }
       WatchBridge.shared.emit = { [weak self] name, body in self?.sendEvent(name, body) }
+      WatchBridge.shared.preview = self.engine.watchPreview
       WatchBridge.shared.activate()
     }
 

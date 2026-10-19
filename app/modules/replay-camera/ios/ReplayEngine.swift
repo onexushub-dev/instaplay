@@ -37,6 +37,7 @@ final class ReplayEngine {
   private var degraded = false
   private var observers: [NSObjectProtocol] = []
   private(set) var running = false
+  let watchPreview = WatchPreview()
 
   enum Failure: Error { case lowStorage, permission, unavailable(Error), noSession, encoder(Error?) }
 
@@ -44,6 +45,7 @@ final class ReplayEngine {
     capture.onVideo = { [weak self] buffer in
       self?.writer?.appendVideo(buffer)
       self?.gesture.consider(buffer)
+      if let self { self.watchPreview.offer(buffer, orientation: GestureDetector.orientation(for: self.gesture.currentUpright())) }
     }
     capture.onAudio = { [weak self] buffer in
       self?.writer?.appendAudio(buffer)

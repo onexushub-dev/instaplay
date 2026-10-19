@@ -24,5 +24,10 @@ enum WatchModel {
     return h > 0 ? String(format: "%d:%02d:%02d", h, m, s) : String(format: "%02d:%02d", m, s)
   }
 
+  /// The watch keeps asking for pictures only while its view is open, the phone is reachable and a recording runs.
+  static func previewWanted(viewOn: Bool, reachable: Bool, recording: Bool) -> Bool {
+    viewOn && reachable && recording
+  }
+
   static func countLabel(_ count: Int) -> String { count == 1 ? "1 clipe" : "\(count) clipes" }
 }
