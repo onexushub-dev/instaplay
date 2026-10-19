@@ -35,7 +35,7 @@ export default function Onboarding() {
       </View>
 
       <Text style={styles.title} accessibilityRole="header">
-        GRAVE O JOGO INTEIRO.{'\n'}
+        GRAVE TUDO.{'\n'}
         <Text style={{ color: colors.accent }}>GUARDE SÓ O MELHOR.</Text>
       </Text>
 

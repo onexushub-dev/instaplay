@@ -25,7 +25,7 @@ export default function Games() {
         </Pressable>
       </View>
       <Text style={styles.title} accessibilityRole="header">
-        MEUS JOGOS
+        MINHAS GRAVAÇÕES
       </Text>
       <FlatList
         data={games}
