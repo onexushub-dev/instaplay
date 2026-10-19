@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
 
 import Setup from '../setup';
 
@@ -10,6 +10,8 @@ jest.mock('../../../modules/replay-camera', () => {
     requestSpeechPermission: jest.fn(async () => true),
     isVoiceSupported: jest.fn(() => true),
     getSpeechPermission: jest.fn(() => 'granted'),
+    getWatchStatus: jest.fn(() => 'unsupported'),
+    addReplayListener: jest.fn(() => ({ remove: jest.fn() })),
     ReplayCameraView: (props: { style?: unknown }) => {
       mounts.style = props.style;
       useEffect(() => {
@@ -344,4 +346,46 @@ test('the positioning guide fits the camera area above the sheet', async () => {
   expect(StyleSheet.flatten(screen.getByTestId('guide-area', { includeHiddenElements: true }).props.style).bottom).toBe(
     210,
   );
+});
+
+const camera = () => jest.requireMock('../../../modules/replay-camera');
+
+test.each([
+  ['unsupported', 'Sem relógio pareado'],
+  ['notInstalled', 'Instale o app no relógio'],
+  ['ready', 'Pronto'],
+])('the Relógio tile says %s as "%s"', async (status, text) => {
+  camera().getWatchStatus.mockReturnValueOnce(status);
+  session({});
+  await render(<Setup />);
+  await openSettings();
+  expect(screen.getByLabelText(`Relógio, ${text}`)).toBeTruthy();
+});
+
+test('a watch status event updates the tile', async () => {
+  session({});
+  await render(<Setup />);
+  await openSettings();
+  expect(screen.getByLabelText('Relógio, Sem relógio pareado')).toBeTruthy();
+  const listener = camera().addReplayListener.mock.calls.find((c: any[]) => c[0] === 'onWatchStatus')[1];
+  await act(async () => listener({ status: 'ready' }));
+  expect(screen.getByLabelText('Relógio, Pronto')).toBeTruthy();
+});
+
+test('the collapsed summary mentions a ready watch, and only then', async () => {
+  session({});
+  const view = await render(<Setup />);
+  expect(screen.getByRole('button', { name: /^Ajustes:/ }).props.accessibilityLabel).not.toMatch(/relógio/);
+  const listener = camera().addReplayListener.mock.calls.find((c: any[]) => c[0] === 'onWatchStatus')[1];
+  await act(async () => listener({ status: 'ready' }));
+  expect(screen.getByRole('button', { name: /relógio pronto$/ })).toBeTruthy();
+  view.unmount();
+});
+
+test('without a watch the other triggers behave as before', async () => {
+  session({});
+  await render(<Setup />);
+  await openSettings();
+  expect(screen.getByLabelText('Braços para cima, Ativo')).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Começar a gravar' })).toBeEnabled();
 });

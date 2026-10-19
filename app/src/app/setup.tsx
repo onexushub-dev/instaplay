@@ -5,7 +5,9 @@ import { ActivityIndicator, PanResponder, Pressable, StyleSheet, Text, View } fr
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
+  addReplayListener,
   getSpeechPermission,
+  getWatchStatus,
   isVoiceSupported,
   ReplayCameraView,
   requestSpeechPermission,
@@ -58,6 +60,14 @@ export default function Setup() {
   const [speech, setSpeech] = useState(() => getSpeechPermission());
   const speechGranted = speech === 'granted';
   const mode = modeById(modeId);
+  // The watch link: paired watch with the app → ready. Informational: the watch itself starts a save.
+  const [watch, setWatch] = useState(() => getWatchStatus());
+  useEffect(() => {
+    const sub = addReplayListener('onWatchStatus', (e) => setWatch(e.status));
+    return () => sub.remove();
+  }, []);
+  const watchStatus =
+    watch === 'ready' ? 'Pronto' : watch === 'notInstalled' ? 'Instale o app no relógio' : 'Sem relógio pareado';
   // Voice counts as on only when this mode wants it and the phone may listen.
   const voiceOn = voiceSupported && settings.voiceEnabled && speechGranted;
   const voiceStatus = !voiceSupported
@@ -86,6 +96,7 @@ export default function Setup() {
     `voz ${voiceOn ? 'ligada' : 'desligada'}`,
     `braços para cima ${settings.gestureEnabled ? 'ligado' : 'desligado'}`,
     `controle ${remoteWorks ? 'funcionando' : 'não testado'}`,
+    ...(watch === 'ready' ? ['relógio pronto'] : []),
   ].join(', ')}`;
 
   const { phase, error, camera } = session.state;
@@ -199,6 +210,7 @@ export default function Setup() {
           <MicIcon color={iconColor(voiceOn)} />
           <ArmsUpIcon color={iconColor(settings.gestureEnabled)} size={20} />
           <RemoteIcon color={iconColor(remoteWorks)} />
+          <WatchIcon color={iconColor(watch === 'ready')} />
         </View>
       </Pressable>
     );
@@ -242,7 +254,13 @@ export default function Setup() {
               status={remoteWorks ? 'Funcionando' : 'Aperte para testar'}
               active={remoteWorks}
             />
-            <TriggerTile icon={<WatchIcon />} title="Relógio" status="Em breve" disabled />
+            <TriggerTile
+              icon={<WatchIcon />}
+              title="Relógio"
+              status={watchStatus}
+              active={watch === 'ready'}
+              disabled={watch === 'unsupported'}
+            />
           </View>
         </View>
 
