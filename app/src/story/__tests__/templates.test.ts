@@ -18,3 +18,17 @@ test('minimal', () => {
 test('arena', () => {
   expect(storyTexts('arena', { sport: 'outro', startedAt: at })).toEqual({ top: ['SUA ARENA'], bottom: ['OUTRO', '17 OUT'] });
 });
+
+test('treino', () => {
+  expect(storyTexts('treino', { sport: 'musculacao', startedAt: at, arena: 'Supino · 100 kg' })).toEqual({
+    top: ['MUSCULAÇÃO', '17 OUT'],
+    bottom: ['TREINO', 'Supino · 100 kg'],
+  });
+});
+
+test('recorde', () => {
+  expect(storyTexts('recorde', { sport: 'crossfit', startedAt: at, arena: 'Clean · 80 kg' })).toEqual({
+    top: ['CROSSFIT'],
+    bottom: ['RECORDE PESSOAL', 'Clean · 80 kg'],
+  });
+});

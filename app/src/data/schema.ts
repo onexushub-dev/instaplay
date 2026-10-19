@@ -57,6 +57,8 @@ export type Prefs = {
   /** The player's changes to a mode's defaults, kept per mode. */
   modeSettings?: Partial<Record<ModeId, Partial<ModeSettings>>>;
   arenaName?: string;
+  /** Gym Story field: exercise and load, e.g. "Supino · 100 kg". */
+  workoutNote?: string;
 };
 
 export const DEFAULT_PREFS: Prefs = {

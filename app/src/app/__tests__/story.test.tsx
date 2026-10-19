@@ -24,7 +24,7 @@ jest.mock('../../data/mmkv', () => {
     repo: {
       getClip: () => ({ id: 'c1', sessionId: 's1', createdAt: 0, source: 'screen', path: '/c1.mp4', durationMs: 60000,
         trim: { startMs: 30000, endMs: 60000 }, edit: { slowmo: true, muted: false } }),
-      getSession: () => ({ id: 's1', sport: 'beachTennis', startedAt: new Date(2026, 9, 17, 19, 40).getTime() }),
+      getSession: jest.fn(() => ({ id: 's1', sport: 'beachTennis', startedAt: new Date(2026, 9, 17, 19, 40).getTime() })),
       getPrefs: () => prefs,
       setPrefs: jest.fn((p: object) => (prefs = { ...prefs, ...p })),
     },
@@ -116,4 +116,23 @@ test('an arena typed without closing the keyboard is used and saved', async () =
   await fireEvent.changeText(screen.getByLabelText('Nome da arena (opcional)'), 'Serrinha');
   await act(async () => fireEvent.press(screen.getByRole('button', { name: 'Salvar na galeria' })));
   expect(repo.setPrefs).toHaveBeenCalledWith({ arenaName: 'Serrinha' });
+});
+
+test('a gym clip offers Treino, Recorde and Minimal with the exercise field', async () => {
+  repo.getSession.mockReturnValue({ id: 's1', sport: 'musculacao', startedAt: 0 });
+  await render(<StoryScreen />);
+  await act(async () => {});
+  for (const name of ['Treino', 'Recorde', 'Minimal']) expect(screen.getByRole('button', { name })).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'Placar' })).toBeNull();
+  await fireEvent.changeText(screen.getByLabelText('Exercício e carga (opcional)'), 'Supino · 100 kg');
+  await fireEvent(screen.getByLabelText('Exercício e carga (opcional)'), 'blur');
+  expect(repo.setPrefs).toHaveBeenCalledWith({ workoutNote: 'Supino · 100 kg' });
+  repo.getSession.mockReturnValue({ id: 's1', sport: 'beachTennis', startedAt: 0 });
+});
+
+test('a court clip still offers Placar, Minimal and Arena', async () => {
+  await render(<StoryScreen />);
+  await act(async () => {});
+  for (const name of ['Placar', 'Minimal', 'Arena']) expect(screen.getByRole('button', { name })).toBeTruthy();
+  expect(screen.getByLabelText('Nome da arena (opcional)')).toBeTruthy();
 });

@@ -19,7 +19,8 @@ import { useEntitlement } from '../../story/entitlement';
 import { exportOptions } from '../../story/exportOptions';
 import { storyLayout } from '../../story/layout';
 import { StoryOverlay } from '../../story/StoryOverlay';
-import { TEMPLATES, storyTexts } from '../../story/templates';
+import { modeById } from '../../modes/registry';
+import { storyTexts, TEMPLATE_LABEL } from '../../story/templates';
 import { colors, fonts } from '../../theme/tokens';
 
 const PREPARE_FAILED = 'Não foi possível preparar o vídeo. Tente de novo.';
@@ -59,7 +60,11 @@ export default function StoryScreen() {
   const session = useMemo(() => (clip ? repo.getSession(clip.sessionId) : undefined), [clip]);
   const { tier } = useEntitlement();
   const [prefs, setPrefsState] = useState<Prefs>(() => repo.getPrefs());
-  const [arena, setArena] = useState(prefs.arenaName ?? '');
+  const mode = modeById(session?.sport ?? 'beachTennis');
+  // Court Stories name the arena; gym Stories name the exercise and load.
+  const fieldKey = mode.group === 'academia' ? 'workoutNote' : 'arenaName';
+  const [arena, setArena] = useState(prefs[fieldKey] ?? '');
+  const template = mode.storyTemplates.includes(prefs.storyTemplate) ? prefs.storyTemplate : mode.storyTemplates[0];
   const [videoSize, setVideoSize] = useState({ width: 1920, height: 1080 });
   // Exports wait for the real shape: a portrait clip exported with the landscape default gets wrong bands.
   const [sizeKnown, setSizeKnown] = useState(false);
@@ -76,7 +81,7 @@ export default function StoryScreen() {
   const layout = storyLayout(videoSize, frame);
   // The arena as typed (not only once saved), so the preview and the export never lag behind the field.
   const texts = session
-    ? storyTexts(prefs.storyTemplate, { sport: session.sport, startedAt: session.startedAt, arena: arena.trim() || undefined, gameName: session.name })
+    ? storyTexts(template, { sport: session.sport, startedAt: session.startedAt, arena: arena.trim() || undefined, gameName: session.name })
     : { top: [], bottom: [] };
 
   // The real aspect ratio (rotation applied) comes from the clip's thumbnail.
@@ -123,7 +128,7 @@ export default function StoryScreen() {
 
   /** One export per look (cut, edits, template, arena), reused by all three buttons. */
   async function ensureExport(): Promise<string> {
-    const key = JSON.stringify([options, texts, prefs.storyTemplate, layout]);
+    const key = JSON.stringify([options, texts, template, layout]);
     if (exported.current?.key === key) return exported.current.path;
     const overlayPngPath = await captureOverlay(captureRefView);
     const result = await exportClip({ clipPath: clip!.path, ...options!, overlayPngPath, background: colors.ground });
@@ -141,7 +146,7 @@ export default function StoryScreen() {
     if (exporting.current || !clip || !sizeKnown) return;
     exporting.current = true;
     const typed = arena.trim() || undefined;
-    if (typed !== prefs.arenaName) update({ arenaName: typed });
+    if (typed !== prefs[fieldKey]) update({ [fieldKey]: typed });
     setBusy(true);
     setNotice(undefined);
     try {
@@ -209,7 +214,7 @@ export default function StoryScreen() {
           <VideoView player={player} contentFit="contain" nativeControls={false} style={StyleSheet.absoluteFill} />
         </View>
         <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-          <StoryOverlay frame={frame} layout={layout} texts={texts} template={prefs.storyTemplate} watermark={options.watermark} scale={scale} />
+          <StoryOverlay frame={frame} layout={layout} texts={texts} template={template} watermark={options.watermark} scale={scale} />
         </View>
       </View>
 
@@ -220,25 +225,25 @@ export default function StoryScreen() {
           frame={frame}
           layout={layout}
           texts={texts}
-          template={prefs.storyTemplate}
+          template={template}
           watermark={options.watermark}
           scale={1 / pr}
         />
       </View>
 
       <View style={styles.chips}>
-        {TEMPLATES.map((t) => (
-          <Chip key={t.id} label={t.label} selected={prefs.storyTemplate === t.id} onPress={() => update({ storyTemplate: t.id })} />
+        {mode.storyTemplates.map((id) => (
+          <Chip key={id} label={TEMPLATE_LABEL[id]} selected={template === id} onPress={() => update({ storyTemplate: id })} />
         ))}
       </View>
       <TextInput
-        accessibilityLabel="Nome da arena (opcional)"
-        placeholder="Nome da arena (opcional)"
+        accessibilityLabel={mode.storyField}
+        placeholder={mode.storyField}
         placeholderTextColor={colors.muted}
         value={arena}
         onChangeText={setArena}
-        onBlur={() => update({ arenaName: arena.trim() || undefined })}
-        onSubmitEditing={() => update({ arenaName: arena.trim() || undefined })}
+        onBlur={() => update({ [fieldKey]: arena.trim() || undefined })}
+        onSubmitEditing={() => update({ [fieldKey]: arena.trim() || undefined })}
         returnKeyType="done"
         maxLength={40}
         style={styles.input}

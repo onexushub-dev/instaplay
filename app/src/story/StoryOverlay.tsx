@@ -34,6 +34,8 @@ export const StoryOverlay = forwardRef<ComponentRef<typeof View>, Props>(functio
   const box = (r: Box) => ({ position: 'absolute' as const, left: s(r.x), top: s(r.y), width: s(r.width), height: s(r.height) });
   const [first, second] = texts.top;
   const [main, sub] = texts.bottom;
+  // Treino and Recorde share Placar's look: label chip on top, big headline and a detail line below.
+  const scoreboard = template === 'placar' || template === 'treino' || template === 'recorde';
 
   return (
     <View ref={ref} collapsable={false} style={{ width: s(frame.width), height: s(frame.height) }}>
@@ -57,7 +59,7 @@ export const StoryOverlay = forwardRef<ComponentRef<typeof View>, Props>(functio
       </Svg>
 
       <View testID="story-top-block" style={[styles.block, { top: s(SAFE_TOP), left: s(SIDE), right: s(SIDE), gap: s(14) }]}>
-        {template === 'placar' && first ? (
+        {scoreboard && first ? (
           <>
             <View style={[styles.chip, { paddingHorizontal: s(24), paddingVertical: s(8), borderRadius: s(12) }]}>
               <Text allowFontScaling={false} style={[styles.chipText, { fontSize: s(56) }]}>{first}</Text>
@@ -71,7 +73,7 @@ export const StoryOverlay = forwardRef<ComponentRef<typeof View>, Props>(functio
       </View>
 
       <View testID="story-bottom-block" style={[styles.block, { bottom: s(SAFE_BOTTOM), left: s(SIDE), right: s(SIDE), gap: s(10) }]}>
-        {template === 'placar' ? (
+        {scoreboard ? (
           <>
             {main ? <Text allowFontScaling={false} style={[styles.headline, { fontSize: s(128) }]}>{main}</Text> : null}
             {sub ? <Text allowFontScaling={false} style={[styles.detail, { fontSize: s(44), color: colors.accent }]}>{sub}</Text> : null}
