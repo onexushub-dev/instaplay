@@ -59,3 +59,4 @@ Itens adiados nas revisões finais. Nada aqui bloqueia o uso, mas vale resolver 
 - Build: `@bacons/apple-targets` 5.0.0 exige CocoaPods ≥ 1.17 (máquinas de build/EAS também); `deploymentTarget` 11.0 deixa de fora Series 4/5.
 - Rodar o app do relógio pelo Xcode reinstala o app do iPhone em Debug: colocar a configuração Run do esquema "LANCE Watch" em Release.
 - Quando o iPhone mata o app com o relógio em alcance, um toque no relógio ainda tenta abrir o app em segundo plano (a mensagem pode chegar antes do módulo estar pronto); hoje a tela do relógio vira "Sem conexão" em até 12 s.
+- Câmera ocupada por outro app (ligação de vídeo no Meet/FaceTime): o iOS devolve -11800 e a tela só diz "A gravação parou: erro na câmera". Mostrar "A câmera está em uso por outro app. Encerre a ligação e tente de novo." quando o erro vier logo ao abrir.

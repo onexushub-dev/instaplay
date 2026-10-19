@@ -196,6 +196,7 @@ final class ReplayEngine {
 
   /// A runtime failure after start: tell JS and stop, so the UI never shows a dead session as recording.
   private func fail(code: String, _ message: String) {
+    NSLog("[replay] stopped: %@ — %@ (thermal state %ld)", code, message, ProcessInfo.processInfo.thermalState.rawValue)
     emit?("onError", ["code": code, "message": message])
     stop()
   }
