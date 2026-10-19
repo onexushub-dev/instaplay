@@ -18,54 +18,83 @@ struct ContentView: View {
           SaveButton(enabled: false, height: 80, action: link.sendSave)
         }
       case let .recording(clipCount, startedAt):
-        VStack(spacing: 4) {
-          HStack(spacing: 8) {
-            // A real button, not an icon: easy to hit on a small, moving wrist.
-            Button {
-              link.setPreview(!link.previewOn)
-            } label: {
-              Image(systemName: link.previewOn ? "camera.fill" : "camera")
-                .font(.system(size: 20, weight: .semibold))
-                .frame(width: 56, height: 44)
-                .background(link.previewOn ? accent : Color.white.opacity(0.2), in: Capsule())
-                .foregroundStyle(link.previewOn ? ground : .white)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(link.previewOn ? "Fechar câmera" : "Ver câmera")
-            Spacer(minLength: 0)
-            VStack(alignment: .trailing, spacing: 0) {
-              if let startedAt {
-                TimelineView(.periodic(from: .now, by: 1)) { context in
-                  Text(WatchModel.elapsed(since: startedAt, now: context.date)).monospacedDigit()
+        if link.previewOn {
+          cameraView(clipCount: clipCount)
+        } else {
+          VStack(spacing: 4) {
+            HStack(spacing: 8) {
+              CameraToggle(isOn: false) { link.setPreview(true) }
+              Spacer(minLength: 0)
+              VStack(alignment: .trailing, spacing: 0) {
+                if let startedAt {
+                  TimelineView(.periodic(from: .now, by: 1)) { context in
+                    Text(WatchModel.elapsed(since: startedAt, now: context.date)).monospacedDigit()
+                  }
                 }
+                Text(WatchModel.countLabel(clipCount)).foregroundStyle(accent)
               }
-              Text(WatchModel.countLabel(clipCount)).foregroundStyle(accent)
+              .font(.system(.footnote, design: .rounded).weight(.bold))
             }
-            .font(.system(.footnote, design: .rounded).weight(.bold))
+            SaveButton(enabled: true, action: link.sendSave)
           }
-          if link.previewOn {
-            // What the phone's camera sees, as large as the screen allows, to check the framing.
-            Group {
-              if let picture = link.picture {
-                Image(uiImage: picture).resizable().scaledToFit()
-              } else {
-                ProgressView()
-              }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color.black)
-            .clipShape(RoundedRectangle(cornerRadius: 10))
-          }
-          SaveButton(enabled: true, height: link.previewOn ? 52 : 80, action: link.sendSave)
         }
       }
     }
-    .padding(.horizontal, 6)
+    .padding(.horizontal, link.previewOn ? 0 : 6)
     .background(ground)
     // A watch screen that sleeps or an app that leaves the front stops asking for pictures.
     .onChange(of: scenePhase) { _, phase in if phase != .active { link.setPreview(false) } }
   }
+
+  /// The camera fills the screen and there is no Salvar button: a tap anywhere saves. Only the corner
+  /// buttons (close the camera) and the count sit over the picture.
+  private func cameraView(clipCount: Int) -> some View {
+    ZStack {
+      Color.black
+      if let picture = link.picture {
+        Image(uiImage: picture).resizable().scaledToFit()
+      } else {
+        ProgressView()
+      }
+      VStack {
+        HStack(alignment: .top) {
+          CameraToggle(isOn: true) { link.setPreview(false) }
+          Spacer(minLength: 0)
+          Text(WatchModel.countLabel(clipCount))
+            .font(.system(.footnote, design: .rounded).weight(.bold))
+            .foregroundStyle(accent)
+            .padding(.horizontal, 8).padding(.vertical, 4)
+            .background(Color.black.opacity(0.55), in: Capsule())
+        }
+        Spacer(minLength: 0)
+      }
+      .padding(4)
+    }
+    .contentShape(Rectangle())
+    .onTapGesture { link.sendSave() }
+    .accessibilityAddTraits(.isButton)
+    .accessibilityLabel("Salvar")
+    .ignoresSafeArea(edges: .bottom)
+  }
 }
+
+private struct CameraToggle: View {
+  let isOn: Bool
+  let action: () -> Void
+  var body: some View {
+    // A real button, not a small icon: easy to hit on a moving wrist.
+    Button(action: action) {
+      Image(systemName: isOn ? "xmark" : "camera")
+        .font(.system(size: 20, weight: .semibold))
+        .frame(width: 56, height: 44)
+        .background(isOn ? Color.black.opacity(0.6) : Color.white.opacity(0.2), in: Capsule())
+        .foregroundStyle(.white)
+    }
+    .buttonStyle(.plain)
+    .accessibilityLabel(isOn ? "Fechar câmera" : "Ver câmera")
+  }
+}
+
 
 private struct Message: View {
   let text: String
