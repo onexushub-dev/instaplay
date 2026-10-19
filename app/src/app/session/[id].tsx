@@ -13,7 +13,7 @@ import { colors, fonts } from '../../theme/tokens';
 
 export default function SessionSummary() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { reset } = useSession();
+  const { reset, state } = useSession();
   // Re-read whenever the repo changes (a clip deleted on the clip screen, a late save landing).
   const version = useSyncExternalStore(repo.subscribe, repo.version);
   const { session, clips, stats } = useMemo(
@@ -28,8 +28,9 @@ export default function SessionSummary() {
   };
 
   function newGame() {
-    reset();
-    router.replace('/setup');
+    // Only the game that just ended resets the live session; from Meus jogos, setup is already under us.
+    if (state.sessionId === id) reset();
+    router.dismissTo('/setup');
   }
 
   return (

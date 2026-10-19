@@ -19,8 +19,11 @@ jest.mock('../../../modules/replay-camera', () => {
   };
 });
 jest.mock('../../triggers/useVolumeRemote', () => ({ useVolumeRemote: jest.fn() }));
-jest.mock('expo-router', () => ({ router: { replace: jest.fn(), back: jest.fn(), push: jest.fn() } }));
-jest.mock('expo-keep-awake', () => ({ useKeepAwake: jest.fn() }));
+jest.mock('expo-router', () => ({
+  router: { replace: jest.fn(), back: jest.fn(), push: jest.fn() },
+  useIsFocused: jest.fn(() => true),
+}));
+jest.mock('expo-keep-awake', () => ({ activateKeepAwakeAsync: jest.fn(async () => {}), deactivateKeepAwake: jest.fn() }));
 jest.mock('../../data/mmkv', () => {
   let prefs = {
     onboardingDone: true,
@@ -57,6 +60,7 @@ function session(state: object) {
     },
     start: jest.fn(async () => {}),
     prepare: jest.fn(async () => true),
+    release: jest.fn(async () => {}),
     trigger: jest.fn(),
     undoLast: jest.fn(),
     stop: jest.fn(async () => 's1'),
@@ -70,7 +74,19 @@ beforeEach(() => jest.clearAllMocks());
 test('keeps the screen awake while the phone is being positioned', async () => {
   session({});
   await render(<Setup />);
-  expect(jest.requireMock('expo-keep-awake').useKeepAwake).toHaveBeenCalled();
+  expect(jest.requireMock('expo-keep-awake').activateKeepAwakeAsync).toHaveBeenCalled();
+});
+
+test('under another screen (Meus jogos, editor, Story) it releases the camera, the volume buttons and keep-awake', async () => {
+  jest.requireMock('expo-router').useIsFocused.mockReturnValue(false);
+  const { useVolumeRemote } = jest.requireMock('../../triggers/useVolumeRemote');
+  const s = session({});
+  await render(<Setup />);
+  expect(s.prepare).not.toHaveBeenCalled();
+  expect(s.release).toHaveBeenCalled();
+  expect(useVolumeRemote).toHaveBeenLastCalledWith(false, expect.any(Function));
+  expect(jest.requireMock('expo-keep-awake').activateKeepAwakeAsync).not.toHaveBeenCalled();
+  jest.requireMock('expo-router').useIsFocused.mockReturnValue(true);
 });
 
 test('turns the camera on for the live preview', async () => {

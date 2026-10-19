@@ -1,5 +1,5 @@
 import Constants from 'expo-constants';
-import { File } from 'expo-file-system';
+import { Directory, File, Paths } from 'expo-file-system';
 import { Asset, requestPermissionsAsync } from 'expo-media-library';
 import { router, useLocalSearchParams } from 'expo-router';
 import { shareAsync } from 'expo-sharing';
@@ -31,6 +31,27 @@ function loopFrom(player: Player, ms: number) {
   player.currentTime = ms / 1000;
 }
 
+function setRate(player: Player, slowmo: boolean) {
+  player.playbackRate = slowmo ? 0.5 : 1;
+}
+
+function removeQuietly(path: string) {
+  try {
+    new File(`file://${path}`).delete();
+  } catch {
+    // already gone
+  }
+}
+
+/** Exports left by a crash or a kill would otherwise pile up in the cache. */
+function clearOldExports() {
+  try {
+    new Directory(Paths.cache, 'exports').list().forEach((item) => item.delete());
+  } catch {
+    // no exports dir yet
+  }
+}
+
 /** Preview of the 9:16 Story (whole video between template bands); post, save to Photos, share. */
 export default function StoryScreen() {
   const { clipId } = useLocalSearchParams<{ clipId: string }>();
@@ -40,6 +61,8 @@ export default function StoryScreen() {
   const [prefs, setPrefsState] = useState<Prefs>(() => repo.getPrefs());
   const [arena, setArena] = useState(prefs.arenaName ?? '');
   const [videoSize, setVideoSize] = useState({ width: 1920, height: 1080 });
+  // Exports wait for the real shape: a portrait clip exported with the landscape default gets wrong bands.
+  const [sizeKnown, setSizeKnown] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string>();
   const exporting = useRef(false);
@@ -51,8 +74,9 @@ export default function StoryScreen() {
   const options = clip ? exportOptions(tier, clip.edit, clip.trim) : undefined;
   const frame = { width: options?.width ?? 1080, height: options?.height ?? 1920 };
   const layout = storyLayout(videoSize, frame);
+  // The arena as typed (not only once saved), so the preview and the export never lag behind the field.
   const texts = session
-    ? storyTexts(prefs.storyTemplate, { sport: session.sport, startedAt: session.startedAt, arena: prefs.arenaName, gameName: session.name })
+    ? storyTexts(prefs.storyTemplate, { sport: session.sport, startedAt: session.startedAt, arena: arena.trim() || undefined, gameName: session.name })
     : { top: [], bottom: [] };
 
   // The real aspect ratio (rotation applied) comes from the clip's thumbnail.
@@ -61,22 +85,21 @@ export default function StoryScreen() {
     createThumbnail(clip.path, clip.trim.startMs)
       .then((path) => Image.getSize(`file://${path}`))
       .then(({ width, height }) => setVideoSize({ width, height }))
-      .catch(() => {});
+      .catch(() => {}) // keep the default shape
+      .finally(() => setSizeKnown(true));
   }, [clip]);
 
   // Exports are temporary: Photos and Instagram keep their own copies.
-  useEffect(
-    () => () => {
-      made.current.forEach((path) => {
-        try {
-          new File(`file://${path}`).delete();
-        } catch {
-          // already gone
-        }
-      });
-    },
-    []
-  );
+  const mounted = useRef(true);
+  useEffect(() => {
+    clearOldExports();
+    mounted.current = true;
+    const files = made.current;
+    return () => {
+      mounted.current = false;
+      files.forEach(removeQuietly);
+    };
+  }, []);
 
   const player = useVideoPlayer(clip ? { uri: `file://${clip.path}` } : null, (p) => {
     p.timeUpdateEventInterval = 0.25;
@@ -84,6 +107,7 @@ export default function StoryScreen() {
     p.currentTime = (clip?.trim.startMs ?? 0) / 1000;
     p.play();
   });
+  useEffect(() => setRate(player, clip?.edit?.slowmo ?? false), [player, clip]);
   useEffect(() => {
     if (!clip) return;
     const sub = player.addListener('timeUpdate', ({ currentTime }) => {
@@ -99,18 +123,25 @@ export default function StoryScreen() {
 
   /** One export per look (cut, edits, template, arena), reused by all three buttons. */
   async function ensureExport(): Promise<string> {
-    const key = JSON.stringify([options, texts]);
+    const key = JSON.stringify([options, texts, prefs.storyTemplate, layout]);
     if (exported.current?.key === key) return exported.current.path;
     const overlayPngPath = await captureOverlay(captureRefView);
     const result = await exportClip({ clipPath: clip!.path, ...options!, overlayPngPath, background: colors.ground });
+    removeQuietly(overlayPngPath);
+    if (!mounted.current) {
+      removeQuietly(result.path); // the screen closed during the export
+      throw new Error('closed');
+    }
     made.current.push(result.path);
     exported.current = { key, path: result.path };
     return result.path;
   }
 
   async function run(action: (path: string) => Promise<void>) {
-    if (exporting.current || !clip) return;
+    if (exporting.current || !clip || !sizeKnown) return;
     exporting.current = true;
+    const typed = arena.trim() || undefined;
+    if (typed !== prefs.arenaName) update({ arenaName: typed });
     setBusy(true);
     setNotice(undefined);
     try {
@@ -125,8 +156,10 @@ export default function StoryScreen() {
 
   const post = () =>
     run(async (path) => {
-      if ((await shareToInstagramStory(path, metaAppId)) === 'unavailable') {
-        setNotice('Instagram não encontrado. Escolha onde compartilhar.');
+      // Without a Meta App ID the composer can't open: go straight to the share sheet, no false alarm.
+      const opened = metaAppId ? (await shareToInstagramStory(path, metaAppId)) === 'opened' : false;
+      if (!opened) {
+        if (metaAppId) setNotice('Instagram não encontrado. Escolha onde compartilhar.');
         await shareAsync(`file://${path}`, { mimeType: 'video/mp4', UTI: 'public.mpeg-4' });
       }
     });
@@ -214,13 +247,13 @@ export default function StoryScreen() {
       <View style={styles.actions}>
         {notice ? <Text style={styles.notice}>{notice}</Text> : null}
         {busy ? <Text style={styles.notice}>Preparando vídeo…</Text> : null}
-        <Button label="Postar no Story" disabled={busy} onPress={() => void post()} />
+        <Button label="Postar no Story" disabled={busy || !sizeKnown} onPress={() => void post()} />
         <View style={styles.row}>
           <View style={styles.flex}>
-            <Button label="Salvar na galeria" variant="secondary" disabled={busy} onPress={() => void save()} />
+            <Button label="Salvar na galeria" variant="secondary" disabled={busy || !sizeKnown} onPress={() => void save()} />
           </View>
           <View style={styles.flex}>
-            <Button label="Compartilhar" variant="secondary" disabled={busy} onPress={() => void share()} />
+            <Button label="Compartilhar" variant="secondary" disabled={busy || !sizeKnown} onPress={() => void share()} />
           </View>
         </View>
       </View>

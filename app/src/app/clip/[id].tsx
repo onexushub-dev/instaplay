@@ -113,7 +113,12 @@ export default function ClipEditor() {
       <View style={styles.tools}>
         <Tool label="Corte" active />
         <Tool label="Câmera lenta" active={edit.slowmo} onPress={() => setEdit({ slowmo: !edit.slowmo })} />
-        <Tool label={edit.muted ? 'Sem som' : 'Som'} a11y="Som" active={!edit.muted} onPress={() => setEdit({ muted: !edit.muted })} />
+        <Tool
+          label={edit.muted || edit.slowmo ? 'Sem som' : 'Som'}
+          a11y="Som"
+          active={!edit.muted && !edit.slowmo}
+          onPress={edit.slowmo ? undefined : () => setEdit({ muted: !edit.muted })}
+        />
       </View>
 
       <View style={styles.actions}>

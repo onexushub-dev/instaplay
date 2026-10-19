@@ -39,3 +39,10 @@ test('templates stay visible on a portrait video (no bands)', async () => {
   expect(bottom.bottom).toBe(340);
   expect(screen.getByText('BEACH TENNIS')).toBeTruthy();
 });
+
+test('Story text ignores the system font size, so the export matches the design', async () => {
+  await render(<StoryOverlay frame={frame} layout={layout} texts={texts} watermark scale={1} />);
+  for (const t of ['BEACH TENNIS', 'QUE LANCE', 'Arena Sol', 'feito com LANCE']) {
+    expect(screen.getByText(t).props.allowFontScaling).toBe(false);
+  }
+});

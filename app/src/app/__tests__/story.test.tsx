@@ -44,6 +44,7 @@ beforeEach(() => {
 
 test("Postar no Story exports with the clip's cut and edits, then opens Instagram", async () => {
   await render(<StoryScreen />);
+  await act(async () => {});
   await act(async () => fireEvent.press(screen.getByRole('button', { name: 'Postar no Story' })));
   expect(camera.exportClip).toHaveBeenCalledWith(
     expect.objectContaining({ clipPath: '/c1.mp4', startMs: 30000, endMs: 60000, speed: 0.5, muted: true,
@@ -55,6 +56,7 @@ test("Postar no Story exports with the clip's cut and edits, then opens Instagra
 test('when Instagram is unavailable it falls back to the share sheet and says so', async () => {
   camera.shareToInstagramStory.mockResolvedValueOnce('unavailable');
   await render(<StoryScreen />);
+  await act(async () => {});
   await act(async () => fireEvent.press(screen.getByRole('button', { name: 'Postar no Story' })));
   expect(sharing.shareAsync).toHaveBeenCalledWith('file:///exports/e1.mp4', expect.objectContaining({ mimeType: 'video/mp4' }));
   expect(screen.getByText('Instagram não encontrado. Escolha onde compartilhar.')).toBeTruthy();
@@ -64,6 +66,7 @@ test('ignores a second post while exporting', async () => {
   let finish: (v: unknown) => void = () => {};
   camera.exportClip.mockImplementationOnce(() => new Promise((r) => (finish = r)));
   await render(<StoryScreen />);
+  await act(async () => {});
   const post = screen.getByRole('button', { name: 'Postar no Story' });
   await act(async () => fireEvent.press(post));
   await act(async () => fireEvent.press(post));
@@ -74,6 +77,7 @@ test('ignores a second post while exporting', async () => {
 test('a failed export shows the error and re-enables the buttons', async () => {
   camera.exportClip.mockRejectedValueOnce(new Error('disk full'));
   await render(<StoryScreen />);
+  await act(async () => {});
   await act(async () => fireEvent.press(screen.getByRole('button', { name: 'Postar no Story' })));
   expect(screen.getByText('Não foi possível preparar o vídeo. Tente de novo.')).toBeTruthy();
   expect(screen.getByRole('button', { name: 'Postar no Story' })).toBeEnabled();
@@ -81,6 +85,7 @@ test('a failed export shows the error and re-enables the buttons', async () => {
 
 test('Salvar na galeria asks for photo access and saves the export', async () => {
   await render(<StoryScreen />);
+  await act(async () => {});
   await act(async () => fireEvent.press(screen.getByRole('button', { name: 'Salvar na galeria' })));
   expect(media.requestPermissionsAsync).toHaveBeenCalledWith(true, ['video']);
   expect(media.Asset.create).toHaveBeenCalledWith('file:///exports/e1.mp4');
@@ -94,4 +99,21 @@ test('choosing a template and typing the arena stores them in prefs', async () =
   await fireEvent.changeText(screen.getByLabelText('Nome da arena (opcional)'), 'Arena Sol');
   await fireEvent(screen.getByLabelText('Nome da arena (opcional)'), 'blur');
   expect(repo.setPrefs).toHaveBeenCalledWith({ arenaName: 'Arena Sol' });
+});
+
+test('actions wait until the video shape is known', async () => {
+  let resolve: (v: unknown) => void = () => {};
+  (Image.getSize as jest.Mock).mockReturnValueOnce(new Promise((r) => (resolve = r)));
+  await render(<StoryScreen />);
+  expect(screen.getByRole('button', { name: 'Salvar na galeria' })).toBeDisabled();
+  await act(async () => resolve({ width: 1080, height: 1920 }));
+  expect(screen.getByRole('button', { name: 'Salvar na galeria' })).toBeEnabled();
+});
+
+test('an arena typed without closing the keyboard is used and saved', async () => {
+  await render(<StoryScreen />);
+  await act(async () => {});
+  await fireEvent.changeText(screen.getByLabelText('Nome da arena (opcional)'), 'Serrinha');
+  await act(async () => fireEvent.press(screen.getByRole('button', { name: 'Salvar na galeria' })));
+  expect(repo.setPrefs).toHaveBeenCalledWith({ arenaName: 'Serrinha' });
 });

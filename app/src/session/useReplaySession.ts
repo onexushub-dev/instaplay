@@ -179,9 +179,19 @@ export function useReplaySession(deps: SessionDeps) {
     dispatch({ type: 'undone', clipId: last.clipId });
   }, [deps]);
 
+  /** Turns the camera off when no game is running (e.g. the setup screen is under another screen). */
+  const release = useCallback(async () => {
+    const phase = stateRef.current.phase;
+    if (cameraLens.current === undefined || phase === 'recording' || phase === 'starting' || phase === 'stopping') return;
+    cameraLens.current = undefined;
+    cameraOpening.current = undefined;
+    await deps.camera.stopSession().catch(() => {});
+    dispatch({ type: 'cameraOff' });
+  }, [deps]);
+
   const reset = useCallback(() => dispatch({ type: 'reset' }), []);
 
-  return { state, prepare, start, stop, trigger, undoLast, reset };
+  return { state, prepare, release, start, stop, trigger, undoLast, reset };
 }
 
 export type ReplaySession = ReturnType<typeof useReplaySession>;

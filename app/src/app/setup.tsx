@@ -1,5 +1,5 @@
-import { useKeepAwake } from 'expo-keep-awake';
-import { router } from 'expo-router';
+import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
+import { router, useIsFocused } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -31,8 +31,10 @@ const START_ERRORS: Partial<Record<ReplayErrorCode, string>> = {
 };
 
 export default function Setup() {
-  useKeepAwake();
   const session = useSession();
+  // This screen stays mounted under Meus jogos, the editor and the Story screen: only hold the camera,
+  // the volume buttons and the screen awake while it is the visible one.
+  const focused = useIsFocused();
   const [prefs, setPrefsState] = useState<Prefs>(() => repo.getPrefs());
   const [remoteWorks, setRemoteWorks] = useState(false);
   const [speechDenied, setSpeechDenied] = useState(false);
@@ -46,17 +48,24 @@ export default function Setup() {
     if (granted) update({ voiceEnabled: true });
   }
   const { phase, error, camera } = session.state;
-  const { prepare } = session;
+  const { prepare, release } = session;
 
   // Live preview while positioning; the buffer starts filling now, so "Começar jogo" is instant.
   useEffect(() => {
-    void prepare(prefs.lens);
-  }, [prepare, prefs.lens]);
+    if (focused) void prepare(prefs.lens);
+    else void release();
+  }, [focused, prepare, release, prefs.lens]);
+
+  useEffect(() => {
+    if (!focused) return;
+    void activateKeepAwakeAsync('setup');
+    return () => void deactivateKeepAwake('setup');
+  }, [focused]);
 
   const update = (patch: Partial<Prefs>) => setPrefsState(repo.setPrefs(patch));
 
   // A press of the Bluetooth remote here proves it is paired and reaching the app.
-  useVolumeRemote(phase === 'idle', () => setRemoteWorks(true));
+  useVolumeRemote(focused && phase === 'idle', () => setRemoteWorks(true));
 
   const opening = camera === 'starting';
   const starting = phase === 'starting' || opening;

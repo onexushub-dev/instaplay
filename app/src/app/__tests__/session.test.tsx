@@ -3,7 +3,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import SessionSummary from '../session/[id]';
 
 jest.mock('expo-router', () => ({
-  router: { replace: jest.fn(), push: jest.fn() },
+  router: { replace: jest.fn(), push: jest.fn(), dismissTo: jest.fn() },
   useLocalSearchParams: () => ({ id: 's1' }),
 }));
 jest.mock('../../components/useClipThumbnail', () => ({ useClipThumbnail: () => undefined }));
@@ -46,7 +46,7 @@ const clip = (id: string, source: string, createdAt: number) => ({
 
 beforeEach(() => {
   jest.clearAllMocks();
-  useSession.mockReturnValue({ reset: jest.fn() });
+  useSession.mockReturnValue({ reset: jest.fn(), state: {} });
   repo.getSession.mockReturnValue({ id: 's1', sport: 'futevolei', startedAt: new Date(2026, 9, 17, 18, 40).getTime() });
 });
 
@@ -90,13 +90,13 @@ test('a game with no lances says so', async () => {
 
 test('Novo jogo resets the session and goes back to setup', async () => {
   const reset = jest.fn();
-  useSession.mockReturnValue({ reset });
+  useSession.mockReturnValue({ reset, state: { sessionId: 's1' } });
   repo.listClips.mockReturnValue([]);
   repo.sessionStats.mockReturnValue({ clips: 0, bytes: 0, recordedMs: 0 });
   await render(<SessionSummary />);
   await fireEvent.press(screen.getByRole('button', { name: 'Novo jogo' }));
   expect(reset).toHaveBeenCalled();
-  expect(router.replace).toHaveBeenCalledWith('/setup');
+  expect(router.dismissTo).toHaveBeenCalledWith('/setup');
 });
 
 test('typing a name and submitting renames the game', async () => {
@@ -123,4 +123,15 @@ test("Postar um lance opens the newest lance's editor", async () => {
   await render(<SessionSummary />);
   await fireEvent.press(screen.getByRole('button', { name: 'Postar um lance' }));
   expect(router.push).toHaveBeenCalledWith('/clip/b');
+});
+
+test('Novo jogo from a past game goes back to the existing setup without touching the current session', async () => {
+  const reset = jest.fn();
+  useSession.mockReturnValue({ reset, state: { sessionId: 'other' } });
+  repo.listClips.mockReturnValue([]);
+  repo.sessionStats.mockReturnValue({ clips: 0, bytes: 0, recordedMs: 0 });
+  await render(<SessionSummary />);
+  await fireEvent.press(screen.getByRole('button', { name: 'Novo jogo' }));
+  expect(reset).not.toHaveBeenCalled();
+  expect(router.dismissTo).toHaveBeenCalledWith('/setup');
 });

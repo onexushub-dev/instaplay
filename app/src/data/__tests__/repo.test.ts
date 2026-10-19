@@ -150,3 +150,10 @@ test('listSessions finds games stored before the game index existed', () => {
   const repo = createRepo(memoryKV(map), fakeFiles({ '/a.mp4': 1 }), () => 'x');
   expect(repo.listSessions().map((g) => g.session.id)).toEqual(['old']);
 });
+
+test('updateClip on a deleted clip does nothing', () => {
+  const map = new Map<string, string>();
+  const repo = createRepo(memoryKV(map), fakeFiles({}), () => 'x');
+  expect(repo.updateClip('gone', { trim: { startMs: 0, endMs: 1 } })).toBeUndefined();
+  expect(map.size).toBe(0);
+});

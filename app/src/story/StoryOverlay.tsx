@@ -60,33 +60,33 @@ export const StoryOverlay = forwardRef<ComponentRef<typeof View>, Props>(functio
         {template === 'placar' && first ? (
           <>
             <View style={[styles.chip, { paddingHorizontal: s(24), paddingVertical: s(8), borderRadius: s(12) }]}>
-              <Text style={[styles.chipText, { fontSize: s(56) }]}>{first}</Text>
+              <Text allowFontScaling={false} style={[styles.chipText, { fontSize: s(56) }]}>{first}</Text>
             </View>
-            {second ? <Text style={[styles.detail, { fontSize: s(40) }]}>{second}</Text> : null}
+            {second ? <Text allowFontScaling={false} style={[styles.detail, { fontSize: s(40) }]}>{second}</Text> : null}
           </>
         ) : null}
         {template === 'arena' && first ? (
-          <Text style={[styles.headline, styles.center, { fontSize: s(96), color: colors.accent }]}>{first}</Text>
+          <Text allowFontScaling={false} style={[styles.headline, styles.center, { fontSize: s(96), color: colors.accent }]}>{first}</Text>
         ) : null}
       </View>
 
       <View testID="story-bottom-block" style={[styles.block, { bottom: s(SAFE_BOTTOM), left: s(SIDE), right: s(SIDE), gap: s(10) }]}>
         {template === 'placar' ? (
           <>
-            {main ? <Text style={[styles.headline, { fontSize: s(128) }]}>{main}</Text> : null}
-            {sub ? <Text style={[styles.detail, { fontSize: s(44), color: colors.accent }]}>{sub}</Text> : null}
+            {main ? <Text allowFontScaling={false} style={[styles.headline, { fontSize: s(128) }]}>{main}</Text> : null}
+            {sub ? <Text allowFontScaling={false} style={[styles.detail, { fontSize: s(44), color: colors.accent }]}>{sub}</Text> : null}
           </>
         ) : null}
         {template === 'arena' ? (
           <>
-            {main ? <Text style={[styles.headline, styles.center, { fontSize: s(72) }]}>{main}</Text> : null}
-            {sub ? <Text style={[styles.detail, styles.center, { fontSize: s(40) }]}>{sub}</Text> : null}
+            {main ? <Text allowFontScaling={false} style={[styles.headline, styles.center, { fontSize: s(72) }]}>{main}</Text> : null}
+            {sub ? <Text allowFontScaling={false} style={[styles.detail, styles.center, { fontSize: s(40) }]}>{sub}</Text> : null}
           </>
         ) : null}
         {template === 'minimal' && main ? (
           <View style={[styles.row, { gap: s(16) }]}>
             <View style={[styles.dot, { width: s(20), height: s(20), borderRadius: s(10) }]} />
-            <Text style={[styles.detail, { fontSize: s(40) }]}>{main}</Text>
+            <Text allowFontScaling={false} style={[styles.detail, { fontSize: s(40) }]}>{main}</Text>
           </View>
         ) : null}
       </View>
@@ -94,7 +94,7 @@ export const StoryOverlay = forwardRef<ComponentRef<typeof View>, Props>(functio
       {watermark ? (
         <View style={[styles.watermark, styles.row, { bottom: s(SAFE_BOTTOM - 90), right: s(SIDE), paddingHorizontal: s(20), paddingVertical: s(10), gap: s(10) }]}>
           <View style={[styles.dot, { width: s(16), height: s(16), borderRadius: s(8) }]} />
-          <Text style={[styles.watermarkText, { fontSize: s(28) }]}>feito com LANCE</Text>
+          <Text allowFontScaling={false} style={[styles.watermarkText, { fontSize: s(28) }]}>feito com LANCE</Text>
         </View>
       ) : null}
     </View>

@@ -230,3 +230,16 @@ test('the gesture only runs during the game, not while positioning', async () =>
   await act(() => view.result.current.start('beachTennis'));
   expect(f.camera.setGestureEnabled).toHaveBeenLastCalledWith(true);
 });
+
+test('release turns the camera off while idle, but never during a game', async () => {
+  const f = fakeDeps();
+  const view = await renderHook(() => useReplaySession(f.deps));
+  await act(() => view.result.current.prepare('ultraWide'));
+  await act(() => view.result.current.release());
+  expect(f.camera.stopSession).toHaveBeenCalledTimes(1);
+  expect(view.result.current.state.camera).toBe('off');
+
+  await act(() => view.result.current.start('beachTennis'));
+  await act(() => view.result.current.release());
+  expect(f.camera.stopSession).toHaveBeenCalledTimes(1);
+});

@@ -44,9 +44,11 @@ test('toggling slow motion stores it on the clip', async () => {
 });
 
 test('toggling sound stores muted', async () => {
+  __setClip({ id: 'c1', sessionId: 's1', createdAt: 0, source: 'gesture', path: '/c1.mp4', durationMs: 60000,
+    trim: { startMs: 30000, endMs: 60000 } });
   await render(<ClipEditor />);
   await fireEvent.press(screen.getByRole('button', { name: 'Som' }));
-  expect(repo.updateClip).toHaveBeenLastCalledWith('c1', { edit: { slowmo: true, muted: true } });
+  expect(repo.updateClip).toHaveBeenLastCalledWith('c1', { edit: { slowmo: false, muted: true } });
 });
 
 test('Próximo: Story opens the story screen', async () => {
@@ -59,4 +61,12 @@ test('a missing clip shows the message instead of the editor', async () => {
   __setClip(undefined);
   await render(<ClipEditor />);
   expect(screen.getByText('Este lance não está mais no celular.')).toBeTruthy();
+});
+
+test('with slow motion on, sound shows as off and cannot be turned on', async () => {
+  __setClip({ id: 'c1', sessionId: 's1', createdAt: 0, source: 'gesture', path: '/c1.mp4', durationMs: 60000,
+    trim: { startMs: 30000, endMs: 60000 }, edit: { slowmo: true, muted: false } });
+  await render(<ClipEditor />);
+  expect(screen.getByRole('button', { name: 'Som' })).toBeDisabled();
+  expect(screen.getByText('Sem som')).toBeTruthy();
 });

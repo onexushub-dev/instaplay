@@ -33,3 +33,12 @@ Itens adiados nas revisões finais. Nada aqui bloqueia o uso, mas vale resolver 
 - Android: `applyTorch` reconstrói a requisição de captura à mão; compartilhar um único construtor com `open()`.
 - iOS: a troca de saída para o alto-falante a cada som pode mudar o microfone usado quando há fone Bluetooth.
 - Bloco "Voz" não detecta permissão de fala revogada nos Ajustes.
+
+## Editor, Story e Meus jogos (revisão de 2026-10-18)
+- Erros de salvar na galeria/compartilhar (depois de exportar) aparecem como "Não foi possível preparar o vídeo".
+- Alças do corte se sobrepõem no mínimo de 3s; a do fim fica por cima e a do início é difícil de pegar.
+- `renameSession` com id desconhecido lança erro (a interface já evita).
+- Android: overlay some em silêncio se o PNG não decodificar; sem redimensionar em proporções fracionárias; `durationMs` pode vir indefinido do Transformer.
+- Android: FileProvider genérico pode conflitar com outra biblioteca no futuro (usar uma subclasse própria).
+- iOS: corte que começa depois do fim real da mídia vira erro genérico.
+- Jogos não encerrados aparecem em "Meus jogos" com 0 min gravados.
