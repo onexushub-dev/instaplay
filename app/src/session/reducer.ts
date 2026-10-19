@@ -68,7 +68,7 @@ export function reducer(state: SessionState, action: SessionAction): SessionStat
     case 'saveStarted':
       return { ...state, saving: true };
     case 'saved': {
-      // A save that finished after its game ended (stop → Novo jogo) must not touch the new game.
+      // A save that finished after its game ended (stop → Nova gravação) must not touch the new game.
       if (action.sessionId !== state.sessionId) return state;
       const number = state.clipCount + 1;
       return {

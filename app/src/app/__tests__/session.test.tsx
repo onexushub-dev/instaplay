@@ -60,41 +60,41 @@ test('shows the game stats', async () => {
   expect(screen.getByText(/Futevôlei ·/)).toBeTruthy();
 });
 
-test('tapping a lance opens it', async () => {
+test('tapping a clipe opens it', async () => {
   repo.listClips.mockReturnValue([clip('a', 'gesture', 1)]);
   repo.sessionStats.mockReturnValue({ clips: 1, bytes: 1, recordedMs: 1 });
   await render(<SessionSummary />);
-  await fireEvent.press(screen.getByRole('button', { name: /Lance 1/ }));
+  await fireEvent.press(screen.getByRole('button', { name: /Clipe 1/ }));
   expect(router.push).toHaveBeenCalledWith('/clip/a');
 });
 
-test('re-reads the lances when one is deleted elsewhere', async () => {
+test('re-reads the clipes when one is deleted elsewhere', async () => {
   repo.listClips.mockReturnValue([clip('a', 'gesture', 1), clip('b', 'screen', 2)]);
   repo.sessionStats.mockReturnValue({ clips: 2, bytes: 1, recordedMs: 1 });
   await render(<SessionSummary />);
-  expect(screen.getByRole('button', { name: /Lance 2/ })).toBeTruthy();
+  expect(screen.getByRole('button', { name: /Clipe 2/ })).toBeTruthy();
 
   repo.listClips.mockReturnValue([clip('a', 'gesture', 1)]);
   repo.sessionStats.mockReturnValue({ clips: 1, bytes: 1, recordedMs: 1 });
   await act(async () => repo.__change());
 
-  expect(screen.queryByRole('button', { name: /Lance 2/ })).toBeNull();
+  expect(screen.queryByRole('button', { name: /Clipe 2/ })).toBeNull();
 });
 
-test('a game with no lances says so', async () => {
+test('a game with no clipes says so', async () => {
   repo.listClips.mockReturnValue([]);
   repo.sessionStats.mockReturnValue({ clips: 0, bytes: 0, recordedMs: 60_000 });
   await render(<SessionSummary />);
-  expect(screen.getByText('Nenhum lance salvo neste jogo.')).toBeTruthy();
+  expect(screen.getByText('Nenhum clipe salvo nesta gravação.')).toBeTruthy();
 });
 
-test('Novo jogo resets the session and goes back to setup', async () => {
+test('Nova gravação resets the session and goes back to setup', async () => {
   const reset = jest.fn();
   useSession.mockReturnValue({ reset, state: { sessionId: 's1' } });
   repo.listClips.mockReturnValue([]);
   repo.sessionStats.mockReturnValue({ clips: 0, bytes: 0, recordedMs: 0 });
   await render(<SessionSummary />);
-  await fireEvent.press(screen.getByRole('button', { name: 'Novo jogo' }));
+  await fireEvent.press(screen.getByRole('button', { name: 'Nova gravação' }));
   expect(reset).toHaveBeenCalled();
   expect(router.dismissTo).toHaveBeenCalledWith('/setup');
 });
@@ -103,7 +103,7 @@ test('typing a name and submitting renames the game', async () => {
   repo.listClips.mockReturnValue([]);
   repo.sessionStats.mockReturnValue({ clips: 0, bytes: 0, recordedMs: 0 });
   await render(<SessionSummary />);
-  const input = screen.getByLabelText('Nome do jogo');
+  const input = screen.getByLabelText('Nome da gravação');
   await fireEvent.changeText(input, 'Final do torneio');
   await fireEvent(input, 'submitEditing');
   expect(repo.renameSession).toHaveBeenCalledWith('s1', 'Final do torneio');
@@ -117,21 +117,21 @@ test('a named game shows its name as the title', async () => {
   expect(screen.getByRole('header')).toHaveTextContent('Final do torneio');
 });
 
-test("Postar um lance opens the newest lance's editor", async () => {
+test("Postar um clipe opens the newest clipe's editor", async () => {
   repo.listClips.mockReturnValue([clip('a', 'gesture', 1), clip('b', 'screen', 2)]);
   repo.sessionStats.mockReturnValue({ clips: 2, bytes: 1, recordedMs: 1 });
   await render(<SessionSummary />);
-  await fireEvent.press(screen.getByRole('button', { name: 'Postar um lance' }));
+  await fireEvent.press(screen.getByRole('button', { name: 'Postar um clipe' }));
   expect(router.push).toHaveBeenCalledWith('/clip/b');
 });
 
-test('Novo jogo from a past game goes back to the existing setup without touching the current session', async () => {
+test('Nova gravação from a past game goes back to the existing setup without touching the current session', async () => {
   const reset = jest.fn();
   useSession.mockReturnValue({ reset, state: { sessionId: 'other' } });
   repo.listClips.mockReturnValue([]);
   repo.sessionStats.mockReturnValue({ clips: 0, bytes: 0, recordedMs: 0 });
   await render(<SessionSummary />);
-  await fireEvent.press(screen.getByRole('button', { name: 'Novo jogo' }));
+  await fireEvent.press(screen.getByRole('button', { name: 'Nova gravação' }));
   expect(reset).not.toHaveBeenCalled();
   expect(router.dismissTo).toHaveBeenCalledWith('/setup');
 });

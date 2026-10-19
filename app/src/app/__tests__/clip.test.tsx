@@ -37,9 +37,9 @@ const { router } = jest.requireMock('expo-router');
 
 beforeEach(() => jest.clearAllMocks());
 
-test('shows which lance it is', async () => {
+test('shows which clipe it is', async () => {
   await render(<ClipEditor />);
-  expect(screen.getByText('Lance #1 · 19:40')).toBeTruthy();
+  expect(screen.getByText('Clipe #1 · 19:40')).toBeTruthy();
   expect(screen.getByText('Corte: 0:30')).toBeTruthy();
 });
 
@@ -66,7 +66,7 @@ test('Próximo: Story opens the story screen', async () => {
 test('a missing clip shows the message instead of the editor', async () => {
   __setClip(undefined);
   await render(<ClipEditor />);
-  expect(screen.getByText('Este lance não está mais no celular.')).toBeTruthy();
+  expect(screen.getByText('Este clipe não está mais no celular.')).toBeTruthy();
 });
 
 test('with slow motion on, sound shows as off and cannot be turned on', async () => {

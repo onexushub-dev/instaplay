@@ -31,7 +31,7 @@ export default function Games() {
         data={games}
         keyExtractor={(g) => g.session.id}
         contentContainerStyle={styles.list}
-        ListEmptyComponent={<Text style={styles.empty}>Nenhum jogo com lances ainda.</Text>}
+        ListEmptyComponent={<Text style={styles.empty}>Nenhuma gravação com clipes ainda.</Text>}
         renderItem={({ item }) => (
           <GameCard
             session={item.session}

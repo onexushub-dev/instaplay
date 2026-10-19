@@ -91,7 +91,7 @@ test('keeps the screen awake while the phone is being positioned', async () => {
   expect(jest.requireMock('expo-keep-awake').activateKeepAwakeAsync).toHaveBeenCalled();
 });
 
-test('under another screen (Meus jogos, editor, Story) it releases the camera, the volume buttons and keep-awake', async () => {
+test('under another screen (Minhas gravações, editor, Story) it releases the camera, the volume buttons and keep-awake', async () => {
   jest.requireMock('expo-router').useIsFocused.mockReturnValue(false);
   const { useVolumeRemote } = jest.requireMock('../../triggers/useVolumeRemote');
   const s = session({});
@@ -142,17 +142,17 @@ test('the gesture tile toggles the gesture preference', async () => {
   );
 });
 
-test('Começar jogo starts with the chosen sport and shows the recording controls on the same screen', async () => {
+test('Começar a gravar starts with the chosen sport and shows the recording controls on the same screen', async () => {
   const s = session({});
   const view = await render(<Setup />);
   await openSettings();
   await fireEvent.press(screen.getByRole('button', { name: 'Academia' }));
-  await fireEvent.press(screen.getByRole('button', { name: 'Começar jogo' }));
+  await fireEvent.press(screen.getByRole('button', { name: 'Começar a gravar' }));
   expect(s.start).toHaveBeenCalledWith('academia');
 
   session({ phase: 'recording', sessionId: 's1', startedAt: Date.now() });
   await view.rerender(<Setup />);
-  expect(screen.getByText('Toque na tela para salvar o lance')).toBeTruthy();
+  expect(screen.getByText('Toque na tela para salvar o clipe')).toBeTruthy();
   expect(router.replace).not.toHaveBeenCalled();
 });
 
@@ -178,13 +178,13 @@ test('a low-storage refusal shows its copy and the button works again', async ()
   session({ phase: 'idle', error: 'LOW_STORAGE' });
   await render(<Setup />);
   expect(screen.getByText('Pouco espaço no celular. Libere pelo menos 500 MB para gravar.')).toBeTruthy();
-  expect(screen.getByRole('button', { name: 'Começar jogo' })).toBeEnabled();
+  expect(screen.getByRole('button', { name: 'Começar a gravar' })).toBeEnabled();
 });
 
 test('the button is disabled while the camera starts', async () => {
   session({ phase: 'starting' });
   await render(<Setup />);
-  expect(screen.getByRole('button', { name: 'Começar jogo' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Começar a gravar' })).toBeDisabled();
 });
 
 test('save feedback toggles: sound and flash', async () => {
@@ -234,15 +234,15 @@ test('the voice tile says when this phone cannot recognize speech offline', asyn
   expect(screen.getByLabelText('Voz, Indisponível neste celular')).toBeTruthy();
 });
 
-test('Meus jogos opens the game list, and is hidden during a game', async () => {
+test('Minhas gravações opens the game list, and is hidden during a game', async () => {
   session({});
   const view = await render(<Setup />);
-  await fireEvent.press(screen.getByRole('button', { name: 'Meus jogos' }));
+  await fireEvent.press(screen.getByRole('button', { name: 'Minhas gravações' }));
   expect(router.push).toHaveBeenCalledWith('/games');
 
   session({ phase: 'recording', sessionId: 's1', startedAt: Date.now() });
   await view.rerender(<Setup />);
-  expect(screen.queryByRole('button', { name: 'Meus jogos' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Minhas gravações' })).toBeNull();
 });
 
 test('choosing Academia shows the gym tip and guide and reopens the camera for it', async () => {
@@ -297,9 +297,9 @@ test('opens collapsed: a summary of the mode and the start button, nothing else 
   session({});
   await render(<Setup />);
   expect(screen.getByRole('button', { name: /^Ajustes: Quadra/ })).toBeTruthy();
-  expect(screen.getByRole('button', { name: 'Começar jogo' })).toBeEnabled();
+  expect(screen.getByRole('button', { name: 'Começar a gravar' })).toBeEnabled();
   expect(screen.queryByRole('button', { name: 'Futevôlei' })).toBeNull();
-  expect(screen.queryByText('COMO SALVAR O LANCE')).toBeNull();
+  expect(screen.queryByText('COMO SALVAR O CLIPE')).toBeNull();
 });
 
 test('the summary tells which triggers are on without opening', async () => {
@@ -333,7 +333,7 @@ test('choosing a mode closes the settings; the handle closes them too', async ()
 
   await openSettings();
   await fireEvent.press(screen.getByRole('button', { name: 'Fechar ajustes' }));
-  expect(screen.queryByText('COMO SALVAR O LANCE')).toBeNull();
+  expect(screen.queryByText('COMO SALVAR O CLIPE')).toBeNull();
 });
 
 test('the positioning guide fits the camera area above the sheet', async () => {

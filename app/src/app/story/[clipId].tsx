@@ -182,7 +182,7 @@ export default function StoryScreen() {
   if (!clip || !session || !options) {
     return (
       <SafeAreaView style={styles.root}>
-        <Text style={styles.notice}>Este lance não está mais no celular.</Text>
+        <Text style={styles.notice}>Este clipe não está mais no celular.</Text>
       </SafeAreaView>
     );
   }

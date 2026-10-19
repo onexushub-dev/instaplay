@@ -33,30 +33,30 @@ beforeEach(() => jest.clearAllMocks());
 test('the count is shown in a small pill, not over the preview', async () => {
   session({ clipCount: 3 });
   await render(<Recording />);
-  expect(screen.getByText('3 lances')).toBeTruthy();
+  expect(screen.getByText('3 clipes')).toBeTruthy();
 });
 
 test('tells the player clearly how to save', async () => {
   session({});
   await render(<Recording />);
-  expect(screen.getByText('Toque na tela para salvar o lance')).toBeTruthy();
+  expect(screen.getByText('Toque na tela para salvar o clipe')).toBeTruthy();
 });
 
-test('tapping the screen saves a lance', async () => {
+test('tapping the screen saves a clipe', async () => {
   const s = session({});
   await render(<Recording />);
   await fireEvent.press(screen.getByRole('button', { name: /Toque em qualquer lugar/ }));
   expect(s.trigger).toHaveBeenCalledWith('screen');
 });
 
-test('a saved lance shows the overlay with its number and source', async () => {
+test('a saved clipe shows the overlay with its number and source', async () => {
   session({ clipCount: 3, lastSaved: { clipId: 'c3', number: 3, source: 'gesture', at: Date.now() } });
   await render(<Recording />);
-  expect(screen.getByText('LANCE #3 SALVO')).toBeTruthy();
+  expect(screen.getByText('CLIPE #3 SALVO')).toBeTruthy();
   expect(screen.getByText('via Braços para cima · últimos 30s')).toBeTruthy();
 });
 
-test('Desfazer undoes the last lance', async () => {
+test('Desfazer undoes the last clipe', async () => {
   const s = session({ clipCount: 1, lastSaved: { clipId: 'c1', number: 1, source: 'screen', at: Date.now() } });
   await render(<Recording />);
   await fireEvent.press(screen.getByRole('button', { name: 'Desfazer' }));
@@ -67,7 +67,7 @@ test('holding the footer ends the game and opens its summary', async () => {
   const s = session({});
   await render(<Recording />);
   jest.useFakeTimers();
-  await fireEvent(screen.getByRole('button', { name: 'Segure para encerrar o jogo' }), 'pressIn');
+  await fireEvent(screen.getByRole('button', { name: 'Segure para encerrar a gravação' }), 'pressIn');
   await act(async () => jest.advanceTimersByTime(1000));
   jest.useRealTimers();
   expect(s.stop).toHaveBeenCalled();
@@ -86,15 +86,15 @@ test('an interrupted game shows the paused banner', async () => {
   expect(screen.getByText('Gravação pausada. Volte para o app para continuar.')).toBeTruthy();
 });
 
-test('a native error says recording stopped and offers the saved lances', async () => {
+test('a native error says recording stopped and offers the saved clipes', async () => {
   session({ phase: 'ended', error: 'ENCODER_FAILED', thermalStop: true });
   await render(<Recording />);
   expect(screen.getByText('A gravação parou: celular muito quente')).toBeTruthy();
-  await fireEvent.press(screen.getByRole('button', { name: 'Ver lances' }));
+  await fireEvent.press(screen.getByRole('button', { name: 'Ver clipes' }));
   expect(router.replace).toHaveBeenCalledWith('/session/s1');
 });
 
-test('a lance saved by voice says so', async () => {
+test('a clipe saved by voice says so', async () => {
   session({ clipCount: 1, lastSaved: { clipId: 'c1', number: 1, source: 'voice', at: Date.now() } });
   await render(<Recording />);
   expect(screen.getByText('via Voz · últimos 30s')).toBeTruthy();

@@ -55,7 +55,7 @@ export function RecordingPanel({ bufferSeconds = 60, gesture = true, voice = fal
   // Android back = end the game, after a confirmation.
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      Alert.alert('Encerrar o jogo?', undefined, [
+      Alert.alert('Encerrar a gravação?', undefined, [
         { text: 'Continuar', style: 'cancel' },
         { text: 'Encerrar', style: 'destructive', onPress: () => void end() },
       ]);
@@ -69,7 +69,7 @@ export function RecordingPanel({ bufferSeconds = 60, gesture = true, voice = fal
     return (
       <SafeAreaView style={styles.stopped}>
         <Text style={styles.stoppedText}>{`A gravação parou: ${reason}`}</Text>
-        <Button label="Ver lances" onPress={() => router.replace(`/session/${state.sessionId}`)} />
+        <Button label="Ver clipes" onPress={() => router.replace(`/session/${state.sessionId}`)} />
       </SafeAreaView>
     );
   }
@@ -81,14 +81,14 @@ export function RecordingPanel({ bufferSeconds = 60, gesture = true, voice = fal
     ...(gesture ? ['ou levante os braços'] : []),
     'ou use o controle',
   ].join(' · ');
-  const clips = `${state.clipCount} ${state.clipCount === 1 ? 'lance' : 'lances'}`;
+  const clips = `${state.clipCount} ${state.clipCount === 1 ? 'clipe' : 'clipes'}`;
 
   return (
     <View style={StyleSheet.absoluteFill}>
       {/* The whole screen is the save button; nothing covers the picture. */}
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel="Toque em qualquer lugar para salvar o lance"
+        accessibilityLabel="Toque em qualquer lugar para salvar o clipe"
         onPress={() => trigger('screen')}
         style={StyleSheet.absoluteFill}
       />
@@ -123,7 +123,7 @@ export function RecordingPanel({ bufferSeconds = 60, gesture = true, voice = fal
           <View pointerEvents="none" style={styles.hintCard}>
             <TapIcon color={colors.accent} size={28} />
             <View style={styles.hintText}>
-              <Text style={styles.hint}>Toque na tela para salvar o lance</Text>
+              <Text style={styles.hint}>Toque na tela para salvar o clipe</Text>
               <Text style={styles.hintSub}>{hintSub}</Text>
             </View>
             <View style={styles.icons}>
@@ -133,7 +133,7 @@ export function RecordingPanel({ bufferSeconds = 60, gesture = true, voice = fal
               <WatchIcon color={colors.muted} size={20} />
             </View>
           </View>
-          <HoldButton label="Segure para encerrar o jogo" holdingLabel="Continue segurando…" onComplete={() => void end()} />
+          <HoldButton label="Segure para encerrar a gravação" holdingLabel="Continue segurando…" onComplete={() => void end()} />
         </View>
       </SafeAreaView>
 

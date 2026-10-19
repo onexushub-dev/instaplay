@@ -28,7 +28,7 @@ export default function SessionSummary() {
   };
 
   function newGame() {
-    // Only the game that just ended resets the live session; from Meus jogos, setup is already under us.
+    // Only the game that just ended resets the live session; from Minhas gravações, setup is already under us.
     if (state.sessionId === id) reset();
     router.dismissTo('/setup');
   }
@@ -40,12 +40,12 @@ export default function SessionSummary() {
           <Text style={styles.subtitle}>{`${SPORT_LABEL[session.sport]} · ${dayAndTime(session.startedAt)}`}</Text>
         ) : null}
         <Text style={styles.title} accessibilityRole="header" numberOfLines={2}>
-          {session?.name ? sessionLabel(session) : 'FIM DE JOGO'}
+          {session?.name ? sessionLabel(session) : 'GRAVAÇÃO ENCERRADA'}
         </Text>
         {session ? (
           <View style={styles.nameBox}>
             <TextInput
-              accessibilityLabel="Nome do jogo"
+              accessibilityLabel="Nome da gravação"
               value={name}
               onChangeText={setName}
               onSubmitEditing={saveName}
@@ -56,17 +56,17 @@ export default function SessionSummary() {
               returnKeyType="done"
               style={styles.nameInput}
             />
-            <Text style={styles.nameCaption}>Opcional. Ajuda a achar o jogo depois.</Text>
+            <Text style={styles.nameCaption}>Opcional. Ajuda a achar a gravação depois.</Text>
           </View>
         ) : null}
       </View>
 
       <View style={styles.stats}>
         <Stat value={recordedLabel(stats.recordedMs)} label="gravadas" />
-        <Stat value={String(stats.clips)} label="lances" accent />
+        <Stat value={String(stats.clips)} label="clipes" accent />
         <Stat value={megabytes(stats.bytes)} label="guardados" />
       </View>
-      <Text style={styles.note}>O restante do jogo já foi apagado do celular.</Text>
+      <Text style={styles.note}>O restante da gravação já foi apagado do celular.</Text>
 
       <FlatList
         data={clips}
@@ -74,7 +74,7 @@ export default function SessionSummary() {
         numColumns={2}
         columnWrapperStyle={styles.gridRow}
         contentContainerStyle={styles.grid}
-        ListEmptyComponent={<Text style={styles.empty}>Nenhum lance salvo neste jogo.</Text>}
+        ListEmptyComponent={<Text style={styles.empty}>Nenhum clipe salvo nesta gravação.</Text>}
         renderItem={({ item, index }) => (
           <ClipCard clip={item} number={index + 1} onPress={() => router.push(`/clip/${item.id}`)} />
         )}
@@ -83,11 +83,11 @@ export default function SessionSummary() {
       <View style={styles.footer}>
         <View style={styles.buttons}>
           <View style={{ flex: 1 }}>
-            <Button label="Novo jogo" variant="secondary" onPress={newGame} />
+            <Button label="Nova gravação" variant="secondary" onPress={newGame} />
           </View>
           <View style={{ flex: 1.4 }}>
             <Button
-              label="Postar um lance"
+              label="Postar um clipe"
               disabled={clips.length === 0}
               onPress={() => router.push(`/clip/${clips[clips.length - 1].id}`)}
             />

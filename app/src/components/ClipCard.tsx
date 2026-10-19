@@ -15,7 +15,7 @@ export function ClipCard({ clip, number, onPress }: Props) {
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`Lance ${number}, ${duration}, ${SOURCE_LABEL[clip.source]}`}
+      accessibilityLabel={`Clipe ${number}, ${duration}, ${SOURCE_LABEL[clip.source]}`}
       onPress={onPress}
       style={styles.card}>
       <View style={styles.thumb}>

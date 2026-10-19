@@ -8,11 +8,11 @@ import { useClipThumbnail } from './useClipThumbnail';
 
 type Props = { session: Session; clips: number; firstClip?: Clip; recordedMs: number; onPress: () => void };
 
-/** One past game in "Meus jogos": first lance's frame, name (or sport + date), lances and time. */
+/** One past game in "Minhas gravações": first lance's frame, name (or sport + date), lances and time. */
 export function GameCard({ session, clips, firstClip, recordedMs, onPress }: Props) {
   const thumb = useClipThumbnail(firstClip?.path ?? '', firstClip?.trim.startMs ?? 0);
   const label = sessionLabel(session);
-  const detail = `${clips} ${clips === 1 ? 'lance' : 'lances'} · ${recordedLabel(recordedMs)}`;
+  const detail = `${clips} ${clips === 1 ? 'clipe' : 'clipes'} · ${recordedLabel(recordedMs)}`;
   return (
     <Pressable accessibilityRole="button" accessibilityLabel={`${label}, ${detail}`} onPress={onPress} style={styles.card}>
       <View style={styles.thumb}>

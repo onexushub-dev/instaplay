@@ -7,9 +7,9 @@ afterEach(() => jest.useRealTimers());
 
 test('holding for the full duration completes', async () => {
   const onComplete = jest.fn();
-  await render(<HoldButton label="Segure para encerrar o jogo" holdingLabel="Continue segurando…" onComplete={onComplete} />);
+  await render(<HoldButton label="Segure para encerrar a gravação" holdingLabel="Continue segurando…" onComplete={onComplete} />);
 
-  await fireEvent(screen.getByRole('button', { name: 'Segure para encerrar o jogo' }), 'pressIn');
+  await fireEvent(screen.getByRole('button', { name: 'Segure para encerrar a gravação' }), 'pressIn');
   expect(screen.getByText('Continue segurando…')).toBeTruthy();
   await act(async () => jest.advanceTimersByTime(1000));
 
@@ -18,8 +18,8 @@ test('holding for the full duration completes', async () => {
 
 test('letting go early cancels', async () => {
   const onComplete = jest.fn();
-  await render(<HoldButton label="Segure para encerrar o jogo" holdingLabel="Continue segurando…" onComplete={onComplete} />);
-  const button = screen.getByRole('button', { name: 'Segure para encerrar o jogo' });
+  await render(<HoldButton label="Segure para encerrar a gravação" holdingLabel="Continue segurando…" onComplete={onComplete} />);
+  const button = screen.getByRole('button', { name: 'Segure para encerrar a gravação' });
 
   await fireEvent(button, 'pressIn');
   await act(async () => jest.advanceTimersByTime(600));
@@ -27,13 +27,13 @@ test('letting go early cancels', async () => {
   await act(async () => jest.advanceTimersByTime(1000));
 
   expect(onComplete).not.toHaveBeenCalled();
-  expect(screen.getByText('Segure para encerrar o jogo')).toBeTruthy();
+  expect(screen.getByText('Segure para encerrar a gravação')).toBeTruthy();
 });
 
 test('screen readers can trigger it with an action', async () => {
   const onComplete = jest.fn();
-  await render(<HoldButton label="Segure para encerrar o jogo" holdingLabel="Continue segurando…" onComplete={onComplete} />);
-  await fireEvent(screen.getByRole('button', { name: 'Segure para encerrar o jogo' }), 'accessibilityAction', {
+  await render(<HoldButton label="Segure para encerrar a gravação" holdingLabel="Continue segurando…" onComplete={onComplete} />);
+  await fireEvent(screen.getByRole('button', { name: 'Segure para encerrar a gravação' }), 'accessibilityAction', {
     nativeEvent: { actionName: 'activate' },
   });
   expect(onComplete).toHaveBeenCalled();

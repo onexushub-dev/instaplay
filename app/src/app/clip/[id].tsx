@@ -59,7 +59,7 @@ export default function ClipEditor() {
     return (
       <SafeAreaView style={styles.root}>
         <BackButton />
-        <Text style={styles.missing}>Este lance não está mais no celular.</Text>
+        <Text style={styles.missing}>Este clipe não está mais no celular.</Text>
       </SafeAreaView>
     );
   }
@@ -67,7 +67,7 @@ export default function ClipEditor() {
   const setEdit = (patch: Partial<NonNullable<Clip['edit']>>) => repo.updateClip(id, { edit: { ...edit, ...patch } });
 
   function confirmDelete() {
-    Alert.alert('Apagar este lance?', undefined, [
+    Alert.alert('Apagar este clipe?', undefined, [
       { text: 'Cancelar', style: 'cancel' },
       {
         text: 'Apagar',
@@ -85,7 +85,7 @@ export default function ClipEditor() {
     <SafeAreaView style={styles.root}>
       <View style={styles.top}>
         <BackButton />
-        <Text style={styles.title}>{`Lance #${number} · ${timeOfDay(clip.createdAt)}`}</Text>
+        <Text style={styles.title}>{`Clipe #${number} · ${timeOfDay(clip.createdAt)}`}</Text>
         <View style={styles.spacer} />
       </View>
 
@@ -127,7 +127,7 @@ export default function ClipEditor() {
 
       <View style={styles.actions}>
         <Button label="Próximo: Story" onPress={() => router.push(`/story/${id}`)} />
-        <Button label="Apagar lance" variant="secondary" onPress={confirmDelete} />
+        <Button label="Apagar clipe" variant="secondary" onPress={confirmDelete} />
       </View>
     </SafeAreaView>
   );

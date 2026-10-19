@@ -11,7 +11,7 @@ import { colors, fonts } from '../theme/tokens';
 
 const STEPS = [
   { Icon: PhoneIcon, text: 'Prenda o celular na grade ou na areia, atrás da linha de fundo.' },
-  { Icon: ArmsUpIcon, text: 'Fez um lance bom? Braços para cima, toque no relógio ou no controle.' },
+  { Icon: ArmsUpIcon, text: 'Mandou bem? Braços para cima, toque no relógio ou no controle.' },
   { Icon: ShareIcon, text: 'Poste direto no Story do Instagram.' },
 ];
 
@@ -36,7 +36,7 @@ export default function Onboarding() {
 
       <Text style={styles.title} accessibilityRole="header">
         GRAVE O JOGO INTEIRO.{'\n'}
-        <Text style={{ color: colors.accent }}>GUARDE SÓ O LANCE.</Text>
+        <Text style={{ color: colors.accent }}>GUARDE SÓ O MELHOR.</Text>
       </Text>
 
       <View style={styles.steps}>
@@ -51,14 +51,14 @@ export default function Onboarding() {
       <View style={styles.note}>
         <ShieldIcon />
         <Text style={styles.noteText}>
-          Só os lances que você salvar ficam no seu celular. O resto é apagado automaticamente.
+          Só os clipes que você salvar ficam no seu celular. O resto é apagado automaticamente.
         </Text>
       </View>
 
       <View style={styles.footer}>
         {denied ? (
           <>
-            <Text style={styles.denied}>Sem câmera não dá para gravar os lances. Libere em Ajustes.</Text>
+            <Text style={styles.denied}>Sem câmera não dá para gravar os clipes. Libere em Ajustes.</Text>
             <Button label="Abrir Ajustes" variant="secondary" onPress={() => Linking.openSettings()} />
           </>
         ) : null}

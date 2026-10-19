@@ -15,26 +15,26 @@ const clip = { id: 'c1', sessionId: 's1', createdAt: 1, source: 'screen', path: 
 
 beforeEach(() => jest.clearAllMocks());
 
-test('lists games with their label and lance count', async () => {
+test('lists games with their label and clipe count', async () => {
   repo.listSessions.mockReturnValue([
     { session: { id: 's1', sport: 'futevolei', startedAt: 0, name: 'Final do torneio' }, clips: 3, firstClip: clip },
   ]);
   repo.sessionStats.mockReturnValue({ clips: 3, bytes: 1, recordedMs: 74 * 60_000 });
   await render(<Games />);
   expect(screen.getByText('Final do torneio')).toBeTruthy();
-  expect(screen.getByText('3 lances · 1h14')).toBeTruthy();
+  expect(screen.getByText('3 clipes · 1h14')).toBeTruthy();
 });
 
 test('tapping a game opens its summary', async () => {
   repo.listSessions.mockReturnValue([{ session: { id: 's1', sport: 'outro', startedAt: 0 }, clips: 1, firstClip: clip }]);
   repo.sessionStats.mockReturnValue({ clips: 1, bytes: 1, recordedMs: 60_000 });
   await render(<Games />);
-  await fireEvent.press(screen.getByRole('button', { name: /1 lance/ }));
+  await fireEvent.press(screen.getByRole('button', { name: /1 clipe/ }));
   expect(router.push).toHaveBeenCalledWith('/session/s1');
 });
 
 test('empty state', async () => {
   repo.listSessions.mockReturnValue([]);
   await render(<Games />);
-  expect(screen.getByText('Nenhum jogo com lances ainda.')).toBeTruthy();
+  expect(screen.getByText('Nenhuma gravação com clipes ainda.')).toBeTruthy();
 });

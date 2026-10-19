@@ -26,12 +26,12 @@ import { useVolumeRemote } from '../triggers/useVolumeRemote';
 
 const START_ERRORS: Partial<Record<ReplayErrorCode, string>> = {
   LOW_STORAGE: 'Pouco espaço no celular. Libere pelo menos 500 MB para gravar.',
-  CAMERA_PERMISSION: 'Sem câmera não dá para gravar os lances. Libere em Ajustes.',
+  CAMERA_PERMISSION: 'Sem câmera não dá para gravar os clipes. Libere em Ajustes.',
 };
 
 export default function Setup() {
   const session = useSession();
-  // This screen stays mounted under Meus jogos, the editor and the Story screen: only hold the camera,
+  // This screen stays mounted under Minhas gravações, the editor and the Story screen: only hold the camera,
   // the volume buttons and the screen awake while it is the visible one.
   const focused = useIsFocused();
   const [prefs, setPrefsState] = useState<Prefs>(() => repo.getPrefs());
@@ -91,7 +91,7 @@ export default function Setup() {
   const { phase, error, camera } = session.state;
   const { prepare, release } = session;
 
-  // Live preview while positioning; the buffer starts filling now, so "Começar jogo" is instant.
+  // Live preview while positioning; the buffer starts filling now, so "Começar a gravar" is instant.
   useEffect(() => {
     if (focused) void prepare(modeId);
     else void release();
@@ -135,10 +135,10 @@ export default function Setup() {
           <View style={styles.topRow}>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Meus jogos"
+              accessibilityLabel="Minhas gravações"
               onPress={() => router.push('/games')}
               style={[styles.pill, styles.pillButton]}>
-              <Text style={styles.pillText}>Meus jogos</Text>
+              <Text style={styles.pillText}>Minhas gravações</Text>
             </Pressable>
             <View style={styles.lens}>
               {(['ultraWide', 'wide'] as const).map((lens) => (
@@ -175,7 +175,7 @@ export default function Setup() {
 
             {errorText ? <Text style={styles.error}>{errorText}</Text> : null}
             <Button
-              label={opening ? 'Abrindo a câmera…' : 'Começar jogo'}
+              label={opening ? 'Abrindo a câmera…' : 'Começar a gravar'}
               icon={starting ? <ActivityIndicator color={colors.onAccent} /> : undefined}
               disabled={starting}
               onPress={() => session.start(modeId)}
@@ -216,7 +216,7 @@ export default function Setup() {
           </View>
         </View>
 
-        <Text style={styles.section}>COMO SALVAR O LANCE</Text>
+        <Text style={styles.section}>COMO SALVAR O CLIPE</Text>
         <View style={styles.grid}>
           <View style={styles.gridRow}>
             <TriggerTile

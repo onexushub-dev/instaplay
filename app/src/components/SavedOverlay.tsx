@@ -21,7 +21,7 @@ export function SavedOverlay({ number, source, onUndo }: Props) {
             <CheckIcon size={28} />
           </View>
           <View style={styles.text}>
-            <Text style={styles.title}>{`LANCE #${number} SALVO`}</Text>
+            <Text style={styles.title}>{`CLIPE #${number} SALVO`}</Text>
             <Text style={styles.via}>{`via ${SOURCE_LABEL[source]} · últimos 30s`}</Text>
           </View>
         </View>
