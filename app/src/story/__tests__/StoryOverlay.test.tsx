@@ -28,3 +28,14 @@ test('the video area stays transparent', async () => {
   expect(area.backgroundColor).toBeUndefined();
   expect(area.height).toBe(607.5);
 });
+
+test('templates stay visible on a portrait video (no bands)', async () => {
+  const portrait = storyLayout({ width: 1080, height: 1920 }, frame);
+  await render(<StoryOverlay frame={frame} layout={portrait} texts={texts} watermark={false} scale={1} />);
+  // Text blocks sit in Instagram's safe area over the video, not inside the zero-height bands.
+  const top = StyleSheet.flatten(screen.getByTestId('story-top-block').props.style);
+  const bottom = StyleSheet.flatten(screen.getByTestId('story-bottom-block').props.style);
+  expect(top.top).toBe(250);
+  expect(bottom.bottom).toBe(340);
+  expect(screen.getByText('BEACH TENNIS')).toBeTruthy();
+});

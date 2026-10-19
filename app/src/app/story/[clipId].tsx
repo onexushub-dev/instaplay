@@ -176,13 +176,21 @@ export default function StoryScreen() {
           <VideoView player={player} contentFit="contain" nativeControls={false} style={StyleSheet.absoluteFill} />
         </View>
         <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-          <StoryOverlay frame={frame} layout={layout} texts={texts} watermark={options.watermark} scale={scale} />
+          <StoryOverlay frame={frame} layout={layout} texts={texts} template={prefs.storyTemplate} watermark={options.watermark} scale={scale} />
         </View>
       </View>
 
       {/* Off-screen copy at exactly the export's pixel size, captured to PNG for the video overlay. */}
       <View pointerEvents="none" style={styles.offscreen}>
-        <StoryOverlay ref={captureRefView} frame={frame} layout={layout} texts={texts} watermark={options.watermark} scale={1 / pr} />
+        <StoryOverlay
+          ref={captureRefView}
+          frame={frame}
+          layout={layout}
+          texts={texts}
+          template={prefs.storyTemplate}
+          watermark={options.watermark}
+          scale={1 / pr}
+        />
       </View>
 
       <View style={styles.chips}>
