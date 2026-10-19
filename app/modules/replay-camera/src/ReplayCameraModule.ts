@@ -7,6 +7,7 @@ import type {
   SaveClipOptions,
   SavedClip,
   SessionOptions,
+  WatchStatus,
 } from './ReplayCamera.types';
 
 declare class ReplayCameraModule extends NativeModule<ReplayCameraModuleEvents> {
@@ -23,6 +24,9 @@ declare class ReplayCameraModule extends NativeModule<ReplayCameraModuleEvents> 
   getSpeechPermission(): 'granted' | 'denied' | 'undetermined';
   createThumbnail(clipPath: string, atMs: number): Promise<string>;
   exportClip(opts: ExportClipOptions): Promise<ExportedClip>;
+  getWatchStatus(): WatchStatus;
+  watchSync(recording: boolean, clipCount: number, startedAt: number | null): void;
+  watchSignal(saved: boolean): void;
   shareToInstagramStory(videoPath: string, metaAppId: string): Promise<'opened' | 'unavailable'>;
 }
 

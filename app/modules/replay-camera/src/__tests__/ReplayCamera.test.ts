@@ -7,11 +7,14 @@ jest.mock('expo', () => {
     setGestureEnabled: jest.fn(),
     addListener: jest.fn(),
     requestPermissions: jest.fn(),
+    getWatchStatus: jest.fn(),
+    watchSync: jest.fn(),
+    watchSignal: jest.fn(),
   };
   return { requireNativeModule: () => mockNative, NativeModule: class {} };
 });
 
-import { requestPermissions, saveClip, startSession } from '../ReplayCamera';
+import { getWatchStatus, requestPermissions, saveClip, startSession, watchSignal, watchSync } from '../ReplayCamera';
 
 const mockNative = jest.requireMock('expo').requireNativeModule();
 
@@ -42,4 +45,15 @@ test('requestPermissions resolves whether camera and microphone were granted', a
   mockNative.requestPermissions.mockResolvedValue(false);
 
   await expect(requestPermissions()).resolves.toBe(false);
+});
+
+test('the watch calls pass plain values to native, with a missing start as null', () => {
+  mockNative.getWatchStatus.mockReturnValue('ready');
+  expect(getWatchStatus()).toBe('ready');
+  watchSync({ recording: true, clipCount: 2, startedAt: 5 });
+  expect(mockNative.watchSync).toHaveBeenLastCalledWith(true, 2, 5);
+  watchSync({ recording: false, clipCount: 0 });
+  expect(mockNative.watchSync).toHaveBeenLastCalledWith(false, 0, null);
+  watchSignal(false);
+  expect(mockNative.watchSignal).toHaveBeenCalledWith(false);
 });

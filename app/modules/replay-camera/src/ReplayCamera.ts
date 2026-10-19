@@ -6,6 +6,7 @@ import type {
   SaveClipOptions,
   SavedClip,
   SessionOptions,
+  WatchStatus,
 } from './ReplayCamera.types';
 
 // Native rejections carry `code` (a ReplayErrorCode), so callers can branch on it.
@@ -39,6 +40,21 @@ export function signalSaved({ sound, flash }: { sound: boolean; flash: boolean }
 /** Distinct low double beep when a save fails. */
 export function signalSaveFailed({ sound }: { sound: boolean }): void {
   ReplayCameraModule.signalSaveFailed(sound);
+}
+
+/** Whether a watch is paired and has the app (iOS; always 'unsupported' on Android for now). */
+export function getWatchStatus(): WatchStatus {
+  return ReplayCameraModule.getWatchStatus();
+}
+
+/** Tells the watch how the recording stands: it shows the time and clip count. */
+export function watchSync(state: { recording: boolean; clipCount: number; startedAt?: number }): void {
+  ReplayCameraModule.watchSync(state.recording, state.clipCount, state.startedAt ?? null);
+}
+
+/** Makes the watch vibrate for a clip that was saved (true) or a save that failed (false). */
+export function watchSignal(saved: boolean): void {
+  ReplayCameraModule.watchSignal(saved);
 }
 
 /** Listens for "salvar" or "gravar" in the game's audio (iOS; no-op on Android for now). */

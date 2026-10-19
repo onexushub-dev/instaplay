@@ -17,8 +17,12 @@ export type SessionOptions = { lens: Lens; maxQuality: Quality; bufferSeconds?: 
 export type SaveClipOptions = { source: TriggerSource; at: number };
 export type SavedClip = { clipPath: string; durationMs: number };
 
+/** Apple Watch link: no paired watch · paired without the LANCE app · ready. */
+export type WatchStatus = 'unsupported' | 'notInstalled' | 'ready';
+
 export type ReplayCameraModuleEvents = {
   onTrigger: (e: { source: TriggerSource; at: number }) => void;
+  onWatchStatus: (e: { status: WatchStatus }) => void;
   onThermalChange: (e: { level: ThermalLevel; degraded: boolean }) => void;
   onInterrupted: () => void;
   onResumed: () => void;

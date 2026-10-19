@@ -54,10 +54,12 @@ public class ReplayCameraModule: Module {
   public func definition() -> ModuleDefinition {
     Name("ReplayCamera")
 
-    Events("onTrigger", "onThermalChange", "onInterrupted", "onResumed", "onError", "onGestureDebug")
+    Events("onTrigger", "onThermalChange", "onInterrupted", "onResumed", "onError", "onGestureDebug", "onWatchStatus")
 
     OnCreate {
       self.engine.emit = { [weak self] name, body in self?.sendEvent(name, body) }
+      WatchBridge.shared.emit = { [weak self] name, body in self?.sendEvent(name, body) }
+      WatchBridge.shared.activate()
     }
 
     AsyncFunction("startSession") { (opts: SessionOptions) in
@@ -106,6 +108,16 @@ public class ReplayCameraModule: Module {
 
     AsyncFunction("createThumbnail") { (clipPath: String, atMs: Double) async throws -> String in
       try await ClipThumbnail.make(clipPath: clipPath, atMs: atMs)
+    }
+
+    Function("getWatchStatus") { () -> String in WatchBridge.shared.status }
+
+    Function("watchSync") { (recording: Bool, clipCount: Int, startedAt: Double?) in
+      WatchBridge.shared.sync(recording: recording, clipCount: clipCount, startedAt: startedAt)
+    }
+
+    Function("watchSignal") { (saved: Bool) in
+      WatchBridge.shared.signal(saved: saved)
     }
 
     Function("isVoiceSupported") { VoiceTrigger.isSupported }

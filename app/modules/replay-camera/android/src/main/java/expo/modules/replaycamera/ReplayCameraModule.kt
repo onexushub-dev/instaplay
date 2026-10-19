@@ -38,7 +38,7 @@ class ReplayCameraModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("ReplayCamera")
 
-    Events("onTrigger", "onThermalChange", "onInterrupted", "onResumed", "onError", "onGestureDebug")
+    Events("onTrigger", "onThermalChange", "onInterrupted", "onResumed", "onError", "onGestureDebug", "onWatchStatus")
 
     OnCreate {
       ReplayEngine.emit = { name, body -> sendEvent(name, body) }
@@ -83,6 +83,13 @@ class ReplayCameraModule : Module() {
 
     // Voice is iOS-only for now: Android's microphone is already taken by the recorder.
     Function("setVoiceEnabled") { _: Boolean -> }
+
+    // Wear OS arrives with the Android device stage; until then there is never a watch on Android.
+    Function("getWatchStatus") { "unsupported" }
+
+    Function("watchSync") { _: Boolean, _: Int, _: Double? -> }
+
+    Function("watchSignal") { _: Boolean -> }
 
     Function("isVoiceSupported") { false }
 
