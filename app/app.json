@@ -51,7 +51,8 @@
       ],
       "expo-font",
       "expo-video",
-      "expo-sharing"
+      "expo-sharing",
+      "@bacons/apple-targets"
     ],
     "experiments": {
       "typedRoutes": true,
