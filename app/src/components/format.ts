@@ -1,11 +1,17 @@
 import type { Session, Sport } from '../data/schema';
 
-export const SPORT_LABEL: Record<Sport, string> = {
+export const MODE_LABEL: Record<Sport, string> = {
   beachTennis: 'Beach tennis',
   futevolei: 'Futevôlei',
   voleiPraia: 'Vôlei de praia',
   outro: 'Outro',
+  musculacao: 'Musculação',
+  crossfit: 'Crossfit',
+  funcional: 'Funcional',
+  outroAcademia: 'Outro',
 };
+/** The original name, kept for the court screens and stored sessions. */
+export const SPORT_LABEL = MODE_LABEL;
 
 const pad = (n: number) => String(n).padStart(2, '0');
 

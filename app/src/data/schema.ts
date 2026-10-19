@@ -2,7 +2,29 @@ import type { TriggerSource } from '../../modules/replay-camera/src/ReplayCamera
 
 export type { TriggerSource };
 
-export type Sport = 'beachTennis' | 'futevolei' | 'voleiPraia' | 'outro';
+/** A usage mode (Plan 4). The first four are the original sports, so stored sessions stay valid. */
+export type ModeId =
+  | 'beachTennis'
+  | 'futevolei'
+  | 'voleiPraia'
+  | 'outro'
+  | 'musculacao'
+  | 'crossfit'
+  | 'funcional'
+  | 'outroAcademia';
+/** Kept as the field type name: Session.sport and Prefs.sport hold a mode id. */
+export type Sport = ModeId;
+
+export type TemplateId = 'placar' | 'minimal' | 'arena' | 'treino' | 'recorde';
+
+export type ModeSettings = {
+  lens: 'ultraWide' | 'wide';
+  gestureEnabled: boolean;
+  voiceEnabled: boolean;
+  bufferSeconds: 60 | 120;
+  cutSeconds: number;
+  quality: '1080p60' | '1080p30';
+};
 
 export type Session = { id: string; sport: Sport; startedAt: number; endedAt?: number; name?: string };
 
@@ -31,7 +53,9 @@ export type Prefs = {
   /** "salvar" / "gravar" by voice (iOS). Off until speech permission is granted. */
   voiceEnabled: boolean;
   /** Story screen choices, remembered between lances. */
-  storyTemplate: 'placar' | 'minimal' | 'arena';
+  storyTemplate: TemplateId;
+  /** The player's changes to a mode's defaults, kept per mode. */
+  modeSettings?: Partial<Record<ModeId, Partial<ModeSettings>>>;
   arenaName?: string;
 };
 

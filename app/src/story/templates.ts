@@ -1,13 +1,21 @@
-import { SPORT_LABEL } from '../components/format';
-import type { Sport } from '../data/schema';
+import { MODE_LABEL as SPORT_LABEL } from '../components/format';
 
-export type TemplateId = 'placar' | 'minimal' | 'arena';
+import type { Sport, TemplateId } from '../data/schema';
 
-export const TEMPLATES: { id: TemplateId; label: string }[] = [
-  { id: 'placar', label: 'Placar' },
-  { id: 'minimal', label: 'Minimal' },
-  { id: 'arena', label: 'Arena' },
-];
+export type { TemplateId };
+
+export const TEMPLATE_LABEL: Record<TemplateId, string> = {
+  placar: 'Placar',
+  minimal: 'Minimal',
+  arena: 'Arena',
+  treino: 'Treino',
+  recorde: 'Recorde',
+};
+
+export const TEMPLATES: { id: TemplateId; label: string }[] = (['placar', 'minimal', 'arena'] as const).map((id) => ({
+  id,
+  label: TEMPLATE_LABEL[id],
+}));
 
 const MONTHS = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'];
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -29,5 +37,9 @@ export function storyTexts(template: TemplateId, { sport, startedAt, arena, game
       return { top: [], bottom: [`${sportCaps} · ${pad(d.getDate())}/${pad(d.getMonth() + 1)}`] };
     case 'arena':
       return { top: [arena || 'SUA ARENA'], bottom: [sportCaps, dayMonth] };
+    case 'treino':
+      return { top: [sportCaps, dayMonth], bottom: ['TREINO', arena ?? ''] };
+    case 'recorde':
+      return { top: [sportCaps], bottom: ['RECORDE PESSOAL', arena ?? ''] };
   }
 }
