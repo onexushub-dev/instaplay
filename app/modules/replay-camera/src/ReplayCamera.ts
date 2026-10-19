@@ -51,6 +51,11 @@ export function isVoiceSupported(): boolean {
   return ReplayCameraModule.isVoiceSupported();
 }
 
+/** Current speech-recognition permission, without asking. */
+export function getSpeechPermission(): 'granted' | 'denied' | 'undetermined' {
+  return ReplayCameraModule.getSpeechPermission();
+}
+
 /** Asks for speech recognition; resolves true when granted (always false on Android for now). */
 export function requestSpeechPermission(): Promise<boolean> {
   return ReplayCameraModule.requestSpeechPermission();

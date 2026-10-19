@@ -4,27 +4,21 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { isVoiceSupported, ReplayCameraView, requestSpeechPermission } from '../../modules/replay-camera';
+import { getSpeechPermission, isVoiceSupported, ReplayCameraView, requestSpeechPermission } from '../../modules/replay-camera';
 import type { ReplayErrorCode } from '../../modules/replay-camera/src/ReplayCamera.types';
 import { Button } from '../components/Button';
 import { Chip } from '../components/Chip';
-import { CourtGuide } from '../components/CourtGuide';
+import { PositionGuide } from '../components/PositionGuide';
 import { RecordingPanel } from '../components/RecordingPanel';
 import { ArmsUpIcon, MicIcon, RemoteIcon, WatchIcon } from '../components/icons';
 import { TriggerTile } from '../components/TriggerTile';
 import { repo } from '../data/mmkv';
-import type { ModeSettings, Prefs, Sport } from '../data/schema';
-import { effectiveSettings, withModeOverride } from '../modes/registry';
+import type { ModeSettings, Prefs } from '../data/schema';
+import { effectiveSettings, type ModeGroup, modeById, modesIn, withModeOverride } from '../modes/registry';
 import { useSession } from '../session/SessionContext';
 import { colors, fonts } from '../theme/tokens';
 import { useVolumeRemote } from '../triggers/useVolumeRemote';
 
-const SPORTS: { id: Sport; label: string }[] = [
-  { id: 'beachTennis', label: 'Beach tennis' },
-  { id: 'futevolei', label: 'Futevôlei' },
-  { id: 'voleiPraia', label: 'Vôlei de praia' },
-  { id: 'outro', label: 'Outro' },
-];
 
 const START_ERRORS: Partial<Record<ReplayErrorCode, string>> = {
   LOW_STORAGE: 'Pouco espaço no celular. Libere pelo menos 500 MB para gravar.',
@@ -45,13 +39,29 @@ export default function Setup() {
   const [speechDenied, setSpeechDenied] = useState(false);
   // Offline recognition only: court audio is never streamed to a server.
   const [voiceSupported] = useState(() => isVoiceSupported());
+  const [speechGranted, setSpeechGranted] = useState(() => getSpeechPermission() === 'granted');
+  const mode = modeById(prefs.sport);
+  // Voice counts as on only when this mode wants it and the phone may listen.
+  const voiceOn = voiceSupported && settings.voiceEnabled && speechGranted;
+  const voiceStatus = !voiceSupported
+    ? 'Indisponível neste celular'
+    : !settings.voiceEnabled
+      ? 'Desligado'
+      : speechGranted
+        ? 'Diga “salvar” ou “gravar”'
+        : 'Toque para permitir';
 
   async function toggleVoice() {
-    if (prefs.voiceEnabled) return update({ voiceEnabled: false });
-    const granted = await requestSpeechPermission();
+    if (voiceOn) return updateMode({ voiceEnabled: false });
+    const granted = speechGranted || (await requestSpeechPermission());
+    setSpeechGranted(granted);
     setSpeechDenied(!granted);
-    if (granted) update({ voiceEnabled: true });
+    if (granted) updateMode({ voiceEnabled: true });
   }
+
+  const chooseGroup = (group: ModeGroup) => {
+    if (mode.group !== group) update({ sport: modesIn(group)[0].id });
+  };
   const { phase, error, camera } = session.state;
   const { prepare, release } = session;
 
@@ -88,7 +98,7 @@ export default function Setup() {
   function renderSetupControls() {
     return (
       <>
-        <CourtGuide />
+        <PositionGuide guide={mode.guide} />
 
         <SafeAreaView edges={['top']} style={styles.top}>
           <View style={styles.topRow}>
@@ -116,20 +126,21 @@ export default function Setup() {
             </View>
           </View>
           <View style={styles.tip}>
-            <Text style={styles.tipText}>Atrás da linha de fundo, na altura do ombro</Text>
+            <Text style={styles.tipText}>{mode.tip}</Text>
           </View>
         </SafeAreaView>
 
         <SafeAreaView edges={['bottom']} style={styles.sheet}>
-          <Text style={styles.section}>ESPORTE</Text>
+          <View style={styles.modeHeader}>
+            <Text style={styles.section}>MODO</Text>
+            <View style={styles.chips}>
+              <Chip label="Quadra" selected={mode.group === 'quadra'} onPress={() => chooseGroup('quadra')} />
+              <Chip label="Academia" selected={mode.group === 'academia'} onPress={() => chooseGroup('academia')} />
+            </View>
+          </View>
           <View style={styles.chips}>
-            {SPORTS.map((s) => (
-              <Chip
-                key={s.id}
-                label={s.label}
-                selected={prefs.sport === s.id}
-                onPress={() => update({ sport: s.id })}
-              />
+            {modesIn(mode.group).map((m) => (
+              <Chip key={m.id} label={m.label} selected={prefs.sport === m.id} onPress={() => update({ sport: m.id })} />
             ))}
           </View>
 
@@ -139,17 +150,17 @@ export default function Setup() {
               <TriggerTile
                 icon={<MicIcon />}
                 title="Voz"
-                status={!voiceSupported ? 'Indisponível neste celular' : prefs.voiceEnabled ? 'Diga “salvar” ou “gravar”' : 'Desligado'}
-                active={voiceSupported && prefs.voiceEnabled}
+                status={voiceStatus}
+                active={voiceOn}
                 disabled={!voiceSupported}
                 onPress={voiceSupported ? () => void toggleVoice() : undefined}
               />
               <TriggerTile
                 icon={<ArmsUpIcon />}
                 title="Braços para cima"
-                status={prefs.gestureEnabled ? 'Ativo' : 'Desligado'}
-                active={prefs.gestureEnabled}
-                onPress={() => update({ gestureEnabled: !prefs.gestureEnabled })}
+                status={settings.gestureEnabled ? 'Ativo' : 'Desligado'}
+                active={settings.gestureEnabled}
+                onPress={() => updateMode({ gestureEnabled: !settings.gestureEnabled })}
               />
             </View>
             <View style={styles.gridRow}>
@@ -257,6 +268,7 @@ const styles = StyleSheet.create({
   grid: { gap: 8 },
   gridRow: { flexDirection: 'row', gap: 8 },
   error: { fontFamily: fonts.bodySemi, fontSize: 14, color: colors.warning },
+  modeHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   feedbackRow: {
     flexDirection: 'row',
     alignItems: 'center',

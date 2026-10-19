@@ -9,6 +9,7 @@ jest.mock('../../../modules/replay-camera', () => {
     __mounts: mounts,
     requestSpeechPermission: jest.fn(async () => true),
     isVoiceSupported: jest.fn(() => true),
+    getSpeechPermission: jest.fn(() => 'granted'),
     ReplayCameraView: (props: { style?: unknown }) => {
       mounts.style = props.style;
       useEffect(() => {
@@ -25,7 +26,7 @@ jest.mock('expo-router', () => ({
 }));
 jest.mock('expo-keep-awake', () => ({ activateKeepAwakeAsync: jest.fn(async () => {}), deactivateKeepAwake: jest.fn() }));
 jest.mock('../../data/mmkv', () => {
-  let prefs = {
+  const initial = {
     onboardingDone: true,
     sport: 'beachTennis',
     lens: 'ultraWide',
@@ -34,7 +35,9 @@ jest.mock('../../data/mmkv', () => {
     flashOnSave: true,
     voiceEnabled: false,
   };
+  let prefs: any = { ...initial };
   return {
+    __reset: () => (prefs = { ...initial }),
     repo: {
       getPrefs: () => prefs,
       setPrefs: jest.fn((p: object) => (prefs = { ...prefs, ...p })),
@@ -69,7 +72,10 @@ function session(state: object) {
   return value;
 }
 
-beforeEach(() => jest.clearAllMocks());
+beforeEach(() => {
+  jest.clearAllMocks();
+  jest.requireMock('../../data/mmkv').__reset();
+});
 
 test('keeps the screen awake while the phone is being positioned', async () => {
   session({});
@@ -121,7 +127,9 @@ test('the gesture tile toggles the gesture preference', async () => {
   session({});
   await render(<Setup />);
   await fireEvent.press(screen.getByRole('button', { name: /Braços para cima/ }));
-  expect(repo.setPrefs).toHaveBeenCalledWith({ gestureEnabled: false });
+  expect(repo.setPrefs).toHaveBeenCalledWith(
+    expect.objectContaining({ modeSettings: expect.objectContaining({ beachTennis: { gestureEnabled: false } }) })
+  );
 });
 
 test('Começar jogo starts with the chosen sport and shows the recording controls on the same screen', async () => {
@@ -179,22 +187,26 @@ test('save feedback toggles: sound and flash', async () => {
 
 test('turning voice on asks for speech permission first', async () => {
   const camera = jest.requireMock('../../../modules/replay-camera');
+  camera.getSpeechPermission.mockReturnValueOnce('undetermined');
   session({});
   await render(<Setup />);
   await fireEvent.press(screen.getByRole('button', { name: /^Voz/ }));
   expect(camera.requestSpeechPermission).toHaveBeenCalled();
-  expect(repo.setPrefs).toHaveBeenCalledWith({ voiceEnabled: true });
+  expect(repo.setPrefs).toHaveBeenCalledWith(
+    expect.objectContaining({ modeSettings: expect.objectContaining({ beachTennis: expect.objectContaining({ voiceEnabled: true }) }) })
+  );
 });
 
 test('voice stays off when speech permission is denied', async () => {
   const camera = jest.requireMock('../../../modules/replay-camera');
+  camera.getSpeechPermission.mockReturnValueOnce('undetermined');
   camera.requestSpeechPermission.mockResolvedValueOnce(false);
   repo.setPrefs({ voiceEnabled: false });
   jest.clearAllMocks();
   session({});
   await render(<Setup />);
   await fireEvent.press(screen.getByRole('button', { name: /^Voz/ }));
-  expect(repo.setPrefs).not.toHaveBeenCalledWith({ voiceEnabled: true });
+  expect(repo.setPrefs).not.toHaveBeenCalled();
   expect(screen.getByText('Libere o reconhecimento de fala em Ajustes.')).toBeTruthy();
 });
 
@@ -214,4 +226,38 @@ test('Meus jogos opens the game list, and is hidden during a game', async () => 
   session({ phase: 'recording', sessionId: 's1', startedAt: Date.now() });
   await view.rerender(<Setup />);
   expect(screen.queryByRole('button', { name: 'Meus jogos' })).toBeNull();
+});
+
+test('switching to Academia shows gym modes and the person guide tip', async () => {
+  session({});
+  await render(<Setup />);
+  await fireEvent.press(screen.getByRole('button', { name: 'Academia' }));
+  expect(screen.getByRole('button', { name: 'Musculação' })).toBeTruthy();
+  expect(screen.getByText('No chão ou no tripé, a 2–3 m, de lado para o exercício')).toBeTruthy();
+  expect(screen.getByTestId('guide-person', { includeHiddenElements: true })).toBeTruthy();
+});
+
+test('choosing Musculação stores the mode and reopens the camera for it', async () => {
+  const s = session({});
+  await render(<Setup />);
+  await fireEvent.press(screen.getByRole('button', { name: 'Academia' }));
+  await fireEvent.press(screen.getByRole('button', { name: 'Musculação' }));
+  expect(repo.setPrefs).toHaveBeenCalledWith({ sport: 'musculacao' });
+  expect(s.prepare).toHaveBeenLastCalledWith('musculacao');
+});
+
+test('the gesture tile reflects the mode default (off in gym)', async () => {
+  repo.setPrefs({ sport: 'crossfit' });
+  session({});
+  await render(<Setup />);
+  expect(screen.getByLabelText('Braços para cima, Desligado')).toBeTruthy();
+});
+
+test('a gym mode without speech permission shows Toque para permitir', async () => {
+  repo.setPrefs({ sport: 'funcional' });
+  jest.requireMock('../../../modules/replay-camera').getSpeechPermission.mockReturnValue('undetermined');
+  session({});
+  await render(<Setup />);
+  expect(screen.getByLabelText('Voz, Toque para permitir')).toBeTruthy();
+  jest.requireMock('../../../modules/replay-camera').getSpeechPermission.mockReturnValue('granted');
 });

@@ -20,6 +20,7 @@ declare class ReplayCameraModule extends NativeModule<ReplayCameraModuleEvents> 
   setVoiceEnabled(enabled: boolean): void;
   requestSpeechPermission(): Promise<boolean>;
   isVoiceSupported(): boolean;
+  getSpeechPermission(): 'granted' | 'denied' | 'undetermined';
   createThumbnail(clipPath: string, atMs: number): Promise<string>;
   exportClip(opts: ExportClipOptions): Promise<ExportedClip>;
   shareToInstagramStory(videoPath: string, metaAppId: string): Promise<'opened' | 'unavailable'>;

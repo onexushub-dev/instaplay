@@ -1,4 +1,5 @@
 import ExpoModulesCore
+import Speech
 
 struct SessionOptions: Record {
   @Field var lens: String = "ultraWide"
@@ -108,6 +109,14 @@ public class ReplayCameraModule: Module {
     }
 
     Function("isVoiceSupported") { VoiceTrigger.isSupported }
+
+    Function("getSpeechPermission") { () -> String in
+      switch SFSpeechRecognizer.authorizationStatus() {
+      case .authorized: return "granted"
+      case .notDetermined: return "undetermined"
+      default: return "denied"
+      }
+    }
 
     Function("setVoiceEnabled") { (enabled: Bool) in
       self.engine.voice.setEnabled(enabled)

@@ -86,6 +86,8 @@ class ReplayCameraModule : Module() {
 
     Function("isVoiceSupported") { false }
 
+    Function("getSpeechPermission") { "denied" }
+
     AsyncFunction("requestSpeechPermission") { false }
 
     Function("signalSaveFailed") { sound: Boolean -> ReplayEngine.signalSaveFailed(sound) }
