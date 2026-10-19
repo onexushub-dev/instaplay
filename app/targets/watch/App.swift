@@ -4,7 +4,7 @@ import SwiftUI
 struct LanceWatchApp: App {
   var body: some Scene {
     WindowGroup {
-      Text("LANCE")
+      ContentView()
     }
   }
 }
