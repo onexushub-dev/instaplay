@@ -21,6 +21,8 @@ export type SessionDeps = {
     saveClip(opts: SaveClipOptions): Promise<SavedClip>;
     setGestureEnabled(enabled: boolean): void;
     setVoiceEnabled(enabled: boolean): void;
+    watchSync(state: { recording: boolean; clipCount: number; startedAt?: number }): void;
+    watchSignal(saved: boolean): void;
     getSpeechPermission(): 'granted' | 'denied' | 'undetermined';
     signalSaved(opts: { sound: boolean; flash: boolean }): void;
     signalSaveFailed(opts: { sound: boolean }): void;
@@ -78,8 +80,10 @@ export function useReplaySession(deps: SessionDeps) {
         }, effectiveSettings(gameMode.current, deps.repo.getPrefs()).cutSeconds * 1000);
         deps.haptic();
         dispatch({ type: 'saved', sessionId, clipId: clip.id, source, at });
+        deps.camera.watchSignal(true);
       } catch {
         deps.camera.signalSaveFailed({ sound: prefs.soundOnSave });
+        deps.camera.watchSignal(false);
         dispatch({ type: 'saveFailed', sessionId });
       } finally {
         saving.current = false;
@@ -112,6 +116,14 @@ export function useReplaySession(deps: SessionDeps) {
     ];
     return () => subs.forEach((s) => s.remove());
   }, [bus, deps]);
+
+  // The watch shows what the phone shows: the clock and count while recording, idle otherwise.
+  const recording = state.phase === 'recording';
+  useEffect(() => {
+    deps.camera.watchSync(
+      recording ? { recording, clipCount: state.clipCount, startedAt: state.startedAt } : { recording, clipCount: 0 }
+    );
+  }, [deps, recording, state.clipCount, state.startedAt]);
 
   const trigger = useCallback((source: TriggerSource) => void bus.fire(source), [bus]);
 

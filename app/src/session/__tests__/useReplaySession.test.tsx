@@ -23,6 +23,8 @@ function fakeDeps() {
     signalSaved: jest.fn(),
     setVoiceEnabled: jest.fn(),
     getSpeechPermission: jest.fn((): 'granted' | 'denied' | 'undetermined' => 'granted'),
+    watchSync: jest.fn(),
+    watchSignal: jest.fn(),
     signalSaveFailed: jest.fn(),
     addReplayListener: jest.fn((event: string, fn: Listener) => {
       listeners.set(event, fn);
@@ -281,4 +283,71 @@ test('voice stays off natively when the phone may not listen', async () => {
   const view = await renderHook(() => useReplaySession(f.deps));
   await act(() => view.result.current.start('musculacao'));
   expect(f.camera.setVoiceEnabled).toHaveBeenLastCalledWith(false);
+});
+
+test('starting a recording tells the watch', async () => {
+  const { camera } = await started();
+  expect(camera.watchSync).toHaveBeenLastCalledWith({ recording: true, clipCount: 0, startedAt: 1000 });
+});
+
+test('a saved clip syncs the new count and signals success', async () => {
+  const { view, camera, finishSave } = await started();
+  await act(async () => view.result.current.trigger('watch'));
+  await act(async () => finishSave());
+  expect(camera.watchSync).toHaveBeenLastCalledWith({ recording: true, clipCount: 1, startedAt: 1000 });
+  expect(camera.watchSignal).toHaveBeenCalledTimes(1);
+  expect(camera.watchSignal).toHaveBeenCalledWith(true);
+});
+
+test('a failed save signals failure and leaves the count', async () => {
+  const { view, camera } = await started();
+  camera.saveClip.mockRejectedValueOnce(new Error('x'));
+  await act(async () => view.result.current.trigger('watch'));
+  expect(camera.watchSignal).toHaveBeenCalledWith(false);
+  expect(camera.watchSync).toHaveBeenLastCalledWith({ recording: true, clipCount: 0, startedAt: 1000 });
+});
+
+test('a second watch tap inside the debounce gives one save and one haptic', async () => {
+  const { view, camera, emit, advance, finishSave } = await started();
+  await act(async () => emit('onTrigger', { source: 'watch', at: 1 }));
+  await act(async () => finishSave());
+  advance(500);
+  await act(async () => emit('onTrigger', { source: 'watch', at: 2 }));
+  expect(camera.saveClip).toHaveBeenCalledTimes(1);
+  expect(camera.watchSignal).toHaveBeenCalledTimes(1);
+  expect(view.result.current.state.clipCount).toBe(1);
+});
+
+test('undo syncs the lower count without a signal', async () => {
+  const { view, camera, finishSave } = await started();
+  await act(async () => view.result.current.trigger('watch'));
+  await act(async () => finishSave());
+  camera.watchSignal.mockClear();
+  await act(async () => view.result.current.undoLast());
+  expect(camera.watchSync).toHaveBeenLastCalledWith({ recording: true, clipCount: 0, startedAt: 1000 });
+  expect(camera.watchSignal).not.toHaveBeenCalled();
+});
+
+test('stopping sends an idle state', async () => {
+  const { view, camera, finishSave } = await started();
+  await act(async () => view.result.current.trigger('watch'));
+  await act(async () => finishSave());
+  await act(async () => {
+    await view.result.current.stop();
+  });
+  expect(camera.watchSync).toHaveBeenLastCalledWith({ recording: false, clipCount: 0 });
+});
+
+test('a native stop (thermal) also sends an idle state', async () => {
+  const { camera, emit } = await started();
+  await act(async () => emit('onError', { code: 'ENCODER_FAILED', message: 'thermal' }));
+  expect(camera.watchSync).toHaveBeenLastCalledWith({ recording: false, clipCount: 0 });
+});
+
+test('a watch tap outside a recording is ignored', async () => {
+  const f = fakeDeps();
+  await renderHook(() => useReplaySession(f.deps));
+  await act(async () => f.emit('onTrigger', { source: 'watch', at: 1 }));
+  expect(f.camera.saveClip).not.toHaveBeenCalled();
+  expect(f.camera.watchSignal).not.toHaveBeenCalled();
 });
