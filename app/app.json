@@ -16,7 +16,8 @@
         "NSSpeechRecognitionUsageDescription": "O LANCE escuta você dizer \"salvar\" ou \"gravar\" para salvar o lance sem tocar no celular.",
         "LSApplicationQueriesSchemes": [
           "instagram-stories"
-        ]
+        ],
+        "NSPhotoLibraryAddUsageDescription": "O LANCE salva os lances que você exportar na sua galeria."
       },
       "appleTeamId": "2J67Z98LDX"
     },
@@ -49,7 +50,8 @@
         }
       ],
       "expo-font",
-      "expo-video"
+      "expo-video",
+      "expo-sharing"
     ],
     "experiments": {
       "typedRoutes": true,

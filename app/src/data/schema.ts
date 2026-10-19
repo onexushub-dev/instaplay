@@ -30,6 +30,9 @@ export type Prefs = {
   flashOnSave: boolean;
   /** "salvar" / "gravar" by voice (iOS). Off until speech permission is granted. */
   voiceEnabled: boolean;
+  /** Story screen choices, remembered between lances. */
+  storyTemplate: 'placar' | 'minimal' | 'arena';
+  arenaName?: string;
 };
 
 export const DEFAULT_PREFS: Prefs = {
@@ -40,6 +43,7 @@ export const DEFAULT_PREFS: Prefs = {
   soundOnSave: true,
   flashOnSave: true,
   voiceEnabled: false,
+  storyTemplate: 'placar',
 };
 
 /** Default cut: the last 30s of the saved 60s window (spec 3.3). */
