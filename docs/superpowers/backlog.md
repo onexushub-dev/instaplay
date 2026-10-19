@@ -42,3 +42,12 @@ Itens adiados nas revisões finais. Nada aqui bloqueia o uso, mas vale resolver 
 - Android: FileProvider genérico pode conflitar com outra biblioteca no futuro (usar uma subclasse própria).
 - iOS: corte que começa depois do fim real da mídia vira erro genérico.
 - Jogos não encerrados aparecem em "Meus jogos" com 0 min gravados.
+
+## Plano 4 (modos de uso) — minors adiados
+- Template do Story é global: escolher Treino num Story de academia faz o próximo Story de quadra voltar para Placar (guardar por grupo de modo).
+- Trocar Quadra ↔ Academia sempre cai no primeiro modo do grupo (lembrar o último modo de cada grupo).
+- Dois modos com o rótulo "Outro" (quadra e academia) — diferenciar nas listas e no Story.
+- `TEMPLATES` (só quadra) em `story/templates.ts` não é mais usado — remover.
+- Android `ReplayEngine.kt`: `ring`/`windowSeconds` trocados na thread do engine e lidos no `saveExecutor` sem `@Volatile`.
+- Story de academia pode ter até 120 s: confirmar no aparelho se o Instagram aceita ou divide.
+- Clipes de academia ficam com ~90 MB (120 s inteiros) e o espaço livre só é checado no início do jogo.

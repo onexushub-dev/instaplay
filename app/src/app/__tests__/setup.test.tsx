@@ -261,3 +261,12 @@ test('a gym mode without speech permission shows Toque para permitir', async () 
   expect(screen.getByLabelText('Voz, Toque para permitir')).toBeTruthy();
   jest.requireMock('../../../modules/replay-camera').getSpeechPermission.mockReturnValue('granted');
 });
+
+test('a denied speech permission shows the reason without a tap', async () => {
+  repo.setPrefs({ sport: 'musculacao' });
+  jest.requireMock('../../../modules/replay-camera').getSpeechPermission.mockReturnValue('denied');
+  session({});
+  await render(<Setup />);
+  expect(screen.getByLabelText('Voz, Negado · libere em Ajustes')).toBeTruthy();
+  jest.requireMock('../../../modules/replay-camera').getSpeechPermission.mockReturnValue('granted');
+});

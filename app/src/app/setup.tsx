@@ -39,7 +39,8 @@ export default function Setup() {
   const [speechDenied, setSpeechDenied] = useState(false);
   // Offline recognition only: court audio is never streamed to a server.
   const [voiceSupported] = useState(() => isVoiceSupported());
-  const [speechGranted, setSpeechGranted] = useState(() => getSpeechPermission() === 'granted');
+  const [speech, setSpeech] = useState(() => getSpeechPermission());
+  const speechGranted = speech === 'granted';
   const mode = modeById(prefs.sport);
   // Voice counts as on only when this mode wants it and the phone may listen.
   const voiceOn = voiceSupported && settings.voiceEnabled && speechGranted;
@@ -49,12 +50,14 @@ export default function Setup() {
       ? 'Desligado'
       : speechGranted
         ? 'Diga “salvar” ou “gravar”'
-        : 'Toque para permitir';
+        : speech === 'denied'
+          ? 'Negado · libere em Ajustes'
+          : 'Toque para permitir';
 
   async function toggleVoice() {
     if (voiceOn) return updateMode({ voiceEnabled: false });
     const granted = speechGranted || (await requestSpeechPermission());
-    setSpeechGranted(granted);
+    setSpeech(granted ? 'granted' : 'denied');
     setSpeechDenied(!granted);
     if (granted) updateMode({ voiceEnabled: true });
   }

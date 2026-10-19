@@ -21,6 +21,7 @@ export type SessionDeps = {
     saveClip(opts: SaveClipOptions): Promise<SavedClip>;
     setGestureEnabled(enabled: boolean): void;
     setVoiceEnabled(enabled: boolean): void;
+    getSpeechPermission(): 'granted' | 'denied' | 'undetermined';
     signalSaved(opts: { sound: boolean; flash: boolean }): void;
     signalSaveFailed(opts: { sound: boolean }): void;
     addReplayListener<E extends keyof ReplayCameraModuleEvents>(
@@ -162,7 +163,8 @@ export function useReplaySession(deps: SessionDeps) {
       gameMode.current = sport;
       const settings = effectiveSettings(sport, deps.repo.getPrefs());
       deps.camera.setGestureEnabled(settings.gestureEnabled);
-      deps.camera.setVoiceEnabled(settings.voiceEnabled);
+      // Listen only when the phone may: native and the setup tile must agree on whether voice is on.
+      deps.camera.setVoiceEnabled(settings.voiceEnabled && deps.camera.getSpeechPermission() === 'granted');
       const session = deps.repo.startSession(sport, deps.now());
       dispatch({ type: 'started', sessionId: session.id, startedAt: session.startedAt });
     },

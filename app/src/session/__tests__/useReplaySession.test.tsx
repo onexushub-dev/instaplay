@@ -22,6 +22,7 @@ function fakeDeps() {
     setGestureEnabled: jest.fn(),
     signalSaved: jest.fn(),
     setVoiceEnabled: jest.fn(),
+    getSpeechPermission: jest.fn((): 'granted' | 'denied' | 'undetermined' => 'granted'),
     signalSaveFailed: jest.fn(),
     addReplayListener: jest.fn((event: string, fn: Listener) => {
       listeners.set(event, fn);
@@ -272,4 +273,12 @@ test("saved clips get the mode's default cut", async () => {
   await act(async () => f.finishSave({ clipPath: '/g.mp4', durationMs: 120000 }));
   const [clip] = f.deps.repo.listClips(view.result.current.state.sessionId!);
   expect(clip.trim).toEqual({ startMs: 60000, endMs: 120000 });
+});
+
+test('voice stays off natively when the phone may not listen', async () => {
+  const f = fakeDeps();
+  f.camera.getSpeechPermission.mockReturnValue('denied');
+  const view = await renderHook(() => useReplaySession(f.deps));
+  await act(() => view.result.current.start('musculacao'));
+  expect(f.camera.setVoiceEnabled).toHaveBeenLastCalledWith(false);
 });
