@@ -7,7 +7,7 @@ import { useSession } from '../session/SessionContext';
 import { colors, fonts } from '../theme/tokens';
 import { Button } from './Button';
 import { HoldButton } from './HoldButton';
-import { RemoteIcon, TapIcon, WatchIcon, ArmsUpIcon } from './icons';
+import { ArmsUpIcon, MicIcon, RemoteIcon, TapIcon, WatchIcon } from './icons';
 import { SavedOverlay } from './SavedOverlay';
 
 const OVERLAY_MS = 2000;
@@ -22,7 +22,15 @@ function clock(ms: number): string {
  * Controls shown over the live camera while a game is recorded. The camera view itself belongs to the
  * game screen and is never recreated, so starting the game is instant (and Android keeps its preview).
  */
-export function RecordingPanel() {
+type Props = {
+  /** How far back a save reaches in this mode. */
+  bufferSeconds?: number;
+  /** Which hands-free triggers are on in this mode. */
+  gesture?: boolean;
+  voice?: boolean;
+};
+
+export function RecordingPanel({ bufferSeconds = 60, gesture = true, voice = false }: Props) {
   const { state, trigger, undoLast, stop } = useSession();
   const [now, setNow] = useState(() => Date.now());
   const [dismissed, setDismissed] = useState<string>();
@@ -67,6 +75,12 @@ export function RecordingPanel() {
   }
 
   const showOverlay = last !== undefined && dismissed !== last.clipId;
+  const hintSub = [
+    `Últimos ${bufferSeconds}s prontos`,
+    ...(voice ? ['ou diga “salvar”'] : []),
+    ...(gesture ? ['ou levante os braços'] : []),
+    'ou use o controle',
+  ].join(' · ');
   const clips = `${state.clipCount} ${state.clipCount === 1 ? 'lance' : 'lances'}`;
 
   return (
@@ -110,10 +124,11 @@ export function RecordingPanel() {
             <TapIcon color={colors.accent} size={28} />
             <View style={styles.hintText}>
               <Text style={styles.hint}>Toque na tela para salvar o lance</Text>
-              <Text style={styles.hintSub}>Últimos 60s prontos · ou levante os braços · ou use o controle</Text>
+              <Text style={styles.hintSub}>{hintSub}</Text>
             </View>
             <View style={styles.icons}>
-              <ArmsUpIcon color={colors.accent} size={20} />
+              {voice ? <MicIcon color={colors.accent} size={20} /> : null}
+              {gesture ? <ArmsUpIcon color={colors.accent} size={20} /> : null}
               <RemoteIcon color={colors.accent} size={20} />
               <WatchIcon color={colors.muted} size={20} />
             </View>

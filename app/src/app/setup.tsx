@@ -91,7 +91,11 @@ export default function Setup() {
   return (
     <View style={styles.root}>
       <ReplayCameraView style={StyleSheet.absoluteFill} />
-      {inGame ? <RecordingPanel /> : renderSetupControls()}
+      {inGame ? (
+        <RecordingPanel bufferSeconds={settings.bufferSeconds} gesture={settings.gestureEnabled} voice={voiceOn} />
+      ) : (
+        renderSetupControls()
+      )}
     </View>
   );
 

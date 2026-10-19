@@ -99,3 +99,15 @@ test('a lance saved by voice says so', async () => {
   await render(<Recording />);
   expect(screen.getByText('via Voz · últimos 30s')).toBeTruthy();
 });
+
+test('the hint lists the triggers on in this mode and the buffer length', async () => {
+  session({});
+  await render(<Recording bufferSeconds={120} gesture={false} voice />);
+  expect(screen.getByText('Últimos 120s prontos · ou diga “salvar” · ou use o controle')).toBeTruthy();
+});
+
+test('a court game keeps the arms-up hint', async () => {
+  session({});
+  await render(<Recording bufferSeconds={60} gesture voice={false} />);
+  expect(screen.getByText('Últimos 60s prontos · ou levante os braços · ou use o controle')).toBeTruthy();
+});
