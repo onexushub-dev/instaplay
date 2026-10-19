@@ -14,6 +14,8 @@ Já conferido no iPhone 16 Pro (iOS 27.1):
 
 Plano 2 (telas + gatilhos): fluxo completo conferido no iPhone em 2026-10-18 — boas-vindas → posicionar → salvar por tela/gesto/controle → desfazer → fim de jogo → player.
 
+Plano 3 (editor, Story, Meus jogos): conferido no iPhone em 2026-10-18 — prévia e templates (Placar/Minimal/Arena) sobre vídeo em pé, galeria. Instagram direto aguarda o ID de app da Meta.
+
 Ainda falta:
 - **Android inteiro**: nenhum aparelho testado
 - gesto a 5–8 m e contagem de falsos positivos (V de comemoração)
