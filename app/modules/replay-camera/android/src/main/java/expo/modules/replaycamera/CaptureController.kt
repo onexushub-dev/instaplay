@@ -37,7 +37,10 @@ class CaptureController(context: Context) {
   @Volatile private var generation = 0
 
   /** Ultra-wide = the back camera with the shortest focal length. 1080p60 when asked and supported, else 30fps (720p when not asked). */
-  fun chooseMode(lens: String, wantHigh: Boolean): Mode {
+  /** "1080p60" | "1080p30" | "720p30" (the hot-phone fallback); falls back to what the camera supports. */
+  fun chooseMode(lens: String, quality: String): Mode {
+    val wantFullHd = quality.startsWith("1080")
+    val want60 = quality == "1080p60"
     val backs = manager.cameraIdList.filter {
       manager.getCameraCharacteristics(it).get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_BACK
     }
@@ -49,10 +52,10 @@ class CaptureController(context: Context) {
     val chars = manager.getCameraCharacteristics(id)
 
     val sizes = chars.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)!!.getOutputSizes(MediaCodec::class.java).toList()
-    val size = listOf(Size(1920, 1080), Size(1280, 720)).firstOrNull { (wantHigh || it.width == 1280) && it in sizes }
+    val size = listOf(Size(1920, 1080), Size(1280, 720)).firstOrNull { (wantFullHd || it.width == 1280) && it in sizes }
       ?: Size(1280, 720)
     val ranges = chars.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES).orEmpty()
-    val fps = if (wantHigh && size.width == 1920 && ranges.any { it.lower == 60 && it.upper == 60 }) 60 else 30
+    val fps = if (want60 && size.width == 1920 && ranges.any { it.lower == 60 && it.upper == 60 }) 60 else 30
 
     val realtime = chars.get(CameraCharacteristics.SENSOR_INFO_TIMESTAMP_SOURCE) ==
       CameraCharacteristics.SENSOR_INFO_TIMESTAMP_SOURCE_REALTIME

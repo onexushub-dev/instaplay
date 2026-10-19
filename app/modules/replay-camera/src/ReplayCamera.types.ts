@@ -1,7 +1,7 @@
 import type { StyleProp, ViewStyle } from 'react-native';
 
 export type Lens = 'ultraWide' | 'wide';
-export type Quality = '1080p60' | '720p30';
+export type Quality = '1080p60' | '1080p30' | '720p30';
 export type TriggerSource = 'screen' | 'gesture' | 'remote' | 'watch' | 'voice';
 export type ThermalLevel = 'nominal' | 'fair' | 'serious' | 'critical';
 export type ReplayErrorCode =
@@ -11,7 +11,8 @@ export type ReplayErrorCode =
   | 'ENCODER_FAILED'
   | 'NO_SESSION';
 
-export type SessionOptions = { lens: Lens; maxQuality: Quality };
+/** `bufferSeconds`: the rolling window kept for saves (default 60; gym modes use 120). */
+export type SessionOptions = { lens: Lens; maxQuality: Quality; bufferSeconds?: number };
 /** `at` = ms since epoch when the trigger happened. */
 export type SaveClipOptions = { source: TriggerSource; at: number };
 export type SavedClip = { clipPath: string; durationMs: number };

@@ -12,6 +12,7 @@ import expo.modules.kotlin.records.Record
 class SessionOptions : Record {
   @Field val lens: String = "ultraWide"
   @Field val maxQuality: String = "1080p60"
+  @Field val bufferSeconds: Double = 60.0
 }
 
 class SaveClipOptions : Record {
@@ -44,7 +45,7 @@ class ReplayCameraModule : Module() {
     }
 
     AsyncFunction("startSession") { opts: SessionOptions, promise: Promise ->
-      ReplayEngine.start(context, opts.lens, opts.maxQuality, onReady = { promise.resolve(null) }, onError = promise::reject)
+      ReplayEngine.start(context, opts.lens, opts.maxQuality, opts.bufferSeconds, onReady = { promise.resolve(null) }, onError = promise::reject)
     }
 
     AsyncFunction("stopSession") { promise: Promise ->

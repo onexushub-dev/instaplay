@@ -3,6 +3,7 @@ import ExpoModulesCore
 struct SessionOptions: Record {
   @Field var lens: String = "ultraWide"
   @Field var maxQuality: String = "1080p60"
+  @Field var bufferSeconds: Double = 60
 }
 
 struct SaveClipOptions: Record {
@@ -60,7 +61,7 @@ public class ReplayCameraModule: Module {
 
     AsyncFunction("startSession") { (opts: SessionOptions) in
       do {
-        try self.engine.start(lens: opts.lens, maxQuality: opts.maxQuality)
+        try self.engine.start(lens: opts.lens, maxQuality: opts.maxQuality, bufferSeconds: opts.bufferSeconds)
       } catch let failure as ReplayEngine.Failure {
         throw ReplayException.from(failure)
       }

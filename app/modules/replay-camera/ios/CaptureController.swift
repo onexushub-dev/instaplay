@@ -31,7 +31,8 @@ final class CaptureController: NSObject, AVCaptureVideoDataOutputSampleBufferDel
     let input = try AVCaptureDeviceInput(device: camera)
     guard session.canAddInput(input) else { throw Failure.cannotAddInput }
     session.addInput(input)
-    try applyFormat(camera, wantHigh: maxQuality == "1080p60")
+    let target = Self.target(for: maxQuality)
+    try applyFormat(camera, width: target.width, fps: target.fps)
 
     hasAudio = false
     if AVCaptureDevice.authorizationStatus(for: .audio) == .authorized,
@@ -65,14 +66,21 @@ final class CaptureController: NSObject, AVCaptureVideoDataOutputSampleBufferDel
     return AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back)
   }
 
-  /// 1920x1080 at 60fps when `wantHigh` and supported, else 30fps (1280x720 when not `wantHigh`).
-  private func applyFormat(_ device: AVCaptureDevice, wantHigh: Bool) throws {
-    let targetWidth: Int32 = wantHigh ? 1920 : 1280
+  /// "1080p60" | "1080p30" | "720p30" (the hot-phone fallback) → frame width and rate.
+  static func target(for quality: String) -> (width: Int32, fps: Double) {
+    switch quality {
+    case "1080p60": return (1920, 60)
+    case "1080p30": return (1920, 30)
+    default: return (1280, 30)
+    }
+  }
+
+  /// The 16:9 format of `width` at `fps` when supported, else the best rate that format offers.
+  private func applyFormat(_ device: AVCaptureDevice, width targetWidth: Int32, fps wantedFps: Double) throws {
     let candidates = device.formats.filter {
       let d = CMVideoFormatDescriptionGetDimensions($0.formatDescription)
       return d.width == targetWidth && d.height == targetWidth * 9 / 16
     }
-    let wantedFps = wantHigh ? 60.0 : 30.0
     let chosen = candidates.first { f in f.videoSupportedFrameRateRanges.contains { $0.maxFrameRate >= wantedFps } }
       ?? candidates.first
     guard let format = chosen else { return }

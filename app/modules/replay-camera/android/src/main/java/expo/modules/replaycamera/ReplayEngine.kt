@@ -13,6 +13,7 @@ import android.os.StatFs
 import android.view.Surface
 import androidx.core.content.ContextCompat
 import expo.modules.kotlin.exception.CodedException
+import expo.modules.replaycamera.core.BufferPlan
 import expo.modules.replaycamera.core.LowStorageException
 import expo.modules.replaycamera.core.Segment
 import expo.modules.replaycamera.core.SegmentRing
@@ -44,7 +45,10 @@ object ReplayEngine {
   private val engine = Handler(engineThread.looper)
   private val saveExecutor = Executors.newSingleThreadExecutor { Thread(it, "replay-save") }
   private val feedback = ReplayFeedback()
-  private val ring = SegmentRing((WINDOW_SECONDS * 1_000_000 / SegmentEncoder.SEGMENT_US).toInt(), LocalFileOps)
+  private const val SEGMENT_SECONDS = SegmentEncoder.SEGMENT_US / 1_000_000.0
+  /** The rolling window of the current session (60s court, 120s gym). Engine thread. */
+  private var windowSeconds = WINDOW_SECONDS
+  private var ring = SegmentRing(BufferPlan.segments(WINDOW_SECONDS, SEGMENT_SECONDS), LocalFileOps)
 
   private class PendingSave(val id: String, val run: () -> Unit, val fail: (CodedException) -> Unit)
 
@@ -75,7 +79,14 @@ object ReplayEngine {
   fun signalSaveFailed(sound: Boolean) = post { feedback.failed(sound) }
 
   /** Resolves right away when a session is already running or starting. */
-  fun start(context: Context, lens: String, maxQuality: String, onReady: () -> Unit, onError: (CodedException) -> Unit) = post {
+  fun start(
+    context: Context,
+    lens: String,
+    maxQuality: String,
+    bufferSeconds: Double,
+    onReady: () -> Unit,
+    onError: (CodedException) -> Unit,
+  ) = post {
     if (wanted) return@post onReady()
     val granted = listOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO).all {
       ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
@@ -87,6 +98,8 @@ object ReplayEngine {
       return@post onError(ReplayException("LOW_STORAGE", e.message ?: "Less than 500 MB free"))
     }
     ring.clear()
+    windowSeconds = if (bufferSeconds > 0) bufferSeconds else WINDOW_SECONDS
+    ring = SegmentRing(BufferPlan.segments(windowSeconds, SEGMENT_SECONDS), LocalFileOps)
     SegmentRing.purgeOrphans(ReplayPaths.buffer(context), LocalFileOps)
 
     this.context = context.applicationContext
@@ -135,7 +148,7 @@ object ReplayEngine {
       saveExecutor.execute {
         val dest = File(ReplayPaths.clips(ctx), "$id.mp4")
         try {
-          val seconds = ring.copyClip(WINDOW_SECONDS, dest, ClipConcat::concat)
+          val seconds = ring.copyClip(windowSeconds, dest, ClipConcat::concat)
           onDone(dest.path, (seconds * 1000).toInt())
         } catch (t: Throwable) {
           dest.delete()
@@ -167,7 +180,7 @@ object ReplayEngine {
     }
     val runtimeFailed = { message: String -> post { fail(ReplayException("CAMERA_UNAVAILABLE", message)) } }
     try {
-      val mode = cap.chooseMode(lens, wantHigh = quality == "1080p60" && !degraded)
+      val mode = cap.chooseMode(lens, if (degraded) "720p30" else quality)
       val enc = SegmentEncoder(
         mode.size.width, mode.size.height, mode.fps, ReplayPaths.buffer(ctx), mode.clockNanos, mode.clockIsBoottime,
         rotationDegrees = { gest.rotation },

@@ -8,7 +8,8 @@ import AVFoundation
 final class ReplayEngine {
   static let shared = ReplayEngine()
 
-  static let windowSeconds = 60.0
+  /// The rolling window of the current session (60s court, 120s gym).
+  private(set) var windowSeconds = 60.0
   /// A save that hasn't seen its segment close by then is failed instead of hanging.
   static let saveTimeout = 5.0
 
@@ -28,7 +29,7 @@ final class ReplayEngine {
 
   private let fileOps = LocalFileOps()
   private let saveQueue = DispatchQueue(label: "replay.save", qos: .utility)
-  private lazy var ring = SegmentRing(capacity: Int(Self.windowSeconds / SegmentWriter.segmentSeconds), fileOps: fileOps)
+  private lazy var ring = SegmentRing(capacity: 60, fileOps: fileOps)
   private var writer: SegmentWriter?
   private var generation = 0
   private var pendingSaves: [PendingSave] = []
@@ -64,7 +65,7 @@ final class ReplayEngine {
   }
 
   /// No-op when a session is already running.
-  func start(lens: String, maxQuality: String) throws {
+  func start(lens: String, maxQuality: String, bufferSeconds: Double = 60) throws {
     guard !running else { return }
     guard AVCaptureDevice.authorizationStatus(for: .video) == .authorized else { throw Failure.permission }
     let free = (try? ReplayPaths.buffer.deletingLastPathComponent()
@@ -75,6 +76,8 @@ final class ReplayEngine {
     ReplayPaths.ensure(ReplayPaths.buffer)
     ReplayPaths.ensure(ReplayPaths.clips)
     ring.clear()
+    windowSeconds = bufferSeconds > 0 ? bufferSeconds : 60
+    ring = SegmentRing(capacity: BufferPlan.segments(forSeconds: windowSeconds, segmentSeconds: SegmentWriter.segmentSeconds), fileOps: fileOps)
     SegmentRing.purgeOrphans(dir: ReplayPaths.buffer, fileOps: fileOps)
 
     self.lens = lens
@@ -134,7 +137,7 @@ final class ReplayEngine {
     let dest = ReplayPaths.clips.appendingPathComponent("\(UUID().uuidString).mp4")
     defer { try? FileManager.default.removeItem(at: joined) }
     do {
-      let seconds = try ring.copyClip(lastSeconds: Self.windowSeconds, to: joined) { segments, joined in
+      let seconds = try ring.copyClip(lastSeconds: self.windowSeconds, to: joined) { segments, joined in
         try ClipConcat.concat(initSegment: writer.initSegmentURL, segments: segments, to: joined)
       }
       try ClipConcat.normalize(joined, to: dest)

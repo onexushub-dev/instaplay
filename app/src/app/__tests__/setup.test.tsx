@@ -92,14 +92,15 @@ test('under another screen (Meus jogos, editor, Story) it releases the camera, t
 test('turns the camera on for the live preview', async () => {
   const s = session({ camera: 'off' });
   await render(<Setup />);
-  expect(s.prepare).toHaveBeenCalledWith('ultraWide');
+  expect(s.prepare).toHaveBeenCalledWith('beachTennis');
 });
 
 test('changing the lens reopens the camera with it', async () => {
   const s = session({});
   await render(<Setup />);
   await fireEvent.press(screen.getByRole('button', { name: '1x' }));
-  expect(s.prepare).toHaveBeenLastCalledWith('wide');
+  expect(repo.setPrefs).toHaveBeenCalledWith({ modeSettings: { beachTennis: { lens: 'wide' } } });
+  expect(s.prepare).toHaveBeenCalledTimes(2); // reopened with the mode's new lens
   await fireEvent.press(screen.getByRole('button', { name: '0.5x' }));
 });
 

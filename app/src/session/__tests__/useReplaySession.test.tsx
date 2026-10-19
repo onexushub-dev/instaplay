@@ -135,7 +135,7 @@ test('prepare turns the camera on so starting the game is immediate', async () =
   const f = fakeDeps();
   const view = await renderHook(() => useReplaySession(f.deps));
 
-  await act(() => view.result.current.prepare('ultraWide'));
+  await act(() => view.result.current.prepare('beachTennis'));
   expect(f.camera.startSession).toHaveBeenCalledTimes(1);
   expect(view.result.current.state.camera).toBe('on');
 
@@ -144,14 +144,34 @@ test('prepare turns the camera on so starting the game is immediate', async () =
   expect(view.result.current.state.phase).toBe('recording');
 });
 
-test('prepare with another lens restarts the camera', async () => {
+test('prepare opens the camera with the mode\'s lens, quality and buffer', async () => {
   const f = fakeDeps();
   const view = await renderHook(() => useReplaySession(f.deps));
-  await act(() => view.result.current.prepare('ultraWide'));
-  await act(() => view.result.current.prepare('wide'));
+  await act(() => view.result.current.prepare('musculacao'));
+  expect(f.camera.startSession).toHaveBeenLastCalledWith({ lens: 'wide', maxQuality: '1080p30', bufferSeconds: 120 });
+});
+
+test('switching mode reapplies lens, buffer and triggers', async () => {
+  const f = fakeDeps();
+  const view = await renderHook(() => useReplaySession(f.deps));
+  await act(() => view.result.current.prepare('beachTennis'));
+  await act(() => view.result.current.prepare('musculacao'));
 
   expect(f.camera.stopSession).toHaveBeenCalledTimes(1);
-  expect(f.camera.startSession).toHaveBeenLastCalledWith({ lens: 'wide', maxQuality: '1080p60' });
+  expect(f.camera.startSession).toHaveBeenLastCalledWith({ lens: 'wide', maxQuality: '1080p30', bufferSeconds: 120 });
+
+  await act(() => view.result.current.start('musculacao'));
+  expect(f.camera.setGestureEnabled).toHaveBeenLastCalledWith(false);
+  expect(f.camera.setVoiceEnabled).toHaveBeenLastCalledWith(true);
+});
+
+test('a lens change saved for the mode reopens the camera', async () => {
+  const f = fakeDeps();
+  const view = await renderHook(() => useReplaySession(f.deps));
+  await act(() => view.result.current.prepare('beachTennis'));
+  f.deps.repo.setPrefs({ modeSettings: { beachTennis: { lens: 'wide' } } });
+  await act(() => view.result.current.prepare('beachTennis'));
+  expect(f.camera.startSession).toHaveBeenLastCalledWith({ lens: 'wide', maxQuality: '1080p60', bufferSeconds: 60 });
 });
 
 test('a camera that fails to open reports its code before any game starts', async () => {
@@ -159,7 +179,7 @@ test('a camera that fails to open reports its code before any game starts', asyn
   f.camera.startSession.mockRejectedValueOnce(Object.assign(new Error('x'), { code: 'CAMERA_PERMISSION' }));
   const view = await renderHook(() => useReplaySession(f.deps));
 
-  await act(() => view.result.current.prepare('ultraWide'));
+  await act(() => view.result.current.prepare('beachTennis'));
 
   expect(view.result.current.state).toMatchObject({ camera: 'off', error: 'CAMERA_PERMISSION', phase: 'idle' });
 });
@@ -215,7 +235,7 @@ test('after a native error the camera is reopened for the next game', async () =
   await act(async () => emit('onError', { code: 'ENCODER_FAILED', message: 'thermal' }));
   await act(async () => view.result.current.reset());
 
-  await act(() => view.result.current.prepare('ultraWide'));
+  await act(() => view.result.current.prepare('beachTennis'));
 
   expect(camera.startSession).toHaveBeenCalledTimes(2);
 });
@@ -224,7 +244,7 @@ test('the gesture only runs during the game, not while positioning', async () =>
   const f = fakeDeps();
   const view = await renderHook(() => useReplaySession(f.deps));
 
-  await act(() => view.result.current.prepare('ultraWide'));
+  await act(() => view.result.current.prepare('beachTennis'));
   expect(f.camera.setGestureEnabled).toHaveBeenLastCalledWith(false);
 
   await act(() => view.result.current.start('beachTennis'));
@@ -234,7 +254,7 @@ test('the gesture only runs during the game, not while positioning', async () =>
 test('release turns the camera off while idle, but never during a game', async () => {
   const f = fakeDeps();
   const view = await renderHook(() => useReplaySession(f.deps));
-  await act(() => view.result.current.prepare('ultraWide'));
+  await act(() => view.result.current.prepare('beachTennis'));
   await act(() => view.result.current.release());
   expect(f.camera.stopSession).toHaveBeenCalledTimes(1);
   expect(view.result.current.state.camera).toBe('off');

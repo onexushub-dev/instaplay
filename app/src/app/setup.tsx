@@ -13,7 +13,8 @@ import { RecordingPanel } from '../components/RecordingPanel';
 import { ArmsUpIcon, MicIcon, RemoteIcon, WatchIcon } from '../components/icons';
 import { TriggerTile } from '../components/TriggerTile';
 import { repo } from '../data/mmkv';
-import type { Prefs, Sport } from '../data/schema';
+import type { ModeSettings, Prefs, Sport } from '../data/schema';
+import { effectiveSettings, withModeOverride } from '../modes/registry';
 import { useSession } from '../session/SessionContext';
 import { colors, fonts } from '../theme/tokens';
 import { useVolumeRemote } from '../triggers/useVolumeRemote';
@@ -36,6 +37,10 @@ export default function Setup() {
   // the volume buttons and the screen awake while it is the visible one.
   const focused = useIsFocused();
   const [prefs, setPrefsState] = useState<Prefs>(() => repo.getPrefs());
+  const update = (patch: Partial<Prefs>) => setPrefsState(repo.setPrefs(patch));
+  // What this mode runs with (defaults + the player's changes for this mode).
+  const settings = effectiveSettings(prefs.sport, prefs);
+  const updateMode = (patch: Partial<ModeSettings>) => update(withModeOverride(prefs, prefs.sport, patch));
   const [remoteWorks, setRemoteWorks] = useState(false);
   const [speechDenied, setSpeechDenied] = useState(false);
   // Offline recognition only: court audio is never streamed to a server.
@@ -52,9 +57,9 @@ export default function Setup() {
 
   // Live preview while positioning; the buffer starts filling now, so "Começar jogo" is instant.
   useEffect(() => {
-    if (focused) void prepare(prefs.lens);
+    if (focused) void prepare(prefs.sport);
     else void release();
-  }, [focused, prepare, release, prefs.lens]);
+  }, [focused, prepare, release, prefs.sport, settings.lens]);
 
   useEffect(() => {
     if (!focused) return;
@@ -62,7 +67,6 @@ export default function Setup() {
     return () => void deactivateKeepAwake('setup');
   }, [focused]);
 
-  const update = (patch: Partial<Prefs>) => setPrefsState(repo.setPrefs(patch));
 
   // A press of the Bluetooth remote here proves it is paired and reaching the app.
   useVolumeRemote(focused && phase === 'idle', () => setRemoteWorks(true));
@@ -101,10 +105,10 @@ export default function Setup() {
                   key={lens}
                   accessibilityRole="button"
                   accessibilityLabel={lens === 'ultraWide' ? '0.5x' : '1x'}
-                  accessibilityState={{ selected: prefs.lens === lens }}
-                  onPress={() => update({ lens })}
-                  style={[styles.lensButton, prefs.lens === lens && styles.lensOn]}>
-                  <Text style={[styles.lensText, prefs.lens === lens && { color: colors.onAccent }]}>
+                  accessibilityState={{ selected: settings.lens === lens }}
+                  onPress={() => updateMode({ lens })}
+                  style={[styles.lensButton, settings.lens === lens && styles.lensOn]}>
+                  <Text style={[styles.lensText, settings.lens === lens && { color: colors.onAccent }]}>
                     {lens === 'ultraWide' ? '0.5x' : '1x'}
                   </Text>
                 </Pressable>

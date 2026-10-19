@@ -8,7 +8,8 @@ import type {
   SessionOptions,
 } from '../../modules/replay-camera/src/ReplayCamera.types';
 import type { Repo } from '../data/repo';
-import type { Prefs, Sport, TriggerSource } from '../data/schema';
+import type { ModeId, Sport, TriggerSource } from '../data/schema';
+import { effectiveSettings } from '../modes/registry';
 import { createTriggerBus } from '../triggers/bus';
 import { initialState, reducer } from './reducer';
 
@@ -48,7 +49,8 @@ export function useReplaySession(deps: SessionDeps) {
   }, [state]);
   const saving = useRef(false);
   // Which lens the native camera is running with right now (undefined = off); read synchronously by start().
-  const cameraLens = useRef<Prefs['lens'] | undefined>(undefined);
+  // The camera configuration currently open ("lens|quality|buffer"), undefined when off; read synchronously.
+  const cameraLens = useRef<string | undefined>(undefined);
   const cameraOpening = useRef<Promise<boolean> | undefined>(undefined);
   const cameraError = useRef<ReplayErrorCode | undefined>(undefined);
   const [bus] = useState(() => createTriggerBus({ now: deps.now }));
@@ -112,13 +114,18 @@ export function useReplaySession(deps: SessionDeps) {
 
   deps.useRemote(state.phase === 'recording', () => trigger('remote'));
 
-  /** Turns the camera on (setup screen) so the preview is live and the game starts instantly. Resolves true when on. */
+  /**
+   * Turns the camera on for `mode` (setup screen) so the preview is live and the game starts instantly.
+   * Reopens it when the mode's lens, quality or buffer differ from what is open. Resolves true when on.
+   */
   const prepare = useCallback(
-    (lens: Prefs['lens']): Promise<boolean> => {
-      if (cameraLens.current === lens) return Promise.resolve(true);
+    (mode: ModeId): Promise<boolean> => {
+      const { lens, quality, bufferSeconds } = effectiveSettings(mode, deps.repo.getPrefs());
+      const key = `${lens}|${quality}|${bufferSeconds}`;
+      if (cameraLens.current === key) return Promise.resolve(true);
       const open = async () => {
         await cameraOpening.current;
-        if (cameraLens.current === lens) return true;
+        if (cameraLens.current === key) return true;
         dispatch({ type: 'cameraStarting' });
         try {
           if (cameraLens.current !== undefined) {
@@ -127,8 +134,8 @@ export function useReplaySession(deps: SessionDeps) {
           }
           // Body-pose detection is heavy: it only runs once the game starts.
           deps.camera.setGestureEnabled(false);
-          await deps.camera.startSession({ lens, maxQuality: '1080p60' });
-          cameraLens.current = lens;
+          await deps.camera.startSession({ lens, maxQuality: quality, bufferSeconds });
+          cameraLens.current = key;
           dispatch({ type: 'cameraOn' });
           return true;
         } catch (e) {
@@ -145,14 +152,14 @@ export function useReplaySession(deps: SessionDeps) {
 
   const start = useCallback(
     async (sport: Sport) => {
-      const prefs = deps.repo.getPrefs();
       dispatch({ type: 'startRequested' });
-      if (cameraLens.current === undefined && !(await prepare(prefs.lens))) {
+      if (!(await prepare(sport))) {
         dispatch({ type: 'startFailed', code: cameraError.current ?? 'CAMERA_UNAVAILABLE' });
         return;
       }
-      deps.camera.setGestureEnabled(prefs.gestureEnabled);
-      deps.camera.setVoiceEnabled(prefs.voiceEnabled);
+      const settings = effectiveSettings(sport, deps.repo.getPrefs());
+      deps.camera.setGestureEnabled(settings.gestureEnabled);
+      deps.camera.setVoiceEnabled(settings.voiceEnabled);
       const session = deps.repo.startSession(sport, deps.now());
       dispatch({ type: 'started', sessionId: session.id, startedAt: session.startedAt });
     },
