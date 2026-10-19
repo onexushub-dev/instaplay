@@ -12,7 +12,7 @@ struct SaveClipOptions: Record {
   @Field var at: Double = 0
 }
 
-final class ReplayException: Exception {
+final class ReplayException: Exception, @unchecked Sendable {
   private let errorCode: String
   private let detail: String
 

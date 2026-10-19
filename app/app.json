@@ -52,7 +52,8 @@
       "expo-font",
       "expo-video",
       "expo-sharing",
-      "@bacons/apple-targets"
+      "@bacons/apple-targets",
+      "./plugins/withPodsDeploymentTarget"
     ],
     "experiments": {
       "typedRoutes": true,
