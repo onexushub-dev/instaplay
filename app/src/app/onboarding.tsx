@@ -12,7 +12,7 @@ import { colors, fonts } from '../theme/tokens';
 const STEPS = [
   { Icon: PhoneIcon, text: 'Prenda o celular na grade ou na areia, atrás da linha de fundo.' },
   { Icon: ArmsUpIcon, text: 'Mandou bem? Braços para cima, toque no relógio ou no controle.' },
-  { Icon: ShareIcon, text: 'Poste direto no Story do Instagram.' },
+  { Icon: ShareIcon, text: 'Salve na galeria ou compartilhe com um toque.' },
 ];
 
 export default function Onboarding() {

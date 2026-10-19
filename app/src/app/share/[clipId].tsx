@@ -1,30 +1,24 @@
-import Constants from 'expo-constants';
 import { Directory, File, Paths } from 'expo-file-system';
 import { Asset, requestPermissionsAsync } from 'expo-media-library';
 import { router, useLocalSearchParams } from 'expo-router';
 import { shareAsync } from 'expo-sharing';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { type ComponentRef, useEffect, useMemo, useRef, useState } from 'react';
-import { Image, PixelRatio, Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
+import { Image, PixelRatio, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { createThumbnail, exportClip, shareToInstagramStory } from '../../../modules/replay-camera';
+import { createThumbnail, exportClip } from '../../../modules/replay-camera';
 import { Button } from '../../components/Button';
-import { Chip } from '../../components/Chip';
 import { BackIcon } from '../../components/icons';
 import { repo } from '../../data/mmkv';
-import type { Prefs } from '../../data/schema';
-import { captureOverlay } from '../../story/captureOverlay';
-import { useEntitlement } from '../../story/entitlement';
-import { exportOptions } from '../../story/exportOptions';
-import { storyLayout } from '../../story/layout';
-import { StoryOverlay } from '../../story/StoryOverlay';
-import { modeById } from '../../modes/registry';
-import { storyTexts, TEMPLATE_LABEL } from '../../story/templates';
+import { captureOverlay } from '../../share/captureOverlay';
+import { useEntitlement } from '../../share/entitlement';
+import { exportOptions } from '../../share/exportOptions';
+import { frameLayout } from '../../share/layout';
+import { ShareOverlay } from '../../share/ShareOverlay';
 import { colors, fonts } from '../../theme/tokens';
 
 const PREPARE_FAILED = 'Não foi possível preparar o vídeo. Tente de novo.';
-const metaAppId = (Constants.expoConfig?.extra?.metaAppId as string | undefined) ?? '';
 
 type Player = ReturnType<typeof useVideoPlayer>;
 /** Player settings live outside the component: the React Compiler forbids mutating a hook's return value. */
@@ -53,18 +47,12 @@ function clearOldExports() {
   }
 }
 
-/** Preview of the 9:16 Story (whole video between template bands); post, save to Photos, share. */
-export default function StoryScreen() {
+/** Preview of the exported clip (whole video in a 9:16 frame, with the app mark); save to Photos or share. */
+export default function ShareScreen() {
   const { clipId } = useLocalSearchParams<{ clipId: string }>();
   const clip = useMemo(() => repo.getClip(clipId), [clipId]);
   const session = useMemo(() => (clip ? repo.getSession(clip.sessionId) : undefined), [clip]);
   const { tier } = useEntitlement();
-  const [prefs, setPrefsState] = useState<Prefs>(() => repo.getPrefs());
-  const mode = modeById(session?.sport ?? 'beachTennis');
-  // Court Stories name the arena; gym Stories name the exercise and load.
-  const fieldKey = mode.group === 'academia' ? 'workoutNote' : 'arenaName';
-  const [arena, setArena] = useState(prefs[fieldKey] ?? '');
-  const template = mode.storyTemplates.includes(prefs.storyTemplate) ? prefs.storyTemplate : mode.storyTemplates[0];
   const [videoSize, setVideoSize] = useState({ width: 1920, height: 1080 });
   // Exports wait for the real shape: a portrait clip exported with the landscape default gets wrong bands.
   const [sizeKnown, setSizeKnown] = useState(false);
@@ -78,12 +66,7 @@ export default function StoryScreen() {
 
   const options = clip ? exportOptions(tier, clip.edit, clip.trim) : undefined;
   const frame = { width: options?.width ?? 1080, height: options?.height ?? 1920 };
-  const layout = storyLayout(videoSize, frame);
-  // The arena as typed (not only once saved), so the preview and the export never lag behind the field.
-  const texts = session
-    ? storyTexts(template, { sport: session.sport, startedAt: session.startedAt, arena: arena.trim() || undefined, gameName: session.name })
-    : { top: [], bottom: [] };
-
+  const layout = frameLayout(videoSize, frame);
   // The real aspect ratio (rotation applied) comes from the clip's thumbnail.
   useEffect(() => {
     if (!clip) return;
@@ -121,14 +104,9 @@ export default function StoryScreen() {
     return () => sub.remove();
   }, [player, clip]);
 
-  const update = (patch: Partial<Prefs>) => {
-    setPrefsState(repo.setPrefs(patch));
-    exported.current = undefined; // the template changed: export again
-  };
-
-  /** One export per look (cut, edits, template, arena), reused by all three buttons. */
+  /** One export per look (cut, edits, frame), reused by both buttons. */
   async function ensureExport(): Promise<string> {
-    const key = JSON.stringify([options, texts, template, layout]);
+    const key = JSON.stringify([options, layout]);
     if (exported.current?.key === key) return exported.current.path;
     const overlayPngPath = await captureOverlay(captureRefView);
     const result = await exportClip({ clipPath: clip!.path, ...options!, overlayPngPath, background: colors.ground });
@@ -145,8 +123,6 @@ export default function StoryScreen() {
   async function run(action: (path: string) => Promise<void>) {
     if (exporting.current || !clip || !sizeKnown) return;
     exporting.current = true;
-    const typed = arena.trim() || undefined;
-    if (typed !== prefs[fieldKey]) update({ [fieldKey]: typed });
     setBusy(true);
     setNotice(undefined);
     try {
@@ -158,16 +134,6 @@ export default function StoryScreen() {
       setBusy(false);
     }
   }
-
-  const post = () =>
-    run(async (path) => {
-      // Without a Meta App ID the composer can't open: go straight to the share sheet, no false alarm.
-      const opened = metaAppId ? (await shareToInstagramStory(path, metaAppId)) === 'opened' : false;
-      if (!opened) {
-        if (metaAppId) setNotice('Instagram não encontrado. Escolha onde compartilhar.');
-        await shareAsync(`file://${path}`, { mimeType: 'video/mp4', UTI: 'public.mpeg-4' });
-      }
-    });
 
   const save = () =>
     run(async (path) => {
@@ -195,10 +161,14 @@ export default function StoryScreen() {
   return (
     <SafeAreaView style={styles.root}>
       <View style={styles.top}>
-        <Pressable accessibilityRole="button" accessibilityLabel="Voltar" onPress={() => router.back()} style={styles.back}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Voltar"
+          onPress={() => router.back()}
+          style={styles.back}>
           <BackIcon />
         </Pressable>
-        <Text style={styles.title}>Prévia do Story</Text>
+        <Text style={styles.title}>Salvar clipe</Text>
         <View style={styles.back} />
       </View>
 
@@ -214,53 +184,20 @@ export default function StoryScreen() {
           <VideoView player={player} contentFit="contain" nativeControls={false} style={StyleSheet.absoluteFill} />
         </View>
         <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-          <StoryOverlay frame={frame} layout={layout} texts={texts} template={template} watermark={options.watermark} scale={scale} />
+          <ShareOverlay frame={frame} layout={layout} scale={scale} />
         </View>
       </View>
 
       {/* Off-screen copy at exactly the export's pixel size, captured to PNG for the video overlay. */}
       <View pointerEvents="none" style={styles.offscreen}>
-        <StoryOverlay
-          ref={captureRefView}
-          frame={frame}
-          layout={layout}
-          texts={texts}
-          template={template}
-          watermark={options.watermark}
-          scale={1 / pr}
-        />
+        <ShareOverlay ref={captureRefView} frame={frame} layout={layout} scale={1 / pr} />
       </View>
-
-      <View style={styles.chips}>
-        {mode.storyTemplates.map((id) => (
-          <Chip key={id} label={TEMPLATE_LABEL[id]} selected={template === id} onPress={() => update({ storyTemplate: id })} />
-        ))}
-      </View>
-      <TextInput
-        accessibilityLabel={mode.storyField}
-        placeholder={mode.storyField}
-        placeholderTextColor={colors.muted}
-        value={arena}
-        onChangeText={setArena}
-        onBlur={() => update({ [fieldKey]: arena.trim() || undefined })}
-        onSubmitEditing={() => update({ [fieldKey]: arena.trim() || undefined })}
-        returnKeyType="done"
-        maxLength={40}
-        style={styles.input}
-      />
 
       <View style={styles.actions}>
         {notice ? <Text style={styles.notice}>{notice}</Text> : null}
         {busy ? <Text style={styles.notice}>Preparando vídeo…</Text> : null}
-        <Button label="Postar no Story" disabled={busy || !sizeKnown} onPress={() => void post()} />
-        <View style={styles.row}>
-          <View style={styles.flex}>
-            <Button label="Salvar na galeria" variant="secondary" disabled={busy || !sizeKnown} onPress={() => void save()} />
-          </View>
-          <View style={styles.flex}>
-            <Button label="Compartilhar" variant="secondary" disabled={busy || !sizeKnown} onPress={() => void share()} />
-          </View>
-        </View>
+        <Button label="Salvar na galeria" disabled={busy || !sizeKnown} onPress={() => void save()} />
+        <Button label="Compartilhar" variant="secondary" disabled={busy || !sizeKnown} onPress={() => void share()} />
       </View>
     </SafeAreaView>
   );
@@ -269,24 +206,17 @@ export default function StoryScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.ground, paddingHorizontal: 20, gap: 12, alignItems: 'stretch' },
   top: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 },
-  back: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' },
+  back: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   title: { fontFamily: fonts.bodyBold, fontSize: 15, color: colors.text },
   preview: { alignSelf: 'center', borderRadius: 16, overflow: 'hidden', backgroundColor: colors.ground },
   offscreen: { position: 'absolute', left: -10000, top: 0 },
-  chips: { flexDirection: 'row', gap: 8, justifyContent: 'center' },
-  input: {
-    minHeight: 48,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    paddingHorizontal: 14,
-    fontFamily: fonts.bodySemi,
-    fontSize: 15,
-    color: colors.text,
-  },
   actions: { marginTop: 'auto', gap: 10, paddingBottom: 12 },
-  row: { flexDirection: 'row', gap: 10 },
-  flex: { flex: 1 },
   notice: { fontFamily: fonts.bodySemi, fontSize: 13, color: colors.soft, textAlign: 'center' },
 });

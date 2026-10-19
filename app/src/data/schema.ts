@@ -20,8 +20,6 @@ export type ModeId =
 /** Kept as the field type name: Session.sport and Prefs.sport hold a mode id. */
 export type Sport = ModeId;
 
-export type TemplateId = 'placar' | 'minimal' | 'arena' | 'treino' | 'recorde';
-
 export type ModeSettings = {
   lens: 'ultraWide' | 'wide';
   gestureEnabled: boolean;
@@ -57,13 +55,8 @@ export type Prefs = {
   flashOnSave: boolean;
   /** "salvar" / "gravar" by voice (iOS). Off until speech permission is granted. */
   voiceEnabled: boolean;
-  /** Story screen choices, remembered between lances. */
-  storyTemplate: TemplateId;
   /** The player's changes to a mode's defaults, kept per mode. */
   modeSettings?: Partial<Record<ModeId, Partial<ModeSettings>>>;
-  arenaName?: string;
-  /** Gym Story field: exercise and load, e.g. "Supino · 100 kg". */
-  workoutNote?: string;
 };
 
 export const DEFAULT_PREFS: Prefs = {
@@ -74,7 +67,6 @@ export const DEFAULT_PREFS: Prefs = {
   soundOnSave: true,
   flashOnSave: true,
   voiceEnabled: false,
-  storyTemplate: 'placar',
 };
 
 /** Default cut: the last 30s of the saved 60s window (spec 3.3). */

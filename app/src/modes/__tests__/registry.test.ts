@@ -21,7 +21,6 @@ test('academia defaults the gesture off, voice on, 1x, 120s at 1080p30, last 60s
     cutSeconds: 60,
     quality: '1080p30',
   });
-  expect(modeById('academia').storyTemplates).toEqual(['treino', 'recorde', 'minimal']);
 });
 
 test('quadra defaults to ultra-wide, 60s, gesture on', () => {
@@ -33,7 +32,6 @@ test('quadra defaults to ultra-wide, 60s, gesture on', () => {
     cutSeconds: 30,
     quality: '1080p60',
   });
-  expect(modeById('quadra').storyTemplates).toEqual(['placar', 'minimal', 'arena']);
 });
 
 test('overrides are per mode', () => {
@@ -63,5 +61,5 @@ test('games saved with a sport keep their label and follow their group', () => {
   expect(offeredMode('academia')).toBe('academia');
   const p = prefs(withModeOverride(prefs(), 'academia', { gestureEnabled: true }));
   expect(effectiveSettings('crossfit', p)).toEqual(effectiveSettings('academia', p));
-  expect(modeById('voleiPraia').storyTemplates).toEqual(['placar', 'minimal', 'arena']);
+  expect(modeById('voleiPraia').group).toBe('quadra');
 });

@@ -57,10 +57,10 @@ test('toggling sound stores muted', async () => {
   expect(repo.updateClip).toHaveBeenLastCalledWith('c1', { edit: { slowmo: false, muted: true } });
 });
 
-test('Próximo: Story opens the story screen', async () => {
+test('Salvar opens the save and share screen', async () => {
   await render(<ClipEditor />);
-  await fireEvent.press(screen.getByRole('button', { name: 'Próximo: Story' }));
-  expect(router.push).toHaveBeenCalledWith('/story/c1');
+  await fireEvent.press(screen.getByRole('button', { name: 'Salvar' }));
+  expect(router.push).toHaveBeenCalledWith('/share/c1');
 });
 
 test('a missing clip shows the message instead of the editor', async () => {

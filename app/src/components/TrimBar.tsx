@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 import { PanResponder, StyleSheet, View } from 'react-native';
 
-import { clampTrim } from '../story/trim';
+import { clampTrim } from '../share/trim';
 import { colors } from '../theme/tokens';
 
 type Cut = { startMs: number; endMs: number };

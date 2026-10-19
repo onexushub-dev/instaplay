@@ -1,7 +1,7 @@
 import type { Clip } from '../data/schema';
 import type { Tier } from './entitlement';
 
-export type StoryExport = {
+export type ExportOptions = {
   width: number;
   height: number;
   startMs: number;
@@ -11,8 +11,8 @@ export type StoryExport = {
   watermark: boolean;
 };
 
-/** Free: 720x1280 with the watermark (spec 6). Slow motion plays at half speed without sound. */
-export function exportOptions(tier: Tier, edit: Clip['edit'], trim: Clip['trim']): StoryExport {
+/** Free: 720x1280 (spec 6). Every export carries the app mark. Slow motion plays at half speed without sound. */
+export function exportOptions(tier: Tier, edit: Clip['edit'], trim: Clip['trim']): ExportOptions {
   const pro = tier === 'pro';
   const slowmo = edit?.slowmo ?? false;
   return {
@@ -22,6 +22,6 @@ export function exportOptions(tier: Tier, edit: Clip['edit'], trim: Clip['trim']
     endMs: trim.endMs,
     speed: slowmo ? 0.5 : 1,
     muted: slowmo || (edit?.muted ?? false),
-    watermark: !pro,
+    watermark: true,
   };
 }

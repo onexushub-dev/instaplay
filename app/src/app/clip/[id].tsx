@@ -27,7 +27,7 @@ function seek(player: Player, ms: number) {
   player.currentTime = ms / 1000;
 }
 
-/** Edit a saved lance: the cut inside its 60s, slow motion and sound. Then on to the Story. */
+/** Edit a saved lance: the cut inside its 60s, slow motion and sound. Then on to saving and sharing. */
 export default function ClipEditor() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const version = useSyncExternalStore(repo.subscribe, repo.version);
@@ -126,7 +126,7 @@ export default function ClipEditor() {
       </View>
 
       <View style={styles.actions}>
-        <Button label="Próximo: Story" onPress={() => router.push(`/story/${id}`)} />
+        <Button label="Salvar" onPress={() => router.push(`/share/${id}`)} />
         <Button label="Apagar clipe" variant="secondary" onPress={confirmDelete} />
       </View>
     </SafeAreaView>

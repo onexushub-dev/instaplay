@@ -1,12 +1,12 @@
 export type Rect = { x: number; y: number; width: number; height: number };
 
 /**
- * The whole video, aspect-fit and centred in the Story frame; the space above and below it are the
+ * The whole video, aspect-fit and centred in the 9:16 frame; the space above and below it are the
  * template bands (Marcus' decision: never crop the court).
  */
-export function storyLayout(
+export function frameLayout(
   video: { width: number; height: number },
-  frame: { width: number; height: number }
+  frame: { width: number; height: number },
 ): { video: Rect; top: Rect; bottom: Rect } {
   const scale = Math.min(frame.width / video.width, frame.height / video.height);
   const width = video.width * scale;

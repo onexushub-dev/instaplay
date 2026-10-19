@@ -1,4 +1,4 @@
-import { type ModeId, type ModeSettings, type Prefs, type TemplateId } from '../data/schema';
+import type { ModeId, ModeSettings, Prefs } from '../data/schema';
 
 export type ModeGroup = 'quadra' | 'academia';
 export type Guide = 'court' | 'person' | 'none';
@@ -10,9 +10,6 @@ export type Mode = {
   guide: Guide;
   tip: string;
   defaults: ModeSettings;
-  storyTemplates: TemplateId[];
-  /** Label of the Story's free-text field (arena, or exercise and load). */
-  storyField: string;
 };
 
 const COURT: Omit<Mode, 'id' | 'label'> = {
@@ -27,8 +24,6 @@ const COURT: Omit<Mode, 'id' | 'label'> = {
     cutSeconds: 30,
     quality: '1080p60',
   },
-  storyTemplates: ['placar', 'minimal', 'arena'],
-  storyField: 'Nome da arena (opcional)',
 };
 
 // Gym: overhead lifts would fire the arms-up gesture, so it is off; a set can outlast 60s;
@@ -45,8 +40,6 @@ const GYM: Omit<Mode, 'id' | 'label'> = {
     cutSeconds: 60,
     quality: '1080p30',
   },
-  storyTemplates: ['treino', 'recorde', 'minimal'],
-  storyField: 'Exercício e carga (opcional)',
 };
 
 /** The modes the app offers. A new mode is a new entry here (plus a guide drawing if it needs one). */

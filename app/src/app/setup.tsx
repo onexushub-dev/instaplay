@@ -31,7 +31,7 @@ const START_ERRORS: Partial<Record<ReplayErrorCode, string>> = {
 
 export default function Setup() {
   const session = useSession();
-  // This screen stays mounted under Minhas gravações, the editor and the Story screen: only hold the camera,
+  // This screen stays mounted under Minhas gravações, the editor and the save screen: only hold the camera,
   // the volume buttons and the screen awake while it is the visible one.
   const focused = useIsFocused();
   const [prefs, setPrefsState] = useState<Prefs>(() => repo.getPrefs());

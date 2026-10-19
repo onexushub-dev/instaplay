@@ -27,7 +27,6 @@ test('prefs default to onboarding not done, Quadra, ultra-wide, gesture on, soun
     soundOnSave: true,
     flashOnSave: true,
     voiceEnabled: false,
-    storyTemplate: 'placar',
   });
 });
 

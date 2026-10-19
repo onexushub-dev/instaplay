@@ -91,7 +91,7 @@ test('keeps the screen awake while the phone is being positioned', async () => {
   expect(jest.requireMock('expo-keep-awake').activateKeepAwakeAsync).toHaveBeenCalled();
 });
 
-test('under another screen (Minhas gravações, editor, Story) it releases the camera, the volume buttons and keep-awake', async () => {
+test('under another screen (Minhas gravações, editor, Salvar) it releases the camera, the volume buttons and keep-awake', async () => {
   jest.requireMock('expo-router').useIsFocused.mockReturnValue(false);
   const { useVolumeRemote } = jest.requireMock('../../triggers/useVolumeRemote');
   const s = session({});
