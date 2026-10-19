@@ -17,3 +17,8 @@ test('clampTrim enforces a 60s maximum', () => {
 test('a clip shorter than 3s keeps its whole length', () => {
   expect(clampTrim({ startMs: 500, endMs: 1000 }, 2000, 'start')).toEqual({ startMs: 0, endMs: 2000 });
 });
+
+test('clampTrim allows up to 120s when asked (gym modes)', () => {
+  expect(clampTrim({ startMs: 0, endMs: 100000 }, 120000, 'end', 120000)).toEqual({ startMs: 0, endMs: 100000 });
+  expect(clampTrim({ startMs: 0, endMs: 130000 }, 150000, 'end', 120000)).toEqual({ startMs: 0, endMs: 120000 });
+});

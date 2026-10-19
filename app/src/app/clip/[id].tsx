@@ -10,6 +10,7 @@ import { BackIcon } from '../../components/icons';
 import { TrimBar } from '../../components/TrimBar';
 import { removeFile, repo } from '../../data/mmkv';
 import type { Clip } from '../../data/schema';
+import { effectiveSettings } from '../../modes/registry';
 import { colors, fonts } from '../../theme/tokens';
 
 const NO_EDIT: NonNullable<Clip['edit']> = { slowmo: false, muted: false };
@@ -36,6 +37,8 @@ export default function ClipEditor() {
   const number = useMemo(() => (clip ? repo.listClips(clip.sessionId).findIndex((c) => c.id === id) + 1 : 0), [clip, id, version]);
   const [trim, setTrim] = useState(() => clip?.trim ?? { startMs: 0, endMs: 0 });
   const edit = clip?.edit ?? NO_EDIT;
+  const session = clip ? repo.getSession(clip.sessionId) : undefined;
+  const maxMs = session ? effectiveSettings(session.sport, repo.getPrefs()).bufferSeconds * 1000 : undefined;
 
   const player = useVideoPlayer(clip ? { uri: `file://${clip.path}` } : null, (p) => {
     p.timeUpdateEventInterval = 0.25;
@@ -104,6 +107,7 @@ export default function ClipEditor() {
         <TrimBar
           durationMs={clip.durationMs}
           trim={trim}
+          maxMs={maxMs}
           onChange={setTrim}
           onCommit={(t) => repo.updateClip(id, { trim: t })}
         />

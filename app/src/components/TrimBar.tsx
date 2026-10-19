@@ -5,17 +5,24 @@ import { clampTrim } from '../story/trim';
 import { colors } from '../theme/tokens';
 
 type Cut = { startMs: number; endMs: number };
-type Props = { durationMs: number; trim: Cut; onChange: (trim: Cut) => void; onCommit: (trim: Cut) => void };
+type Props = {
+  durationMs: number;
+  trim: Cut;
+  /** Longest cut allowed: the mode's buffer (60s court, 120s gym). */
+  maxMs?: number;
+  onChange: (trim: Cut) => void;
+  onCommit: (trim: Cut) => void;
+};
 
 const HANDLE = 44; // touch target
 
 /** The whole clip as a track, the cut as an accent window with a draggable handle on each edge. */
-export function TrimBar({ durationMs, trim, onChange, onCommit }: Props) {
+export function TrimBar({ durationMs, trim, maxMs, onChange, onCommit }: Props) {
   const [width, setWidth] = useState(0);
   // Pan callbacks read the latest props through this ref (updated after each commit).
-  const latest = useRef({ trim, width, durationMs, onChange, onCommit });
+  const latest = useRef({ trim, width, durationMs, maxMs, onChange, onCommit });
   useLayoutEffect(() => {
-    latest.current = { trim, width, durationMs, onChange, onCommit };
+    latest.current = { trim, width, durationMs, maxMs, onChange, onCommit };
   });
 
   const handle = (moved: 'start' | 'end') => {
@@ -32,7 +39,7 @@ export function TrimBar({ durationMs, trim, onChange, onCommit }: Props) {
         if (!w) return;
         const delta = (g.dx / w) * d;
         const next = moved === 'start' ? { ...origin, startMs: origin.startMs + delta } : { ...origin, endMs: origin.endMs + delta };
-        current = clampTrim(next, d, moved);
+        current = clampTrim(next, d, moved, latest.current.maxMs);
         latest.current.onChange(current);
       },
       onPanResponderRelease: () => latest.current.onCommit(current),

@@ -53,6 +53,8 @@ export function useReplaySession(deps: SessionDeps) {
   const cameraLens = useRef<string | undefined>(undefined);
   const cameraOpening = useRef<Promise<boolean> | undefined>(undefined);
   const cameraError = useRef<ReplayErrorCode | undefined>(undefined);
+  // The mode of the game being played: its default cut applies to every saved clip.
+  const gameMode = useRef<ModeId>('beachTennis');
   const [bus] = useState(() => createTriggerBus({ now: deps.now }));
 
   const save = useCallback(
@@ -72,7 +74,7 @@ export function useReplaySession(deps: SessionDeps) {
           source,
           path: saved.clipPath,
           durationMs: saved.durationMs,
-        });
+        }, effectiveSettings(gameMode.current, deps.repo.getPrefs()).cutSeconds * 1000);
         deps.haptic();
         dispatch({ type: 'saved', sessionId, clipId: clip.id, source, at });
       } catch {
@@ -157,6 +159,7 @@ export function useReplaySession(deps: SessionDeps) {
         dispatch({ type: 'startFailed', code: cameraError.current ?? 'CAMERA_UNAVAILABLE' });
         return;
       }
+      gameMode.current = sport;
       const settings = effectiveSettings(sport, deps.repo.getPrefs());
       deps.camera.setGestureEnabled(settings.gestureEnabled);
       deps.camera.setVoiceEnabled(settings.voiceEnabled);

@@ -7,6 +7,10 @@ jest.mock('expo-video', () => ({
   useVideoPlayer: () => ({ addListener: () => ({ remove() {} }), play() {}, currentTime: 0 }),
   VideoView: () => null,
 }));
+jest.mock('../../components/TrimBar', () => {
+  const props: { last?: any } = {};
+  return { __props: props, TrimBar: (p: any) => ((props.last = p), null) };
+});
 jest.mock('../../data/mmkv', () => {
   let clip: any = {
     id: 'c1', sessionId: 's1', createdAt: new Date(2026, 9, 17, 19, 40).getTime(), source: 'gesture',
@@ -18,6 +22,8 @@ jest.mock('../../data/mmkv', () => {
     repo: {
       getClip: () => clip,
       listClips: () => (clip ? [clip] : []),
+      getPrefs: () => jest.requireActual('../../data/schema').DEFAULT_PREFS,
+      getSession: () => ({ id: 's1', sport: clip?.durationMs > 60000 ? 'musculacao' : 'beachTennis', startedAt: 0 }),
       updateClip: jest.fn((id: string, patch: object) => (clip = { ...clip, ...patch })),
       deleteClip: jest.fn(),
       subscribe: () => () => {},
@@ -69,4 +75,11 @@ test('with slow motion on, sound shows as off and cannot be turned on', async ()
   await render(<ClipEditor />);
   expect(screen.getByRole('button', { name: 'Som' })).toBeDisabled();
   expect(screen.getByText('Sem som')).toBeTruthy();
+});
+
+test('a gym clip allows cuts up to 120s', async () => {
+  __setClip({ id: 'c1', sessionId: 's1', createdAt: 0, source: 'voice', path: '/c1.mp4', durationMs: 120000,
+    trim: { startMs: 60000, endMs: 120000 } });
+  await render(<ClipEditor />);
+  expect(jest.requireMock('../../components/TrimBar').__props.last.maxMs).toBe(120000);
 });

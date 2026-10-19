@@ -263,3 +263,13 @@ test('release turns the camera off while idle, but never during a game', async (
   await act(() => view.result.current.release());
   expect(f.camera.stopSession).toHaveBeenCalledTimes(1);
 });
+
+test("saved clips get the mode's default cut", async () => {
+  const f = fakeDeps();
+  const view = await renderHook(() => useReplaySession(f.deps));
+  await act(() => view.result.current.start('musculacao'));
+  await act(async () => view.result.current.trigger('screen'));
+  await act(async () => f.finishSave({ clipPath: '/g.mp4', durationMs: 120000 }));
+  const [clip] = f.deps.repo.listClips(view.result.current.state.sessionId!);
+  expect(clip.trim).toEqual({ startMs: 60000, endMs: 120000 });
+});

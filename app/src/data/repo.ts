@@ -121,11 +121,12 @@ export function createRepo(kv: KV, files: FileProbe, newId: () => string) {
       return clip;
     },
 
-    addClip(input: Omit<Clip, 'id' | 'trim'>): Clip {
+    /** `cutMs`: the default cut, the last N ms up to the trigger (the mode's cutSeconds). */
+    addClip(input: Omit<Clip, 'id' | 'trim'>, cutMs: number = DEFAULT_TRIM_MS): Clip {
       const clip: Clip = {
         ...input,
         id: newId(),
-        trim: { startMs: Math.max(0, input.durationMs - DEFAULT_TRIM_MS), endMs: input.durationMs },
+        trim: { startMs: Math.max(0, input.durationMs - cutMs), endMs: input.durationMs },
       };
       write(key.clip(clip.id), clip);
       write(key.clipsOf(clip.sessionId), [...clipIds(clip.sessionId), clip.id]);

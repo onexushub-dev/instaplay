@@ -157,3 +157,10 @@ test('updateClip on a deleted clip does nothing', () => {
   expect(repo.updateClip('gone', { trim: { startMs: 0, endMs: 1 } })).toBeUndefined();
   expect(map.size).toBe(0);
 });
+
+test('addClip with a 60s default cut on a 120s clip', () => {
+  const repo = setup({ '/a.mp4': 1 });
+  const s = repo.startSession('musculacao', 0);
+  const c = repo.addClip({ sessionId: s.id, createdAt: 1, source: 'voice', path: '/a.mp4', durationMs: 120000 }, 60000);
+  expect(c.trim).toEqual({ startMs: 60000, endMs: 120000 });
+});
