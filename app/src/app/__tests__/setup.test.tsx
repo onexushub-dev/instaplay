@@ -24,7 +24,10 @@ jest.mock('expo-router', () => ({
   router: { replace: jest.fn(), back: jest.fn(), push: jest.fn() },
   useIsFocused: jest.fn(() => true),
 }));
-jest.mock('expo-keep-awake', () => ({ activateKeepAwakeAsync: jest.fn(async () => {}), deactivateKeepAwake: jest.fn() }));
+jest.mock('expo-keep-awake', () => ({
+  activateKeepAwakeAsync: jest.fn(async () => {}),
+  deactivateKeepAwake: jest.fn(),
+}));
 jest.mock('../../data/mmkv', () => {
   const initial = {
     onboardingDone: true,
@@ -70,6 +73,11 @@ function session(state: object) {
   };
   useSession.mockReturnValue(value);
   return value;
+}
+
+/** The setup sheet opens collapsed: mode, triggers and alerts sit behind the summary row. */
+async function openSettings() {
+  await fireEvent.press(screen.getByRole('button', { name: /^Ajustes:/ }));
 }
 
 beforeEach(() => {
@@ -119,6 +127,7 @@ test('shows that the camera is opening', async () => {
 test('choosing a sport stores it in prefs', async () => {
   session({});
   await render(<Setup />);
+  await openSettings();
   await fireEvent.press(screen.getByRole('button', { name: 'Futevôlei' }));
   expect(repo.setPrefs).toHaveBeenCalledWith({ sport: 'futevolei' });
 });
@@ -126,15 +135,17 @@ test('choosing a sport stores it in prefs', async () => {
 test('the gesture tile toggles the gesture preference', async () => {
   session({});
   await render(<Setup />);
+  await openSettings();
   await fireEvent.press(screen.getByRole('button', { name: /Braços para cima/ }));
   expect(repo.setPrefs).toHaveBeenCalledWith(
-    expect.objectContaining({ modeSettings: expect.objectContaining({ beachTennis: { gestureEnabled: false } }) })
+    expect.objectContaining({ modeSettings: expect.objectContaining({ beachTennis: { gestureEnabled: false } }) }),
   );
 });
 
 test('Começar jogo starts with the chosen sport and shows the recording controls on the same screen', async () => {
   const s = session({});
   const view = await render(<Setup />);
+  await openSettings();
   await fireEvent.press(screen.getByRole('button', { name: 'Vôlei de praia' }));
   await fireEvent.press(screen.getByRole('button', { name: 'Começar jogo' }));
   expect(s.start).toHaveBeenCalledWith('voleiPraia');
@@ -179,6 +190,7 @@ test('the button is disabled while the camera starts', async () => {
 test('save feedback toggles: sound and flash', async () => {
   session({});
   await render(<Setup />);
+  await openSettings();
   await fireEvent.press(screen.getByRole('button', { name: 'Som' }));
   expect(repo.setPrefs).toHaveBeenCalledWith({ soundOnSave: false });
   await fireEvent.press(screen.getByRole('button', { name: 'Flash' }));
@@ -190,10 +202,13 @@ test('turning voice on asks for speech permission first', async () => {
   camera.getSpeechPermission.mockReturnValueOnce('undetermined');
   session({});
   await render(<Setup />);
+  await openSettings();
   await fireEvent.press(screen.getByRole('button', { name: /^Voz/ }));
   expect(camera.requestSpeechPermission).toHaveBeenCalled();
   expect(repo.setPrefs).toHaveBeenCalledWith(
-    expect.objectContaining({ modeSettings: expect.objectContaining({ beachTennis: expect.objectContaining({ voiceEnabled: true }) }) })
+    expect.objectContaining({
+      modeSettings: expect.objectContaining({ beachTennis: expect.objectContaining({ voiceEnabled: true }) }),
+    }),
   );
 });
 
@@ -205,6 +220,7 @@ test('voice stays off when speech permission is denied', async () => {
   jest.clearAllMocks();
   session({});
   await render(<Setup />);
+  await openSettings();
   await fireEvent.press(screen.getByRole('button', { name: /^Voz/ }));
   expect(repo.setPrefs).not.toHaveBeenCalled();
   expect(screen.getByText('Libere o reconhecimento de fala em Ajustes.')).toBeTruthy();
@@ -214,6 +230,7 @@ test('the voice tile says when this phone cannot recognize speech offline', asyn
   jest.requireMock('../../../modules/replay-camera').isVoiceSupported.mockReturnValueOnce(false);
   session({});
   await render(<Setup />);
+  await openSettings();
   expect(screen.getByLabelText('Voz, Indisponível neste celular')).toBeTruthy();
 });
 
@@ -231,6 +248,7 @@ test('Meus jogos opens the game list, and is hidden during a game', async () => 
 test('switching to Academia shows gym modes and the person guide tip', async () => {
   session({});
   await render(<Setup />);
+  await openSettings();
   await fireEvent.press(screen.getByRole('button', { name: 'Academia' }));
   expect(screen.getByRole('button', { name: 'Musculação' })).toBeTruthy();
   expect(screen.getByText('No chão ou no tripé, a 2–3 m, de lado para o exercício')).toBeTruthy();
@@ -240,6 +258,7 @@ test('switching to Academia shows gym modes and the person guide tip', async () 
 test('choosing Musculação stores the mode and reopens the camera for it', async () => {
   const s = session({});
   await render(<Setup />);
+  await openSettings();
   await fireEvent.press(screen.getByRole('button', { name: 'Academia' }));
   await fireEvent.press(screen.getByRole('button', { name: 'Musculação' }));
   expect(repo.setPrefs).toHaveBeenCalledWith({ sport: 'musculacao' });
@@ -250,6 +269,7 @@ test('the gesture tile reflects the mode default (off in gym)', async () => {
   repo.setPrefs({ sport: 'crossfit' });
   session({});
   await render(<Setup />);
+  await openSettings();
   expect(screen.getByLabelText('Braços para cima, Desligado')).toBeTruthy();
 });
 
@@ -258,6 +278,7 @@ test('a gym mode without speech permission shows Toque para permitir', async () 
   jest.requireMock('../../../modules/replay-camera').getSpeechPermission.mockReturnValue('undetermined');
   session({});
   await render(<Setup />);
+  await openSettings();
   expect(screen.getByLabelText('Voz, Toque para permitir')).toBeTruthy();
   jest.requireMock('../../../modules/replay-camera').getSpeechPermission.mockReturnValue('granted');
 });
@@ -267,6 +288,60 @@ test('a denied speech permission shows the reason without a tap', async () => {
   jest.requireMock('../../../modules/replay-camera').getSpeechPermission.mockReturnValue('denied');
   session({});
   await render(<Setup />);
+  await openSettings();
   expect(screen.getByLabelText('Voz, Negado · libere em Ajustes')).toBeTruthy();
   jest.requireMock('../../../modules/replay-camera').getSpeechPermission.mockReturnValue('granted');
+});
+
+test('opens collapsed: a summary of the mode and the start button, nothing else over the camera', async () => {
+  session({});
+  await render(<Setup />);
+  expect(screen.getByRole('button', { name: /^Ajustes: Beach tennis/ })).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Começar jogo' })).toBeEnabled();
+  expect(screen.queryByRole('button', { name: 'Futevôlei' })).toBeNull();
+  expect(screen.queryByText('COMO SALVAR O LANCE')).toBeNull();
+});
+
+test('the summary tells which triggers are on without opening', async () => {
+  repo.setPrefs({ sport: 'musculacao' });
+  session({});
+  await render(<Setup />);
+  expect(
+    screen.getByRole('button', {
+      name: 'Ajustes: Musculação · voz ligada, braços para cima desligado, controle não testado',
+    }),
+  ).toBeTruthy();
+});
+
+test('a remote press while collapsed shows the remote works', async () => {
+  session({});
+  await render(<Setup />);
+  const { useVolumeRemote } = jest.requireMock('../../triggers/useVolumeRemote');
+  const onPress = useVolumeRemote.mock.calls.at(-1)[1];
+  const { act } = jest.requireActual('@testing-library/react-native');
+  await act(() => onPress());
+  expect(screen.getByRole('button', { name: /controle funcionando$/ })).toBeTruthy();
+});
+
+test('choosing a mode closes the settings; the handle closes them too', async () => {
+  session({});
+  await render(<Setup />);
+  await openSettings();
+  await fireEvent.press(screen.getByRole('button', { name: 'Futevôlei' }));
+  expect(screen.queryByRole('button', { name: 'Beach tennis' })).toBeNull();
+  expect(screen.getByRole('button', { name: /^Ajustes: Futevôlei/ })).toBeTruthy();
+
+  await openSettings();
+  await fireEvent.press(screen.getByRole('button', { name: 'Fechar ajustes' }));
+  expect(screen.queryByText('COMO SALVAR O LANCE')).toBeNull();
+});
+
+test('the positioning guide fits the camera area above the sheet', async () => {
+  session({});
+  await render(<Setup />);
+  await fireEvent(screen.getByTestId('setup-sheet'), 'layout', { nativeEvent: { layout: { height: 210 } } });
+  const { StyleSheet } = jest.requireActual('react-native');
+  expect(StyleSheet.flatten(screen.getByTestId('guide-area', { includeHiddenElements: true }).props.style).bottom).toBe(
+    210,
+  );
 });

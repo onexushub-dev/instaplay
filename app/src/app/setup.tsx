@@ -1,10 +1,15 @@
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { router, useIsFocused } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { getSpeechPermission, isVoiceSupported, ReplayCameraView, requestSpeechPermission } from '../../modules/replay-camera';
+import {
+  getSpeechPermission,
+  isVoiceSupported,
+  ReplayCameraView,
+  requestSpeechPermission,
+} from '../../modules/replay-camera';
 import type { ReplayErrorCode } from '../../modules/replay-camera/src/ReplayCamera.types';
 import { Button } from '../components/Button';
 import { Chip } from '../components/Chip';
@@ -13,12 +18,11 @@ import { RecordingPanel } from '../components/RecordingPanel';
 import { ArmsUpIcon, MicIcon, RemoteIcon, WatchIcon } from '../components/icons';
 import { TriggerTile } from '../components/TriggerTile';
 import { repo } from '../data/mmkv';
-import type { ModeSettings, Prefs } from '../data/schema';
+import type { ModeId, ModeSettings, Prefs } from '../data/schema';
 import { effectiveSettings, type ModeGroup, modeById, modesIn, withModeOverride } from '../modes/registry';
 import { useSession } from '../session/SessionContext';
 import { colors, fonts } from '../theme/tokens';
 import { useVolumeRemote } from '../triggers/useVolumeRemote';
-
 
 const START_ERRORS: Partial<Record<ReplayErrorCode, string>> = {
   LOW_STORAGE: 'Pouco espaço no celular. Libere pelo menos 500 MB para gravar.',
@@ -36,6 +40,16 @@ export default function Setup() {
   const settings = effectiveSettings(prefs.sport, prefs);
   const updateMode = (patch: Partial<ModeSettings>) => update(withModeOverride(prefs, prefs.sport, patch));
   const [remoteWorks, setRemoteWorks] = useState(false);
+  // The sheet opens collapsed so the camera and its guide stay visible; mode and triggers sit behind the summary.
+  const [expanded, setExpanded] = useState(false);
+  const [sheetHeight, setSheetHeight] = useState(0);
+  // Swipe up on the sheet opens it, swipe down closes it; taps still reach the controls inside.
+  const [swipe] = useState(() =>
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dy) > 12 && Math.abs(g.dy) > Math.abs(g.dx),
+      onPanResponderRelease: (_, g) => setExpanded(g.dy < 0),
+    }),
+  );
   const [speechDenied, setSpeechDenied] = useState(false);
   // Offline recognition only: court audio is never streamed to a server.
   const [voiceSupported] = useState(() => isVoiceSupported());
@@ -62,6 +76,16 @@ export default function Setup() {
     if (granted) updateMode({ voiceEnabled: true });
   }
 
+  const chooseMode = (id: ModeId) => {
+    update({ sport: id });
+    setExpanded(false);
+  };
+  const summary = `Ajustes: ${mode.label} · ${[
+    `voz ${voiceOn ? 'ligada' : 'desligada'}`,
+    `braços para cima ${settings.gestureEnabled ? 'ligado' : 'desligado'}`,
+    `controle ${remoteWorks ? 'funcionando' : 'não testado'}`,
+  ].join(', ')}`;
+
   const chooseGroup = (group: ModeGroup) => {
     if (mode.group !== group) update({ sport: modesIn(group)[0].id });
   };
@@ -79,7 +103,6 @@ export default function Setup() {
     void activateKeepAwakeAsync('setup');
     return () => void deactivateKeepAwake('setup');
   }, [focused]);
-
 
   // A press of the Bluetooth remote here proves it is paired and reaching the app.
   useVolumeRemote(focused && phase === 'idle', () => setRemoteWorks(true));
@@ -105,7 +128,9 @@ export default function Setup() {
   function renderSetupControls() {
     return (
       <>
-        <PositionGuide guide={mode.guide} />
+        <View testID="guide-area" pointerEvents="none" style={[styles.guideArea, { bottom: sheetHeight }]}>
+          <PositionGuide guide={mode.guide} />
+        </View>
 
         <SafeAreaView edges={['top']} style={styles.top}>
           <View style={styles.topRow}>
@@ -137,76 +162,112 @@ export default function Setup() {
           </View>
         </SafeAreaView>
 
-        <SafeAreaView edges={['bottom']} style={styles.sheet}>
-          <View style={styles.modeHeader}>
-            <Text style={styles.section}>MODO</Text>
-            <View style={styles.chips}>
-              <Chip label="Quadra" selected={mode.group === 'quadra'} onPress={() => chooseGroup('quadra')} />
-              <Chip label="Academia" selected={mode.group === 'academia'} onPress={() => chooseGroup('academia')} />
-            </View>
-          </View>
+        <View testID="setup-sheet" style={styles.sheet} onLayout={(e) => setSheetHeight(e.nativeEvent.layout.height)}>
+          <SafeAreaView edges={['bottom']} style={styles.sheetBody} {...swipe.panHandlers}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={expanded ? 'Fechar ajustes' : 'Abrir ajustes'}
+              onPress={() => setExpanded(!expanded)}
+              hitSlop={12}
+              style={styles.handleArea}>
+              <View style={styles.handle} />
+            </Pressable>
+            {expanded ? renderSettings() : renderSummary()}
+
+            {errorText ? <Text style={styles.error}>{errorText}</Text> : null}
+            <Button
+              label={opening ? 'Abrindo a câmera…' : 'Começar jogo'}
+              icon={starting ? <ActivityIndicator color={colors.onAccent} /> : undefined}
+              disabled={starting}
+              onPress={() => session.start(prefs.sport)}
+            />
+          </SafeAreaView>
+        </View>
+      </>
+    );
+  }
+
+  function renderSummary() {
+    const iconColor = (on: boolean) => (on ? colors.accent : colors.muted);
+    return (
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={summary}
+        onPress={() => setExpanded(true)}
+        style={styles.summary}>
+        <Text style={styles.summaryMode}>{mode.label} ▾</Text>
+        <View style={styles.summaryIcons}>
+          <MicIcon color={iconColor(voiceOn)} />
+          <ArmsUpIcon color={iconColor(settings.gestureEnabled)} size={20} />
+          <RemoteIcon color={iconColor(remoteWorks)} />
+        </View>
+      </Pressable>
+    );
+  }
+
+  function renderSettings() {
+    return (
+      <>
+        <View style={styles.modeHeader}>
+          <Text style={styles.section}>MODO</Text>
           <View style={styles.chips}>
-            {modesIn(mode.group).map((m) => (
-              <Chip key={m.id} label={m.label} selected={prefs.sport === m.id} onPress={() => update({ sport: m.id })} />
-            ))}
+            <Chip label="Quadra" selected={mode.group === 'quadra'} onPress={() => chooseGroup('quadra')} />
+            <Chip label="Academia" selected={mode.group === 'academia'} onPress={() => chooseGroup('academia')} />
           </View>
+        </View>
+        <View style={styles.chips}>
+          {modesIn(mode.group).map((m) => (
+            <Chip key={m.id} label={m.label} selected={prefs.sport === m.id} onPress={() => chooseMode(m.id)} />
+          ))}
+        </View>
 
-          <Text style={styles.section}>COMO SALVAR O LANCE</Text>
-          <View style={styles.grid}>
-            <View style={styles.gridRow}>
-              <TriggerTile
-                icon={<MicIcon />}
-                title="Voz"
-                status={voiceStatus}
-                active={voiceOn}
-                disabled={!voiceSupported}
-                onPress={voiceSupported ? () => void toggleVoice() : undefined}
-              />
-              <TriggerTile
-                icon={<ArmsUpIcon />}
-                title="Braços para cima"
-                status={settings.gestureEnabled ? 'Ativo' : 'Desligado'}
-                active={settings.gestureEnabled}
-                onPress={() => updateMode({ gestureEnabled: !settings.gestureEnabled })}
-              />
-            </View>
-            <View style={styles.gridRow}>
-              <TriggerTile
-                icon={<RemoteIcon />}
-                title="Controle"
-                status={remoteWorks ? 'Funcionando' : 'Aperte para testar'}
-                active={remoteWorks}
-              />
-              <TriggerTile icon={<WatchIcon />} title="Relógio" status="Em breve" disabled />
-            </View>
+        <Text style={styles.section}>COMO SALVAR O LANCE</Text>
+        <View style={styles.grid}>
+          <View style={styles.gridRow}>
+            <TriggerTile
+              icon={<MicIcon />}
+              title="Voz"
+              status={voiceStatus}
+              active={voiceOn}
+              disabled={!voiceSupported}
+              onPress={voiceSupported ? () => void toggleVoice() : undefined}
+            />
+            <TriggerTile
+              icon={<ArmsUpIcon />}
+              title="Braços para cima"
+              status={settings.gestureEnabled ? 'Ativo' : 'Desligado'}
+              active={settings.gestureEnabled}
+              onPress={() => updateMode({ gestureEnabled: !settings.gestureEnabled })}
+            />
           </View>
-
-          {speechDenied ? <Text style={styles.error}>Libere o reconhecimento de fala em Ajustes.</Text> : null}
-
-          <View style={styles.feedbackRow}>
-            <Text style={styles.section}>AVISOS AO SALVAR</Text>
-            <View style={styles.chips}>
-              <Chip
-                label="Som"
-                selected={prefs.soundOnSave}
-                onPress={() => update({ soundOnSave: !prefs.soundOnSave })}
-              />
-              <Chip
-                label="Flash"
-                selected={prefs.flashOnSave}
-                onPress={() => update({ flashOnSave: !prefs.flashOnSave })}
-              />
-            </View>
+          <View style={styles.gridRow}>
+            <TriggerTile
+              icon={<RemoteIcon />}
+              title="Controle"
+              status={remoteWorks ? 'Funcionando' : 'Aperte para testar'}
+              active={remoteWorks}
+            />
+            <TriggerTile icon={<WatchIcon />} title="Relógio" status="Em breve" disabled />
           </View>
+        </View>
 
-          {errorText ? <Text style={styles.error}>{errorText}</Text> : null}
-          <Button
-            label={opening ? 'Abrindo a câmera…' : 'Começar jogo'}
-            icon={starting ? <ActivityIndicator color={colors.onAccent} /> : undefined}
-            disabled={starting}
-            onPress={() => session.start(prefs.sport)}
-          />
-        </SafeAreaView>
+        {speechDenied ? <Text style={styles.error}>Libere o reconhecimento de fala em Ajustes.</Text> : null}
+
+        <View style={styles.feedbackRow}>
+          <Text style={styles.section}>AVISOS AO SALVAR</Text>
+          <View style={styles.chips}>
+            <Chip
+              label="Som"
+              selected={prefs.soundOnSave}
+              onPress={() => update({ soundOnSave: !prefs.soundOnSave })}
+            />
+            <Chip
+              label="Flash"
+              selected={prefs.flashOnSave}
+              onPress={() => update({ flashOnSave: !prefs.flashOnSave })}
+            />
+          </View>
+        </View>
       </>
     );
   }
@@ -261,10 +322,20 @@ const styles = StyleSheet.create({
     backgroundColor: colors.ground,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    gap: 12,
   },
+  sheetBody: { paddingHorizontal: 20, paddingTop: 8, gap: 12 },
+  guideArea: { position: 'absolute', top: 0, left: 0, right: 0 },
+  handleArea: {
+    alignSelf: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 40,
+    minHeight: 24,
+    justifyContent: 'center',
+  },
+  handle: { width: 40, height: 5, borderRadius: 3, backgroundColor: colors.muted },
+  summary: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 44 },
+  summaryMode: { fontFamily: fonts.bodyBold, fontSize: 18, color: colors.text },
+  summaryIcons: { flexDirection: 'row', alignItems: 'center', gap: 16 },
   section: {
     fontFamily: fonts.bodyBold,
     fontSize: 12,
