@@ -213,7 +213,13 @@ Decisão do Marcus: entregar todas as funcionalidades antes de cobrar.
 1. Plano 1: motor de câmera (feito)
 2. Plano 2: telas, gatilhos e armazenamento (feito)
 3. Plano 3: editor, Story, nome do jogo e "Meus jogos"
-4. Plano 4: modos de uso — "Esporte" vira "Modo", com Quadra (atual) e **Academia** (musculação, crossfit, funcional, outro). Cada modo define padrões que o jogador pode mudar: Academia desliga o gesto "braços para cima" (exercícios acima da cabeça o disparariam), usa voz/controle/tela, buffer de 2 min com corte padrão do tamanho da série, lente 1x e templates de treino (exercício, carga, "Recorde pessoal"). A estrutura comporta outros modos depois (skate, corrida, dança, família).
+4. Plano 4: modos de uso baseados em predefinições. "Esporte" vira "Modo", agrupado em **Quadra** (beach tennis, futevôlei, vôlei de praia, outro) e **Academia** (musculação, crossfit, funcional, outro). Cada modo é uma entrada de um único registro de predefinições, que o resto do app só lê:
+   - guia de posicionamento desenhado sobre a câmera (quadra em perspectiva, silhueta de pessoa, nenhum) e a dica em texto;
+   - lente padrão (0.5x quadra, 1x academia);
+   - gatilhos ligados por padrão (academia: voz, controle e tela; gesto "braços para cima" desligado, pois exercícios acima da cabeça o disparariam);
+   - buffer e corte padrão (quadra 60s / 30s; academia 2 min / 60s);
+   - templates e textos do Story (quadra: Placar, Minimal, Arena; academia: Treino, Recorde pessoal, Minimal, com exercício e carga).
+   Ajustes que o usuário fizer ficam salvos por modo. Novos modos (skate, corrida, dança, família) = nova entrada no registro.
 5. Plano 5: apps de relógio
 6. Android no aparelho e teste de campo
 7. Último: pagamento e assinatura (seção 6). Até lá tudo fica liberado; `useEntitlement()` é o único ponto que decide o que é pago, e hoje responde "pro".
