@@ -16,6 +16,8 @@ Plano 2 (telas + gatilhos): fluxo completo conferido no iPhone em 2026-10-18 —
 
 Plano 3 (editor, Story, Meus jogos): conferido no iPhone em 2026-10-18 — prévia e templates (Placar/Minimal/Arena) sobre vídeo em pé, galeria. Instagram direto aguarda o ID de app da Meta.
 
+Plano 4 (modos Quadra e Academia): conferido no iPhone em 2026-10-18 — painel de preparação recolhível, guia de moldura na Academia (1x, gesto desligado, voz, buffer 120 s, corte 60 s), Story Treino/Recorde com exercício e carga; Quadra mantém 0.5x, gesto e 60 s.
+
 Ainda falta:
 - **Android inteiro**: nenhum aparelho testado
 - gesto a 5–8 m e contagem de falsos positivos (V de comemoração)
