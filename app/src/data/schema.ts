@@ -2,8 +2,13 @@ import type { TriggerSource } from '../../modules/replay-camera/src/ReplayCamera
 
 export type { TriggerSource };
 
-/** A usage mode (Plan 4). The first four are the original sports, so stored sessions stay valid. */
+/**
+ * A usage mode. The app offers `quadra` and `academia`; the sport ids are kept so games saved with
+ * them stay valid (they follow their group's settings).
+ */
 export type ModeId =
+  | 'quadra'
+  | 'academia'
   | 'beachTennis'
   | 'futevolei'
   | 'voleiPraia'
@@ -63,7 +68,7 @@ export type Prefs = {
 
 export const DEFAULT_PREFS: Prefs = {
   onboardingDone: false,
-  sport: 'beachTennis',
+  sport: 'quadra',
   lens: 'ultraWide',
   gestureEnabled: true,
   soundOnSave: true,

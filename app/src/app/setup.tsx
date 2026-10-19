@@ -19,7 +19,7 @@ import { ArmsUpIcon, MicIcon, RemoteIcon, WatchIcon } from '../components/icons'
 import { TriggerTile } from '../components/TriggerTile';
 import { repo } from '../data/mmkv';
 import type { ModeId, ModeSettings, Prefs } from '../data/schema';
-import { effectiveSettings, type ModeGroup, modeById, modesIn, withModeOverride } from '../modes/registry';
+import { effectiveSettings, MODES, modeById, offeredMode, withModeOverride } from '../modes/registry';
 import { useSession } from '../session/SessionContext';
 import { colors, fonts } from '../theme/tokens';
 import { useVolumeRemote } from '../triggers/useVolumeRemote';
@@ -37,8 +37,10 @@ export default function Setup() {
   const [prefs, setPrefsState] = useState<Prefs>(() => repo.getPrefs());
   const update = (patch: Partial<Prefs>) => setPrefsState(repo.setPrefs(patch));
   // What this mode runs with (defaults + the player's changes for this mode).
-  const settings = effectiveSettings(prefs.sport, prefs);
-  const updateMode = (patch: Partial<ModeSettings>) => update(withModeOverride(prefs, prefs.sport, patch));
+  // A sport saved before the two modes opens as its group (Quadra or Academia).
+  const modeId = offeredMode(prefs.sport);
+  const settings = effectiveSettings(modeId, prefs);
+  const updateMode = (patch: Partial<ModeSettings>) => update(withModeOverride(prefs, modeId, patch));
   const [remoteWorks, setRemoteWorks] = useState(false);
   // The sheet opens collapsed so the camera and its guide stay visible; mode and triggers sit behind the summary.
   const [expanded, setExpanded] = useState(false);
@@ -55,7 +57,7 @@ export default function Setup() {
   const [voiceSupported] = useState(() => isVoiceSupported());
   const [speech, setSpeech] = useState(() => getSpeechPermission());
   const speechGranted = speech === 'granted';
-  const mode = modeById(prefs.sport);
+  const mode = modeById(modeId);
   // Voice counts as on only when this mode wants it and the phone may listen.
   const voiceOn = voiceSupported && settings.voiceEnabled && speechGranted;
   const voiceStatus = !voiceSupported
@@ -86,17 +88,14 @@ export default function Setup() {
     `controle ${remoteWorks ? 'funcionando' : 'não testado'}`,
   ].join(', ')}`;
 
-  const chooseGroup = (group: ModeGroup) => {
-    if (mode.group !== group) update({ sport: modesIn(group)[0].id });
-  };
   const { phase, error, camera } = session.state;
   const { prepare, release } = session;
 
   // Live preview while positioning; the buffer starts filling now, so "Começar jogo" is instant.
   useEffect(() => {
-    if (focused) void prepare(prefs.sport);
+    if (focused) void prepare(modeId);
     else void release();
-  }, [focused, prepare, release, prefs.sport, settings.lens]);
+  }, [focused, prepare, release, modeId, settings.lens]);
 
   useEffect(() => {
     if (!focused) return;
@@ -179,7 +178,7 @@ export default function Setup() {
               label={opening ? 'Abrindo a câmera…' : 'Começar jogo'}
               icon={starting ? <ActivityIndicator color={colors.onAccent} /> : undefined}
               disabled={starting}
-              onPress={() => session.start(prefs.sport)}
+              onPress={() => session.start(modeId)}
             />
           </SafeAreaView>
         </View>
@@ -211,14 +210,10 @@ export default function Setup() {
         <View style={styles.modeHeader}>
           <Text style={styles.section}>MODO</Text>
           <View style={styles.chips}>
-            <Chip label="Quadra" selected={mode.group === 'quadra'} onPress={() => chooseGroup('quadra')} />
-            <Chip label="Academia" selected={mode.group === 'academia'} onPress={() => chooseGroup('academia')} />
+            {MODES.map((m) => (
+              <Chip key={m.id} label={m.label} selected={modeId === m.id} onPress={() => chooseMode(m.id)} />
+            ))}
           </View>
-        </View>
-        <View style={styles.chips}>
-          {modesIn(mode.group).map((m) => (
-            <Chip key={m.id} label={m.label} selected={prefs.sport === m.id} onPress={() => chooseMode(m.id)} />
-          ))}
         </View>
 
         <Text style={styles.section}>COMO SALVAR O LANCE</Text>

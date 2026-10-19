@@ -169,9 +169,9 @@ test('switching mode reapplies lens, buffer and triggers', async () => {
 test('a lens change saved for the mode reopens the camera', async () => {
   const f = fakeDeps();
   const view = await renderHook(() => useReplaySession(f.deps));
-  await act(() => view.result.current.prepare('beachTennis'));
-  f.deps.repo.setPrefs({ modeSettings: { beachTennis: { lens: 'wide' } } });
-  await act(() => view.result.current.prepare('beachTennis'));
+  await act(() => view.result.current.prepare('quadra'));
+  f.deps.repo.setPrefs({ modeSettings: { quadra: { lens: 'wide' } } });
+  await act(() => view.result.current.prepare('quadra'));
   expect(f.camera.startSession).toHaveBeenLastCalledWith({ lens: 'wide', maxQuality: '1080p60', bufferSeconds: 60 });
 });
 

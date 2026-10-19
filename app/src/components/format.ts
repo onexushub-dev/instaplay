@@ -1,6 +1,8 @@
 import type { Session, Sport } from '../data/schema';
 
 export const MODE_LABEL: Record<Sport, string> = {
+  quadra: 'Quadra',
+  academia: 'Academia',
   beachTennis: 'Beach tennis',
   futevolei: 'Futevôlei',
   voleiPraia: 'Vôlei de praia',

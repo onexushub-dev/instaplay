@@ -106,14 +106,14 @@ test('under another screen (Meus jogos, editor, Story) it releases the camera, t
 test('turns the camera on for the live preview', async () => {
   const s = session({ camera: 'off' });
   await render(<Setup />);
-  expect(s.prepare).toHaveBeenCalledWith('beachTennis');
+  expect(s.prepare).toHaveBeenCalledWith('quadra'); // a pre-modes sport opens as Quadra
 });
 
 test('changing the lens reopens the camera with it', async () => {
   const s = session({});
   await render(<Setup />);
   await fireEvent.press(screen.getByRole('button', { name: '1x' }));
-  expect(repo.setPrefs).toHaveBeenCalledWith({ modeSettings: { beachTennis: { lens: 'wide' } } });
+  expect(repo.setPrefs).toHaveBeenCalledWith({ modeSettings: { quadra: { lens: 'wide' } } });
   expect(s.prepare).toHaveBeenCalledTimes(2); // reopened with the mode's new lens
   await fireEvent.press(screen.getByRole('button', { name: '0.5x' }));
 });
@@ -124,12 +124,12 @@ test('shows that the camera is opening', async () => {
   expect(screen.getByRole('button', { name: 'Abrindo a câmera…' })).toBeDisabled();
 });
 
-test('choosing a sport stores it in prefs', async () => {
+test('choosing a mode stores it in prefs', async () => {
   session({});
   await render(<Setup />);
   await openSettings();
-  await fireEvent.press(screen.getByRole('button', { name: 'Futevôlei' }));
-  expect(repo.setPrefs).toHaveBeenCalledWith({ sport: 'futevolei' });
+  await fireEvent.press(screen.getByRole('button', { name: 'Academia' }));
+  expect(repo.setPrefs).toHaveBeenCalledWith({ sport: 'academia' });
 });
 
 test('the gesture tile toggles the gesture preference', async () => {
@@ -138,7 +138,7 @@ test('the gesture tile toggles the gesture preference', async () => {
   await openSettings();
   await fireEvent.press(screen.getByRole('button', { name: /Braços para cima/ }));
   expect(repo.setPrefs).toHaveBeenCalledWith(
-    expect.objectContaining({ modeSettings: expect.objectContaining({ beachTennis: { gestureEnabled: false } }) }),
+    expect.objectContaining({ modeSettings: expect.objectContaining({ quadra: { gestureEnabled: false } }) }),
   );
 });
 
@@ -146,9 +146,9 @@ test('Começar jogo starts with the chosen sport and shows the recording control
   const s = session({});
   const view = await render(<Setup />);
   await openSettings();
-  await fireEvent.press(screen.getByRole('button', { name: 'Vôlei de praia' }));
+  await fireEvent.press(screen.getByRole('button', { name: 'Academia' }));
   await fireEvent.press(screen.getByRole('button', { name: 'Começar jogo' }));
-  expect(s.start).toHaveBeenCalledWith('voleiPraia');
+  expect(s.start).toHaveBeenCalledWith('academia');
 
   session({ phase: 'recording', sessionId: 's1', startedAt: Date.now() });
   await view.rerender(<Setup />);
@@ -207,7 +207,7 @@ test('turning voice on asks for speech permission first', async () => {
   expect(camera.requestSpeechPermission).toHaveBeenCalled();
   expect(repo.setPrefs).toHaveBeenCalledWith(
     expect.objectContaining({
-      modeSettings: expect.objectContaining({ beachTennis: expect.objectContaining({ voiceEnabled: true }) }),
+      modeSettings: expect.objectContaining({ quadra: expect.objectContaining({ voiceEnabled: true }) }),
     }),
   );
 });
@@ -245,28 +245,28 @@ test('Meus jogos opens the game list, and is hidden during a game', async () => 
   expect(screen.queryByRole('button', { name: 'Meus jogos' })).toBeNull();
 });
 
-test('switching to Academia shows gym modes and the person guide tip', async () => {
-  session({});
-  await render(<Setup />);
-  await openSettings();
-  await fireEvent.press(screen.getByRole('button', { name: 'Academia' }));
-  expect(screen.getByRole('button', { name: 'Musculação' })).toBeTruthy();
-  expect(screen.getByText('No chão ou no tripé, a 2–3 m, de lado para o exercício')).toBeTruthy();
-  expect(screen.getByTestId('guide-person', { includeHiddenElements: true })).toBeTruthy();
-});
-
-test('choosing Musculação stores the mode and reopens the camera for it', async () => {
+test('choosing Academia shows the gym tip and guide and reopens the camera for it', async () => {
   const s = session({});
   await render(<Setup />);
   await openSettings();
   await fireEvent.press(screen.getByRole('button', { name: 'Academia' }));
-  await fireEvent.press(screen.getByRole('button', { name: 'Musculação' }));
-  expect(repo.setPrefs).toHaveBeenCalledWith({ sport: 'musculacao' });
-  expect(s.prepare).toHaveBeenLastCalledWith('musculacao');
+  expect(repo.setPrefs).toHaveBeenCalledWith({ sport: 'academia' });
+  expect(s.prepare).toHaveBeenLastCalledWith('academia');
+  expect(screen.getByText('No chão ou no tripé, a 2–3 m, de lado para o exercício')).toBeTruthy();
+  expect(screen.getByTestId('guide-person', { includeHiddenElements: true })).toBeTruthy();
+});
+
+test('only two modes to pick: Quadra and Academia', async () => {
+  session({});
+  await render(<Setup />);
+  await openSettings();
+  expect(screen.getByRole('button', { name: 'Quadra' })).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'Futevôlei' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Musculação' })).toBeNull();
 });
 
 test('the gesture tile reflects the mode default (off in gym)', async () => {
-  repo.setPrefs({ sport: 'crossfit' });
+  repo.setPrefs({ sport: 'academia' });
   session({});
   await render(<Setup />);
   await openSettings();
@@ -274,7 +274,7 @@ test('the gesture tile reflects the mode default (off in gym)', async () => {
 });
 
 test('a gym mode without speech permission shows Toque para permitir', async () => {
-  repo.setPrefs({ sport: 'funcional' });
+  repo.setPrefs({ sport: 'academia' });
   jest.requireMock('../../../modules/replay-camera').getSpeechPermission.mockReturnValue('undetermined');
   session({});
   await render(<Setup />);
@@ -284,7 +284,7 @@ test('a gym mode without speech permission shows Toque para permitir', async () 
 });
 
 test('a denied speech permission shows the reason without a tap', async () => {
-  repo.setPrefs({ sport: 'musculacao' });
+  repo.setPrefs({ sport: 'academia' });
   jest.requireMock('../../../modules/replay-camera').getSpeechPermission.mockReturnValue('denied');
   session({});
   await render(<Setup />);
@@ -296,19 +296,19 @@ test('a denied speech permission shows the reason without a tap', async () => {
 test('opens collapsed: a summary of the mode and the start button, nothing else over the camera', async () => {
   session({});
   await render(<Setup />);
-  expect(screen.getByRole('button', { name: /^Ajustes: Beach tennis/ })).toBeTruthy();
+  expect(screen.getByRole('button', { name: /^Ajustes: Quadra/ })).toBeTruthy();
   expect(screen.getByRole('button', { name: 'Começar jogo' })).toBeEnabled();
   expect(screen.queryByRole('button', { name: 'Futevôlei' })).toBeNull();
   expect(screen.queryByText('COMO SALVAR O LANCE')).toBeNull();
 });
 
 test('the summary tells which triggers are on without opening', async () => {
-  repo.setPrefs({ sport: 'musculacao' });
+  repo.setPrefs({ sport: 'academia' });
   session({});
   await render(<Setup />);
   expect(
     screen.getByRole('button', {
-      name: 'Ajustes: Musculação · voz ligada, braços para cima desligado, controle não testado',
+      name: 'Ajustes: Academia · voz ligada, braços para cima desligado, controle não testado',
     }),
   ).toBeTruthy();
 });
@@ -327,9 +327,9 @@ test('choosing a mode closes the settings; the handle closes them too', async ()
   session({});
   await render(<Setup />);
   await openSettings();
-  await fireEvent.press(screen.getByRole('button', { name: 'Futevôlei' }));
-  expect(screen.queryByRole('button', { name: 'Beach tennis' })).toBeNull();
-  expect(screen.getByRole('button', { name: /^Ajustes: Futevôlei/ })).toBeTruthy();
+  await fireEvent.press(screen.getByRole('button', { name: 'Academia' }));
+  expect(screen.queryByRole('button', { name: 'Quadra' })).toBeNull();
+  expect(screen.getByRole('button', { name: /^Ajustes: Academia/ })).toBeTruthy();
 
   await openSettings();
   await fireEvent.press(screen.getByRole('button', { name: 'Fechar ajustes' }));
