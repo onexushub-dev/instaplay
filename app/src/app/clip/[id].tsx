@@ -85,7 +85,7 @@ export default function ClipEditor() {
     <SafeAreaView style={styles.root}>
       <View style={styles.top}>
         <BackButton />
-        <Text style={styles.title}>{`Clipe #${number} · ${timeOfDay(clip.createdAt)}`}</Text>
+        <Text style={styles.title}>{clip.name ?? `Clipe #${number} · ${timeOfDay(clip.createdAt)}`}</Text>
         <View style={styles.spacer} />
       </View>
 

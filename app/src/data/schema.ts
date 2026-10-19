@@ -32,6 +32,7 @@ export type ModeSettings = {
 export type Session = { id: string; sport: Sport; startedAt: number; endedAt?: number; name?: string };
 
 export const MAX_GAME_NAME = 40;
+export const MAX_CLIP_NAME = 40;
 
 export type Clip = {
   id: string;
@@ -43,6 +44,8 @@ export type Clip = {
   trim: { startMs: number; endMs: number };
   /** Editor choices; absent = no slow motion, with sound. */
   edit?: { slowmo: boolean; muted: boolean };
+  /** Optional name the player gives the clip (like a recording's name). */
+  name?: string;
 };
 
 export type Prefs = {

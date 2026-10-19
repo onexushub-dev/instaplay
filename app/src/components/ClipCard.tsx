@@ -15,7 +15,7 @@ export function ClipCard({ clip, number, onPress }: Props) {
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`Clipe ${number}, ${duration}, ${SOURCE_LABEL[clip.source]}`}
+      accessibilityLabel={`Clipe ${number}${clip.name ? ` · ${clip.name}` : ''}, ${duration}, ${SOURCE_LABEL[clip.source]}`}
       onPress={onPress}
       style={styles.card}>
       <View style={styles.thumb}>
@@ -27,6 +27,11 @@ export function ClipCard({ clip, number, onPress }: Props) {
           <Text style={styles.tagText}>{duration}</Text>
         </View>
       </View>
+      {clip.name ? (
+        <Text style={styles.name} numberOfLines={1}>
+          {clip.name}
+        </Text>
+      ) : null}
       <View style={styles.meta}>
         <Text style={styles.metaText}>{timeOfDay(clip.createdAt)}</Text>
         <Text style={styles.metaText}>{SOURCE_LABEL[clip.source]}</Text>
@@ -38,8 +43,15 @@ export function ClipCard({ clip, number, onPress }: Props) {
 const styles = StyleSheet.create({
   card: { flex: 1, gap: 8 },
   thumb: { height: 128, borderRadius: 14, overflow: 'hidden', backgroundColor: colors.surface },
-  tag: { position: 'absolute', backgroundColor: 'rgba(15,16,13,0.85)', paddingVertical: 3, paddingHorizontal: 8, borderRadius: 999 },
+  tag: {
+    position: 'absolute',
+    backgroundColor: 'rgba(15,16,13,0.85)',
+    paddingVertical: 3,
+    paddingHorizontal: 8,
+    borderRadius: 999,
+  },
   tagText: { fontFamily: fonts.bodyBold, fontSize: 12, color: colors.text },
+  name: { fontFamily: fonts.bodyBold, fontSize: 14, color: colors.text },
   meta: { flexDirection: 'row', justifyContent: 'space-between' },
   metaText: { fontFamily: fonts.body, fontSize: 12, color: colors.soft },
 });

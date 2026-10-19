@@ -83,3 +83,10 @@ test('a gym clip allows cuts up to 120s', async () => {
   await render(<ClipEditor />);
   expect(jest.requireMock('../../components/TrimBar').__props.last.maxMs).toBe(120000);
 });
+
+test('a named clip shows its name instead of the number', async () => {
+  __setClip({ id: 'c1', sessionId: 's1', createdAt: 0, source: 'gesture', path: '/c1.mp4', durationMs: 60000,
+    trim: { startMs: 30000, endMs: 60000 }, name: 'Ace no fundo' });
+  await render(<ClipEditor />);
+  expect(screen.getByText('Ace no fundo')).toBeTruthy();
+});

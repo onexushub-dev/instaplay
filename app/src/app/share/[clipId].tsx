@@ -4,13 +4,14 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { shareAsync } from 'expo-sharing';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { type ComponentRef, useEffect, useMemo, useRef, useState } from 'react';
-import { Image, PixelRatio, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Image, PixelRatio, Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { createThumbnail, exportClip } from '../../../modules/replay-camera';
 import { Button } from '../../components/Button';
 import { BackIcon } from '../../components/icons';
 import { repo } from '../../data/mmkv';
+import { MAX_CLIP_NAME } from '../../data/schema';
 import { captureOverlay } from '../../share/captureOverlay';
 import { useEntitlement } from '../../share/entitlement';
 import { exportOptions } from '../../share/exportOptions';
@@ -53,6 +54,14 @@ export default function ShareScreen() {
   const clip = useMemo(() => repo.getClip(clipId), [clipId]);
   const session = useMemo(() => (clip ? repo.getSession(clip.sessionId) : undefined), [clip]);
   const { tier } = useEntitlement();
+  const number = useMemo(
+    () => (clip ? repo.listClips(clip.sessionId).findIndex((c) => c.id === clipId) + 1 : 0),
+    [clip, clipId],
+  );
+  const [name, setName] = useState(() => clip?.name ?? '');
+  const saveName = () => {
+    if (clip && name.trim() !== (clip.name ?? '')) repo.renameClip(clipId, name);
+  };
   const [videoSize, setVideoSize] = useState({ width: 1920, height: 1080 });
   // Exports wait for the real shape: a portrait clip exported with the landscape default gets wrong bands.
   const [sizeKnown, setSizeKnown] = useState(false);
@@ -123,6 +132,7 @@ export default function ShareScreen() {
   async function run(action: (path: string) => Promise<void>) {
     if (exporting.current || !clip || !sizeKnown) return;
     exporting.current = true;
+    saveName(); // a name typed without closing the keyboard still counts
     setBusy(true);
     setNotice(undefined);
     try {
@@ -172,6 +182,22 @@ export default function ShareScreen() {
         <View style={styles.back} />
       </View>
 
+      <View style={styles.nameBox}>
+        <TextInput
+          accessibilityLabel="Nome do clipe"
+          value={name}
+          onChangeText={setName}
+          onSubmitEditing={saveName}
+          onBlur={saveName}
+          placeholder={`Clipe ${number}`}
+          placeholderTextColor={colors.muted}
+          maxLength={MAX_CLIP_NAME}
+          returnKeyType="done"
+          style={styles.nameInput}
+        />
+        <Text style={styles.nameCaption}>Opcional. Ajuda a achar o clipe depois.</Text>
+      </View>
+
       <View style={[styles.preview, { width: frame.width * scale, height: previewHeight }]}>
         <View
           style={{
@@ -215,6 +241,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   title: { fontFamily: fonts.bodyBold, fontSize: 15, color: colors.text },
+  nameBox: { gap: 4 },
+  nameInput: {
+    minHeight: 48,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    paddingHorizontal: 14,
+    fontFamily: fonts.bodySemi,
+    fontSize: 16,
+    color: colors.text,
+  },
+  nameCaption: { fontFamily: fonts.body, fontSize: 12, color: colors.muted },
   preview: { alignSelf: 'center', borderRadius: 16, overflow: 'hidden', backgroundColor: colors.ground },
   offscreen: { position: 'absolute', left: -10000, top: 0 },
   actions: { marginTop: 'auto', gap: 10, paddingBottom: 12 },

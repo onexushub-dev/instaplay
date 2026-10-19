@@ -163,3 +163,18 @@ test('addClip with a 60s default cut on a 120s clip', () => {
   const c = repo.addClip({ sessionId: s.id, createdAt: 1, source: 'voice', path: '/a.mp4', durationMs: 120000 }, 60000);
   expect(c.trim).toEqual({ startMs: 60000, endMs: 120000 });
 });
+
+test('renameClip trims and stores the name; a blank name removes it; names are cut at 40', () => {
+  const repo = setup({ '/a.mp4': 1 });
+  const s = repo.startSession('quadra', 0);
+  const clip = repo.addClip({ sessionId: s.id, createdAt: 1, source: 'screen', path: '/a.mp4', durationMs: 1 });
+  expect(repo.renameClip(clip.id, '  Ace no fundo  ')?.name).toBe('Ace no fundo');
+  expect(repo.getClip(clip.id)?.name).toBe('Ace no fundo');
+  expect(repo.renameClip(clip.id, 'x'.repeat(60))?.name).toHaveLength(40);
+  expect(repo.renameClip(clip.id, '   ')?.name).toBeUndefined();
+});
+
+test('renameClip on a deleted clip does nothing', () => {
+  const repo = setup();
+  expect(repo.renameClip('gone', 'x')).toBeUndefined();
+});

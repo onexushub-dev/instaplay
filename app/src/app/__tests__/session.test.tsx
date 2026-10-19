@@ -135,3 +135,12 @@ test('Nova gravação from a past game goes back to the existing setup without t
   expect(reset).not.toHaveBeenCalled();
   expect(router.dismissTo).toHaveBeenCalledWith('/setup');
 });
+
+test('a named clip is identified by its name in the recording', async () => {
+  repo.listClips.mockReturnValue([{ ...clip('a', 'gesture', 1), name: 'Ace no fundo' }, clip('b', 'screen', 2)]);
+  repo.sessionStats.mockReturnValue({ clips: 2, bytes: 1, recordedMs: 1 });
+  await render(<SessionSummary />);
+  expect(screen.getByText('Ace no fundo')).toBeTruthy();
+  expect(screen.getByRole('button', { name: /^Clipe 1 · Ace no fundo/ })).toBeTruthy();
+  expect(screen.getByRole('button', { name: /^Clipe 2,/ })).toBeTruthy();
+});

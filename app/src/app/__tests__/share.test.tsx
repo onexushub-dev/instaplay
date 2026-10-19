@@ -21,6 +21,8 @@ jest.mock('../../data/mmkv', () => {
     repo: {
       getClip: () => ({ id: 'c1', sessionId: 's1', createdAt: 0, source: 'screen', path: '/c1.mp4', durationMs: 60000,
         trim: { startMs: 30000, endMs: 60000 }, edit: { slowmo: true, muted: false } }),
+      listClips: () => [{ id: 'c0' }, { id: 'c1' }],
+      renameClip: jest.fn(),
       getSession: jest.fn(() => ({ id: 's1', sport: 'quadra', startedAt: new Date(2026, 9, 17, 19, 40).getTime() })),
     },
   };
@@ -29,6 +31,7 @@ jest.mock('../../data/mmkv', () => {
 const camera = jest.requireMock('../../../modules/replay-camera');
 const sharing = jest.requireMock('expo-sharing');
 const media = jest.requireMock('expo-media-library');
+const { repo } = jest.requireMock('../../data/mmkv');
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -93,4 +96,22 @@ test('actions wait until the video shape is known', async () => {
   expect(screen.getByRole('button', { name: 'Salvar na galeria' })).toBeDisabled();
   await act(async () => resolve({ width: 1080, height: 1920 }));
   expect(screen.getByRole('button', { name: 'Salvar na galeria' })).toBeEnabled();
+});
+
+test('the clip can be named, like a recording: saved on blur', async () => {
+  await render(<ShareScreen />);
+  const input = screen.getByLabelText('Nome do clipe');
+  expect(input.props.placeholder).toBe('Clipe 2');
+  expect(input.props.maxLength).toBe(40);
+  await fireEvent.changeText(input, 'Ace no fundo');
+  await fireEvent(input, 'blur');
+  expect(repo.renameClip).toHaveBeenCalledWith('c1', 'Ace no fundo');
+});
+
+test('a name typed without closing the keyboard is saved when the player taps Compartilhar', async () => {
+  await render(<ShareScreen />);
+  await act(async () => {});
+  await fireEvent.changeText(screen.getByLabelText('Nome do clipe'), 'Match point');
+  await act(async () => fireEvent.press(screen.getByRole('button', { name: 'Compartilhar' })));
+  expect(repo.renameClip).toHaveBeenCalledWith('c1', 'Match point');
 });

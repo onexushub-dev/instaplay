@@ -1,4 +1,4 @@
-import { type Clip, DEFAULT_PREFS, DEFAULT_TRIM_MS, MAX_GAME_NAME, type Prefs, type Session, type Sport } from './schema';
+import { type Clip, DEFAULT_PREFS, DEFAULT_TRIM_MS, MAX_CLIP_NAME, MAX_GAME_NAME, type Prefs, type Session, type Sport } from './schema';
 
 export interface KV {
   getString(key: string): string | undefined;
@@ -97,6 +97,18 @@ export function createRepo(kv: KV, files: FileProbe, newId: () => string) {
       write(key.session(id), session);
       changed();
       return session;
+    },
+
+    /** Trims and cuts the name to MAX_CLIP_NAME; a blank name removes it. Undefined if the clip is gone. */
+    renameClip(id: string, name: string): Clip | undefined {
+      const existing = read<Clip>(key.clip(id));
+      if (!existing) return undefined;
+      const trimmed = name.trim().slice(0, MAX_CLIP_NAME);
+      const { name: _old, ...rest } = existing;
+      const clip: Clip = trimmed ? { ...rest, name: trimmed } : rest;
+      write(key.clip(id), clip);
+      changed();
+      return clip;
     },
 
     /** Games with at least one existing clip, newest first. */
