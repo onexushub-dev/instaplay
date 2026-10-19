@@ -14,7 +14,7 @@ public enum WatchPreviewGate {
   }
 
   /// The picture's size: `longSide` on the long edge, same shape, never bigger than the source.
-  public static func targetSize(width: Int, height: Int, longSide: Int = 240) -> (width: Int, height: Int) {
+  public static func targetSize(width: Int, height: Int, longSide: Int = 360) -> (width: Int, height: Int) {
     let long = max(width, height)
     guard long > longSide else { return (width, height) }
     let k = Double(longSide) / Double(long)

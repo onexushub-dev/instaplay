@@ -44,7 +44,7 @@ final class WatchPreview {
       let small = image.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
       guard let space = CGColorSpace(name: CGColorSpace.sRGB),
             let jpeg = self.context.jpegRepresentation(
-              of: small, colorSpace: space, options: [kCGImageDestinationLossyCompressionQuality as CIImageRepresentationOption: 0.5])
+              of: small, colorSpace: space, options: [kCGImageDestinationLossyCompressionQuality as CIImageRepresentationOption: 0.6])
       else { return }
       self.onFrame?(jpeg)
     }

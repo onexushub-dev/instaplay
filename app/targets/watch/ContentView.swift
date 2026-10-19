@@ -15,30 +15,36 @@ struct ContentView: View {
       case .offline:
         VStack(spacing: 8) {
           Message("Sem conexão com o iPhone")
-          SaveButton(enabled: false, action: link.sendSave)
+          SaveButton(enabled: false, height: 80, action: link.sendSave)
         }
       case let .recording(clipCount, startedAt):
-        VStack(spacing: 6) {
-          HStack {
+        VStack(spacing: 4) {
+          HStack(spacing: 8) {
+            // A real button, not an icon: easy to hit on a small, moving wrist.
             Button {
               link.setPreview(!link.previewOn)
             } label: {
               Image(systemName: link.previewOn ? "camera.fill" : "camera")
+                .font(.system(size: 20, weight: .semibold))
+                .frame(width: 56, height: 44)
+                .background(link.previewOn ? accent : Color.white.opacity(0.2), in: Capsule())
+                .foregroundStyle(link.previewOn ? ground : .white)
             }
             .buttonStyle(.plain)
-            .frame(width: 32, height: 32)
             .accessibilityLabel(link.previewOn ? "Fechar câmera" : "Ver câmera")
-            if let startedAt {
-              TimelineView(.periodic(from: .now, by: 1)) { context in
-                Text(WatchModel.elapsed(since: startedAt, now: context.date)).monospacedDigit()
+            Spacer(minLength: 0)
+            VStack(alignment: .trailing, spacing: 0) {
+              if let startedAt {
+                TimelineView(.periodic(from: .now, by: 1)) { context in
+                  Text(WatchModel.elapsed(since: startedAt, now: context.date)).monospacedDigit()
+                }
               }
+              Text(WatchModel.countLabel(clipCount)).foregroundStyle(accent)
             }
-            Spacer()
-            Text(WatchModel.countLabel(clipCount)).foregroundStyle(accent)
+            .font(.system(.footnote, design: .rounded).weight(.bold))
           }
-          .font(.system(.footnote, design: .rounded).weight(.bold))
           if link.previewOn {
-            // What the phone's camera sees, to check the framing from the court.
+            // What the phone's camera sees, as large as the screen allows, to check the framing.
             Group {
               if let picture = link.picture {
                 Image(uiImage: picture).resizable().scaledToFit()
@@ -47,9 +53,10 @@ struct ContentView: View {
               }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .background(Color.black)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
           }
-          SaveButton(enabled: true, action: link.sendSave)
+          SaveButton(enabled: true, height: link.previewOn ? 52 : 80, action: link.sendSave)
         }
       }
     }
@@ -71,12 +78,13 @@ private struct Message: View {
 /// Fills the width and most of the height: easy to hit without looking, mid-play.
 private struct SaveButton: View {
   let enabled: Bool
+  var height: CGFloat = 80
   let action: () -> Void
   var body: some View {
     Button(action: action) {
-      Text("Salvar clipe")
+      Text("Salvar")
         .font(.system(.title3, design: .rounded).weight(.heavy))
-        .frame(maxWidth: .infinity, minHeight: 80)
+        .frame(maxWidth: .infinity, minHeight: height)
     }
     .buttonStyle(.borderedProminent)
     .tint(accent)

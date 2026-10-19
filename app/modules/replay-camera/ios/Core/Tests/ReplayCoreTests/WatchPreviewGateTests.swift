@@ -17,10 +17,11 @@ final class WatchPreviewGateTests: XCTestCase {
   }
 
   func testTargetSizeKeepsTheShapeAndNeverUpscales() {
-    XCTAssertEqual(WatchPreviewGate.targetSize(width: 1920, height: 1080).width, 240)
-    XCTAssertEqual(WatchPreviewGate.targetSize(width: 1920, height: 1080).height, 135)
-    XCTAssertEqual(WatchPreviewGate.targetSize(width: 1080, height: 1920).width, 135)
-    XCTAssertEqual(WatchPreviewGate.targetSize(width: 1080, height: 1920).height, 240)
+    // 360 px on the long edge: the watch screen is about 400 px wide, so the picture is no longer a thumbnail
+    XCTAssertEqual(WatchPreviewGate.targetSize(width: 1920, height: 1080).width, 360)
+    XCTAssertEqual(WatchPreviewGate.targetSize(width: 1920, height: 1080).height, 203)
+    XCTAssertEqual(WatchPreviewGate.targetSize(width: 1080, height: 1920).width, 203)
+    XCTAssertEqual(WatchPreviewGate.targetSize(width: 1080, height: 1920).height, 360)
     XCTAssertEqual(WatchPreviewGate.targetSize(width: 160, height: 90).width, 160)
   }
 }
