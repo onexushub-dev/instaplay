@@ -51,3 +51,11 @@ Itens adiados nas revisões finais. Nada aqui bloqueia o uso, mas vale resolver 
 - Android `ReplayEngine.kt`: `ring`/`windowSeconds` trocados na thread do engine e lidos no `saveExecutor` sem `@Volatile`.
 - Story de academia pode ter até 120 s: confirmar no aparelho se o Instagram aceita ou divide.
 - Clipes de academia ficam com ~90 MB (120 s inteiros) e o espaço livre só é checado no início do jogo.
+
+## Plano 5 (Apple Watch) — adiados
+- Web: `ReplayCameraModule.web.ts` não tem `watchSync`; o `SessionProvider` quebra no web (antes só a tela de preparação). Só importa se o web virar alvo.
+- Acessibilidade do relógio: o alvo de toque em tela cheia anuncia só "Salvar" no VoiceOver.
+- Medir no aparelho: calor do iPhone e quadros descartados com a câmera do relógio ligada por 5 min (o `CIImage` segura um buffer de captura enquanto codifica o JPEG).
+- Build: `@bacons/apple-targets` 5.0.0 exige CocoaPods ≥ 1.17 (máquinas de build/EAS também); `deploymentTarget` 11.0 deixa de fora Series 4/5.
+- Rodar o app do relógio pelo Xcode reinstala o app do iPhone em Debug: colocar a configuração Run do esquema "LANCE Watch" em Release.
+- Quando o iPhone mata o app com o relógio em alcance, um toque no relógio ainda tenta abrir o app em segundo plano (a mensagem pode chegar antes do módulo estar pronto); hoje a tela do relógio vira "Sem conexão" em até 12 s.

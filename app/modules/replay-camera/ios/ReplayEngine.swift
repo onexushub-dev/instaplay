@@ -45,7 +45,7 @@ final class ReplayEngine {
     capture.onVideo = { [weak self] buffer in
       self?.writer?.appendVideo(buffer)
       self?.gesture.consider(buffer)
-      if let self { self.watchPreview.offer(buffer, orientation: GestureDetector.orientation(for: self.gesture.currentUpright())) }
+      self?.watchPreview.offer(buffer) { [weak self] in GestureDetector.orientation(for: self?.gesture.currentUpright() ?? .landscapeLeft) }
     }
     capture.onAudio = { [weak self] buffer in
       self?.writer?.appendAudio(buffer)

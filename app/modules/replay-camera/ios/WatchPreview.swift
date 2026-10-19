@@ -26,7 +26,7 @@ final class WatchPreview {
   }
 
   /// Call from the capture queue with every video frame; nearly all are skipped without touching the pixels.
-  func offer(_ buffer: CMSampleBuffer, orientation: CGImagePropertyOrientation) {
+  func offer(_ buffer: CMSampleBuffer, orientation: () -> CGImagePropertyOrientation) {
     let now = Self.now
     let take = lock.withLock { () -> Bool in
       guard WatchPreviewGate.shouldEncode(now: now, lastFrame: lastFrame, lastAsk: lastAsk, busy: busy) else { return false }
@@ -36,7 +36,7 @@ final class WatchPreview {
     }
     guard take else { return }
     guard let pixels = CMSampleBufferGetImageBuffer(buffer) else { return lock.withLock { busy = false } }
-    let image = CIImage(cvPixelBuffer: pixels).oriented(orientation)
+    let image = CIImage(cvPixelBuffer: pixels).oriented(orientation())
     queue.async {
       defer { self.lock.withLock { self.busy = false } }
       let size = WatchPreviewGate.targetSize(width: Int(image.extent.width), height: Int(image.extent.height))

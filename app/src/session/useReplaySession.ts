@@ -97,7 +97,10 @@ export function useReplaySession(deps: SessionDeps) {
   useEffect(() => {
     const { camera, repo, now } = deps;
     const subs = [
-      camera.addReplayListener('onTrigger', (e) => void bus.fire(e.source)),
+      camera.addReplayListener('onTrigger', (e) => {
+        // Outside a recording a tap saves nothing, so it must not use up the debounce of a real one.
+        if (stateRef.current.phase === 'recording') void bus.fire(e.source);
+      }),
       camera.addReplayListener('onInterrupted', () => dispatch({ type: 'interrupted' })),
       camera.addReplayListener('onResumed', () => dispatch({ type: 'resumed' })),
       camera.addReplayListener('onThermalChange', (e) =>

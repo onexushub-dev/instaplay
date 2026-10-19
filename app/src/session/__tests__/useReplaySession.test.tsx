@@ -351,3 +351,12 @@ test('a watch tap outside a recording is ignored', async () => {
   expect(f.camera.saveClip).not.toHaveBeenCalled();
   expect(f.camera.watchSignal).not.toHaveBeenCalled();
 });
+
+test('a watch tap outside a recording does not use up the 3 s debounce of the first real tap', async () => {
+  const f = fakeDeps();
+  const view = await renderHook(() => useReplaySession(f.deps));
+  await act(async () => f.emit('onTrigger', { source: 'watch', at: 1 })); // stale watch screen, nothing recording
+  await act(() => view.result.current.start('quadra'));
+  await act(async () => view.result.current.trigger('screen')); // same instant
+  expect(f.camera.saveClip).toHaveBeenCalledTimes(1);
+});

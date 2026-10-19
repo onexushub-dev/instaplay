@@ -26,6 +26,12 @@ final class WatchBridge: NSObject, WCSessionDelegate {
     }
   }
 
+  // The last state JS reported, kept so it can be sent again whenever the link (re)appears, and repeated as a
+  // heartbeat while recording: if the app dies the beats stop and the watch notices (WatchModel.staleAfter).
+  private let stateLock = NSLock()
+  private var lastState: WatchMessage = .state(recording: false, clipCount: 0, startedAt: nil)
+  private var heartbeat: DispatchSourceTimer?
+
   func activate() {
     guard let session, session.delegate == nil else { return }
     session.delegate = self
@@ -34,8 +40,25 @@ final class WatchBridge: NSObject, WCSessionDelegate {
 
   /// The latest state is also kept as application context, so a watch app opened later still reads it.
   func sync(recording: Bool, clipCount: Int, startedAt: Double?) {
+    let state = WatchMessage.state(recording: recording, clipCount: clipCount, startedAt: startedAt)
+    stateLock.withLock {
+      lastState = state
+      heartbeat?.cancel()
+      heartbeat = nil
+      guard recording else { return }
+      let timer = DispatchSource.makeTimerSource(queue: .main)
+      timer.schedule(deadline: .now() + 5, repeating: 5)
+      timer.setEventHandler { [weak self] in self?.pushState() }
+      timer.resume()
+      heartbeat = timer
+    }
+    pushState()
+  }
+
+  /// Sends the cached state. Dropped quietly while the session is not ready; it is pushed again when it is.
+  private func pushState() {
     guard let session, session.activationState == .activated, session.isWatchAppInstalled else { return }
-    let payload = WatchMessage.state(recording: recording, clipCount: clipCount, startedAt: startedAt).payload
+    let payload = stateLock.withLock { lastState }.payload
     try? session.updateApplicationContext(payload)
     if session.isReachable { session.sendMessage(payload, replyHandler: nil, errorHandler: nil) }
   }
@@ -50,8 +73,18 @@ final class WatchBridge: NSObject, WCSessionDelegate {
 
   // MARK: WCSessionDelegate
 
-  func session(_ session: WCSession, activationDidCompleteWith state: WCSessionActivationState, error: Error?) { emitStatus() }
-  func sessionWatchStateDidChange(_ session: WCSession) { emitStatus() }
+  func session(_ session: WCSession, activationDidCompleteWith state: WCSessionActivationState, error: Error?) {
+    emitStatus()
+    pushState()
+  }
+
+  func sessionWatchStateDidChange(_ session: WCSession) {
+    emitStatus()
+    pushState()
+  }
+
+  /// The watch app came to the front (or went away): tell it where the recording stands right now.
+  func sessionReachabilityDidChange(_ session: WCSession) { pushState() }
   func sessionDidBecomeInactive(_ session: WCSession) {}
   func sessionDidDeactivate(_ session: WCSession) { session.activate() }
 

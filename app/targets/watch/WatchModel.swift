@@ -9,11 +9,18 @@ enum WatchScreen: Equatable {
 }
 
 enum WatchModel {
-  /// A recording whose phone cannot be reached is `offline` (the button would go nowhere); with no recording
-  /// the watch is `idle`, whatever the connection (the last state it heard may be old).
-  static func screen(recording: Bool, reachable: Bool, clipCount: Int, startedAtMs: Double?) -> WatchScreen {
+  /// The phone repeats its state this often while recording (WatchBridge).
+  static let heartbeat = 5.0
+  /// A recording state older than this is not believed: the phone app is gone even if the link says reachable.
+  static let staleAfter = 12.0
+  /// One save per this many seconds from the watch: a sleeve or a ball on a full-screen target saves nothing more.
+  static let saveCooldown = 3.0
+
+  /// A recording whose phone cannot be reached, or has stopped reporting (`stateAge` in seconds), is `offline`
+  /// (the button would go nowhere); with no recording the watch is `idle`, whatever the connection.
+  static func screen(recording: Bool, reachable: Bool, clipCount: Int, startedAtMs: Double?, stateAge: Double) -> WatchScreen {
     guard recording else { return .idle }
-    guard reachable else { return .offline }
+    guard reachable, stateAge <= staleAfter else { return .offline }
     return .recording(clipCount: clipCount, startedAt: startedAtMs.map { Date(timeIntervalSince1970: $0 / 1000) })
   }
 
@@ -27,6 +34,11 @@ enum WatchModel {
   /// The watch keeps asking for pictures only while its view is open, the phone is reachable and a recording runs.
   static func previewWanted(viewOn: Bool, reachable: Bool, recording: Bool) -> Bool {
     viewOn && reachable && recording
+  }
+
+  static func canSave(now: Double, lastSave: Double?) -> Bool {
+    guard let lastSave else { return true }
+    return now - lastSave >= saveCooldown
   }
 
   static func countLabel(_ count: Int) -> String { count == 1 ? "1 clipe" : "\(count) clipes" }

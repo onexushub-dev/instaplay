@@ -16,12 +16,19 @@ final class WatchLink: NSObject, ObservableObject, WCSessionDelegate {
 
   private var keepAlive: Timer?
 
+  // All of this is read and written on the main thread (WatchConnectivity callbacks hop to it first).
   private var recording = false
   private var clipCount = 0
   private var startedAtMs: Double?
+  private var lastStateAt = Date.distantPast
+  private var lastSaveAt: Double?
+  private var aging: Timer?
 
   override init() {
     super.init()
+    // The phone repeats its state while recording; a state that stops being repeated means the phone app
+    // is gone even though the link still says reachable, so the screen is re-evaluated as it ages.
+    aging = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in self?.refresh() }
     guard WCSession.isSupported() else { return }
     WCSession.default.delegate = self
     WCSession.default.activate()
@@ -29,6 +36,10 @@ final class WatchLink: NSObject, ObservableObject, WCSessionDelegate {
 
   /// The phone does the saving; the watch only asks. A send that fails buzzes the failure pattern.
   func sendSave() {
+    // Full-screen target: a sleeve or a ball must not save a clip every few seconds.
+    let now = Date().timeIntervalSince1970
+    guard WatchModel.canSave(now: now, lastSave: lastSaveAt) else { return }
+    lastSaveAt = now
     WKInterfaceDevice.current().play(.click)
     let session = WCSession.default
     guard session.isReachable else { return WKInterfaceDevice.current().play(.failure) }
@@ -49,8 +60,10 @@ final class WatchLink: NSObject, ObservableObject, WCSessionDelegate {
     sendPreview(true)
     keepAlive = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
       guard let self else { return }
+      var recordingShown = false
+      if case .recording = self.screen { recordingShown = true }
       let wanted = WatchModel.previewWanted(
-        viewOn: self.previewOn, reachable: WCSession.default.isReachable, recording: self.recording)
+        viewOn: self.previewOn, reachable: WCSession.default.isReachable, recording: recordingShown)
       if wanted { self.sendPreview(true) }
     }
   }
@@ -61,19 +74,22 @@ final class WatchLink: NSObject, ObservableObject, WCSessionDelegate {
     session.sendMessage(WatchMessage.preview(on: on).payload, replyHandler: nil, errorHandler: nil)
   }
 
+  /// WatchConnectivity calls back off the main thread: hop first, so state, haptics and the banner share one thread.
   private func apply(_ payload: [String: Any]) {
-    switch WatchMessage.decode(payload) {
-    case let .state(recording, clipCount, startedAt)?:
-      self.recording = recording
-      self.clipCount = clipCount
-      startedAtMs = startedAt
-      refresh()
-    case let .result(saved)?:
-      // The confirmation comes from the phone, once the clip is really saved (or the save failed).
-      // WatchConnectivity calls back off the main thread; haptics and the banner belong on it.
-      DispatchQueue.main.async { self.confirm(saved) }
-    default:
-      break
+    DispatchQueue.main.async {
+      switch WatchMessage.decode(payload) {
+      case let .state(recording, clipCount, startedAt)?:
+        self.recording = recording
+        self.clipCount = clipCount
+        self.startedAtMs = startedAt
+        self.lastStateAt = Date()
+        self.refresh()
+      case let .result(saved)?:
+        // The confirmation comes from the phone, once the clip is really saved (or the save failed).
+        self.confirm(saved)
+      default:
+        break
+      }
     }
   }
 
@@ -86,14 +102,17 @@ final class WatchLink: NSObject, ObservableObject, WCSessionDelegate {
     DispatchQueue.main.asyncAfter(deadline: .now() + 1.2, execute: reset)
   }
 
+  /// Main thread only.
   private func refresh() {
-    // Nothing to look at once the recording is over or the phone is gone.
-    if previewOn, !WatchModel.previewWanted(viewOn: true, reachable: WCSession.default.isReachable, recording: recording) {
-      DispatchQueue.main.async { self.setPreview(false) }
-    }
+    let reachable = WCSession.default.isReachable
     let next = WatchModel.screen(
-      recording: recording, reachable: WCSession.default.isReachable, clipCount: clipCount, startedAtMs: startedAtMs)
-    DispatchQueue.main.async { self.screen = next }
+      recording: recording, reachable: reachable, clipCount: clipCount, startedAtMs: startedAtMs,
+      stateAge: Date().timeIntervalSince(lastStateAt))
+    if screen != next { screen = next }
+    // Nothing to look at once the recording is over or the phone is gone.
+    var recordingShown = false
+    if case .recording = next { recordingShown = true }
+    if previewOn, !WatchModel.previewWanted(viewOn: true, reachable: reachable, recording: recordingShown) { setPreview(false) }
   }
 
   // MARK: WCSessionDelegate
@@ -101,7 +120,6 @@ final class WatchLink: NSObject, ObservableObject, WCSessionDelegate {
   func session(_ session: WCSession, activationDidCompleteWith state: WCSessionActivationState, error: Error?) {
     // A watch app opened later still reads the last state the phone left as application context.
     apply(session.receivedApplicationContext)
-    refresh()
   }
 
   func session(_ session: WCSession, didReceiveMessageData messageData: Data) {
@@ -109,7 +127,7 @@ final class WatchLink: NSObject, ObservableObject, WCSessionDelegate {
     DispatchQueue.main.async { if self.previewOn { self.picture = image } }
   }
 
-  func sessionReachabilityDidChange(_ session: WCSession) { refresh() }
+  func sessionReachabilityDidChange(_ session: WCSession) { DispatchQueue.main.async { self.refresh() } }
   func session(_ session: WCSession, didReceiveMessage message: [String: Any]) { apply(message) }
   func session(_ session: WCSession, didReceiveApplicationContext applicationContext: [String: Any]) { apply(applicationContext) }
 }
