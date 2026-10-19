@@ -9,6 +9,10 @@ final class WatchLink: NSObject, ObservableObject, WCSessionDelegate {
   /// The camera view: the last picture the phone sent, while the view is open.
   @Published private(set) var picture: UIImage?
   @Published private(set) var previewOn = false
+  /// A short confirmation drawn over the screen when the phone says a save ended (true = saved).
+  @Published private(set) var confirmation: Bool?
+
+  private var confirmationReset: DispatchWorkItem?
 
   private var keepAlive: Timer?
 
@@ -66,10 +70,20 @@ final class WatchLink: NSObject, ObservableObject, WCSessionDelegate {
       refresh()
     case let .result(saved)?:
       // The confirmation comes from the phone, once the clip is really saved (or the save failed).
-      WKInterfaceDevice.current().play(saved ? .success : .failure)
+      // WatchConnectivity calls back off the main thread; haptics and the banner belong on it.
+      DispatchQueue.main.async { self.confirm(saved) }
     default:
       break
     }
+  }
+
+  private func confirm(_ saved: Bool) {
+    WKInterfaceDevice.current().play(saved ? .success : .failure)
+    confirmation = saved
+    confirmationReset?.cancel()
+    let reset = DispatchWorkItem { [weak self] in self?.confirmation = nil }
+    confirmationReset = reset
+    DispatchQueue.main.asyncAfter(deadline: .now() + 1.2, execute: reset)
   }
 
   private func refresh() {

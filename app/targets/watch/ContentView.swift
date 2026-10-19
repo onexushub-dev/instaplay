@@ -42,6 +42,8 @@ struct ContentView: View {
     }
     .padding(.horizontal, link.previewOn ? 0 : 6)
     .background(ground)
+    .overlay { if let saved = link.confirmation { Confirmation(saved: saved) } }
+    .animation(.easeOut(duration: 0.15), value: link.confirmation)
     // A watch screen that sleeps or an app that leaves the front stops asking for pictures.
     .onChange(of: scenePhase) { _, phase in if phase != .active { link.setPreview(false) } }
   }
@@ -75,6 +77,24 @@ struct ContentView: View {
     .accessibilityAddTraits(.isButton)
     .accessibilityLabel("Salvar")
     .ignoresSafeArea(edges: .bottom)
+  }
+}
+
+/// Fills the screen for a moment: the clip is safe (or the save failed), visible even when the haptic is missed.
+private struct Confirmation: View {
+  let saved: Bool
+  var body: some View {
+    ZStack {
+      (saved ? accent : Color.red).opacity(0.92)
+      VStack(spacing: 4) {
+        Image(systemName: saved ? "checkmark.circle.fill" : "xmark.circle.fill").font(.system(size: 44))
+        Text(saved ? "Salvo" : "Não salvou").font(.system(.title3, design: .rounded).weight(.heavy))
+      }
+      .foregroundStyle(saved ? ground : .white)
+    }
+    .ignoresSafeArea()
+    .allowsHitTesting(false)
+    .transition(.opacity)
   }
 }
 
