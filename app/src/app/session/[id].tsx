@@ -80,13 +80,16 @@ export default function SessionSummary() {
       />
 
       <View style={styles.footer}>
-        <Text style={styles.caption}>Editor e Story chegam na próxima versão.</Text>
         <View style={styles.buttons}>
           <View style={{ flex: 1 }}>
             <Button label="Novo jogo" variant="secondary" onPress={newGame} />
           </View>
           <View style={{ flex: 1.4 }}>
-            <Button label="Postar um lance" onPress={() => {}} disabled />
+            <Button
+              label="Postar um lance"
+              disabled={clips.length === 0}
+              onPress={() => router.push(`/clip/${clips[clips.length - 1].id}`)}
+            />
           </View>
         </View>
       </View>

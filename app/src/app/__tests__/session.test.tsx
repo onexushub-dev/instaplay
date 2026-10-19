@@ -116,3 +116,11 @@ test('a named game shows its name as the title', async () => {
   await render(<SessionSummary />);
   expect(screen.getByRole('header')).toHaveTextContent('Final do torneio');
 });
+
+test("Postar um lance opens the newest lance's editor", async () => {
+  repo.listClips.mockReturnValue([clip('a', 'gesture', 1), clip('b', 'screen', 2)]);
+  repo.sessionStats.mockReturnValue({ clips: 2, bytes: 1, recordedMs: 1 });
+  await render(<SessionSummary />);
+  await fireEvent.press(screen.getByRole('button', { name: 'Postar um lance' }));
+  expect(router.push).toHaveBeenCalledWith('/clip/b');
+});
