@@ -9,6 +9,7 @@ import type {
   RemotePeer,
   SavedClip,
   SessionOptions,
+  VoiceLocale,
   WatchStatus,
 } from './ReplayCamera.types';
 
@@ -20,9 +21,9 @@ declare class ReplayCameraModule extends NativeModule<ReplayCameraModuleEvents> 
   requestPermissions(): Promise<boolean>;
   signalSaved(sound: boolean, flash: boolean): void;
   signalSaveFailed(sound: boolean): void;
-  setVoiceEnabled(enabled: boolean): void;
+  setVoiceEnabled(enabled: boolean, locale: VoiceLocale): void;
   requestSpeechPermission(): Promise<boolean>;
-  isVoiceSupported(): boolean;
+  isVoiceSupported(locale: VoiceLocale): boolean;
   getSpeechPermission(): 'granted' | 'denied' | 'undetermined';
   createThumbnail(clipPath: string, atMs: number): Promise<string>;
   findContentStart?(clipPath: string): Promise<number>;

@@ -6,9 +6,11 @@ import type {
   SaveClipOptions,
   SavedClip,
   SessionOptions,
+  VoiceLocale,
 } from '../../modules/replay-camera/src/ReplayCamera.types';
 import type { Repo } from '../data/repo';
 import type { ModeId, Sport, TriggerSource } from '../data/schema';
+import { type AppLocale, voiceLocale } from '../i18n/locale';
 import { effectiveSettings } from '../modes/registry';
 import { createTriggerBus } from '../triggers/bus';
 import { initialState, reducer } from './reducer';
@@ -20,7 +22,7 @@ export type SessionDeps = {
     stopSession(): Promise<void>;
     saveClip(opts: SaveClipOptions): Promise<SavedClip>;
     setGestureEnabled(enabled: boolean): void;
-    setVoiceEnabled(enabled: boolean): void;
+    setVoiceEnabled(enabled: boolean, locale: VoiceLocale): void;
     watchSync(state: { recording: boolean; clipCount: number; startedAt?: number }): void;
     watchSignal(saved: boolean): void;
     remoteSync(state: { recording: boolean; clipCount: number; startedAt?: number }): void;
@@ -37,6 +39,8 @@ export type SessionDeps = {
   deleteFile(path: string): void;
   haptic(): void;
   now(): number;
+  /** The app's language now: the voice command listens in it. */
+  locale(): AppLocale;
   /** Bluetooth remote: calls onPress per press while enabled (useVolumeRemote in the app). */
   useRemote(enabled: boolean, onPress: () => void): void;
 };
@@ -185,7 +189,10 @@ export function useReplaySession(deps: SessionDeps) {
       const settings = effectiveSettings(sport, deps.repo.getPrefs());
       deps.camera.setGestureEnabled(settings.gestureEnabled);
       // Listen only when the phone may: native and the setup tile must agree on whether voice is on.
-      deps.camera.setVoiceEnabled(settings.voiceEnabled && deps.camera.getSpeechPermission() === 'granted');
+      deps.camera.setVoiceEnabled(
+        settings.voiceEnabled && deps.camera.getSpeechPermission() === 'granted',
+        voiceLocale(deps.locale()),
+      );
       const session = deps.repo.startSession(sport, deps.now());
       dispatch({ type: 'started', sessionId: session.id, startedAt: session.startedAt });
     },

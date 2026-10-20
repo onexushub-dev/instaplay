@@ -199,7 +199,8 @@ public class ReplayCameraModule: Module {
 
     Function("remoteSetDeviceName") { (name: String) in DeviceIdentity.setCustomName(name) }
 
-    Function("isVoiceSupported") { VoiceTrigger.isSupported }
+    // The locale is the app's language as a tag ("pt-BR" or "en-US"); anything else is treated as English.
+    Function("isVoiceSupported") { (locale: String) in VoiceTrigger.isSupported(VoiceLocale(rawValue: locale) ?? .enUS) }
 
     Function("getSpeechPermission") { () -> String in
       switch SFSpeechRecognizer.authorizationStatus() {
@@ -209,8 +210,8 @@ public class ReplayCameraModule: Module {
       }
     }
 
-    Function("setVoiceEnabled") { (enabled: Bool) in
-      self.engine.voice.setEnabled(enabled)
+    Function("setVoiceEnabled") { (enabled: Bool, locale: String) in
+      self.engine.voice.setEnabled(enabled, locale: VoiceLocale(rawValue: locale) ?? .enUS)
     }
 
     AsyncFunction("requestSpeechPermission") { (promise: Promise) in

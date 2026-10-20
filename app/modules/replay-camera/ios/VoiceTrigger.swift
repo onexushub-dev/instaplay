@@ -1,8 +1,8 @@
 import AVFoundation
 import Speech
 
-/// Listens for "salvar" or "gravar" in the game's own audio (the capture session's microphone samples),
-/// strictly on the device (court audio never goes to a server). Each recognition task is restarted every ~50s (Apple's
+/// Listens for the save command in the app's language ("salvar"/"gravar" in Portuguese, "save"/"record" in English)
+/// in the game's own audio (the capture session's microphone samples), strictly on the device (court audio never goes to a server). Each recognition task is restarted every ~50s (Apple's
 /// limit is about a minute) and right after a command, which also clears the transcript.
 final class VoiceTrigger {
   static let restartAfter: TimeInterval = 50
@@ -11,15 +11,16 @@ final class VoiceTrigger {
   static let firstBackoff: TimeInterval = 2
   static let maxBackoff: TimeInterval = 30
 
-  /// Offline pt-BR recognition exists on this phone.
-  static var isSupported: Bool {
-    SFSpeechRecognizer(locale: Locale(identifier: "pt-BR"))?.supportsOnDeviceRecognition ?? false
+  /// Offline recognition in `locale` exists on this phone.
+  static func isSupported(_ locale: VoiceLocale) -> Bool {
+    SFSpeechRecognizer(locale: locale.locale)?.supportsOnDeviceRecognition ?? false
   }
 
   var onCommand: (() -> Void)?
 
   private let queue = DispatchQueue(label: "replay.voice")
-  private let recognizer = SFSpeechRecognizer(locale: Locale(identifier: "pt-BR"))
+  private var locale = VoiceLocale.ptBR
+  private var recognizer = SFSpeechRecognizer(locale: VoiceLocale.ptBR.locale)
   private var enabled = false
   private var request: SFSpeechAudioBufferRecognitionRequest?
   private var task: SFSpeechRecognitionTask?
@@ -32,14 +33,27 @@ final class VoiceTrigger {
     SFSpeechRecognizer.requestAuthorization { completion($0 == .authorized) }
   }
 
-  func setEnabled(_ on: Bool) {
+  /// Turns listening on or off, in `locale`. A new language replaces the recognizer and drops the running task.
+  func setEnabled(_ on: Bool, locale: VoiceLocale) {
     queue.async {
+      if locale != self.locale {
+        self.stopTask()
+        self.locale = locale
+        self.recognizer = SFSpeechRecognizer(locale: locale.locale)
+        self.retryAt = .distantPast
+        self.backoff = Self.firstBackoff
+      }
       self.enabled = on
       if !on { self.stopTask() }
     }
   }
 
-  func stop() { setEnabled(false) }
+  func stop() {
+    queue.async {
+      self.enabled = false
+      self.stopTask()
+    }
+  }
 
   /// Call with every audio sample buffer from the capture session.
   func consider(_ buffer: CMSampleBuffer) {
@@ -57,10 +71,11 @@ final class VoiceTrigger {
   /// Must run on `queue`.
   private func startTask(_ recognizer: SFSpeechRecognizer) {
     stopTask()
+    let locale = self.locale
     let request = SFSpeechAudioBufferRecognitionRequest()
     request.shouldReportPartialResults = true
     request.requiresOnDeviceRecognition = true
-    request.contextualStrings = VoiceCommand.words
+    request.contextualStrings = VoiceCommand.words(for: locale)
     self.request = request
     startedAt = Date()
     task = recognizer.recognitionTask(with: request) { [weak self] result, error in
@@ -68,7 +83,7 @@ final class VoiceTrigger {
       self.queue.async {
         guard self.request === request else { return } // a task we already replaced
         if result != nil { self.backoff = Self.firstBackoff } // recognition works again
-        if let text = result?.bestTranscription.formattedString, VoiceCommand.matches(text),
+        if let text = result?.bestTranscription.formattedString, VoiceCommand.matches(text, locale: locale),
            Date().timeIntervalSince(self.lastCommand) > Self.cooldown {
           self.lastCommand = Date()
           self.onCommand?()

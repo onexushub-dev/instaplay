@@ -10,12 +10,15 @@ jest.mock('expo', () => {
     getWatchStatus: jest.fn(),
     watchSync: jest.fn(),
     watchSignal: jest.fn(),
+    setVoiceEnabled: jest.fn(),
+    isVoiceSupported: jest.fn(() => true),
   };
   return { requireNativeModule: () => mockNative, NativeModule: class {} };
 });
 
 import {
   getWatchStatus,
+  isVoiceSupported,
   isRemoteSupported,
   remoteControllerHost,
   remoteControllerPairWithCode,
@@ -27,6 +30,7 @@ import {
   remoteSync,
   requestPermissions,
   saveClip,
+  setVoiceEnabled,
   startSession,
   watchSignal,
   watchSync,
@@ -121,4 +125,16 @@ test('with the remote functions on native, the calls pass plain values through',
   } finally {
     Object.keys(remote).forEach((key) => delete mockNative[key]);
   }
+});
+
+test('setVoiceEnabled passes the language the recognizer listens in', () => {
+  setVoiceEnabled(true, 'en-US');
+  expect(mockNative.setVoiceEnabled).toHaveBeenCalledWith(true, 'en-US');
+  setVoiceEnabled(false, 'pt-BR');
+  expect(mockNative.setVoiceEnabled).toHaveBeenLastCalledWith(false, 'pt-BR');
+});
+
+test('isVoiceSupported asks about the language in use', () => {
+  expect(isVoiceSupported('en-US')).toBe(true);
+  expect(mockNative.isVoiceSupported).toHaveBeenCalledWith('en-US');
 });

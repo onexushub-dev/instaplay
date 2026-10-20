@@ -3,6 +3,7 @@ import { createContext, type ReactNode, useContext } from 'react';
 
 import * as camera from '../../modules/replay-camera';
 import { removeFile, repo } from '../data/mmkv';
+import { currentLocale } from '../i18n';
 import { useVolumeRemote } from '../triggers/useVolumeRemote';
 import { type ReplaySession, type SessionDeps, useReplaySession } from './useReplaySession';
 
@@ -12,6 +13,7 @@ const appDeps: SessionDeps = {
   deleteFile: removeFile,
   haptic: () => void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success),
   now: Date.now,
+  locale: currentLocale,
   useRemote: useVolumeRemote,
 };
 

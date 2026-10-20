@@ -1,6 +1,6 @@
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { router, useIsFocused } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -26,7 +26,7 @@ import { RecordingPanel } from '../components/RecordingPanel';
 import { ArmsUpIcon, MicIcon, PhoneIcon, RemoteIcon, WatchIcon } from '../components/icons';
 import { TriggerTile } from '../components/TriggerTile';
 import { repo } from '../data/mmkv';
-import { type MessageKey, VOICE_WORDS } from '../i18n';
+import { type MessageKey, VOICE_WORDS, voiceLocale } from '../i18n';
 import { useT } from '../i18n/useT';
 import type { ModeId, ModeSettings, Prefs } from '../data/schema';
 import { effectiveSettings, MODES, modeById, offeredMode, withModeOverride } from '../modes/registry';
@@ -65,7 +65,8 @@ export default function Setup() {
   );
   const [speechDenied, setSpeechDenied] = useState(false);
   // Offline recognition only: court audio is never streamed to a server.
-  const [voiceSupported] = useState(() => isVoiceSupported());
+  // Asked again if the language changes: the on-device model is per language.
+  const voiceSupported = useMemo(() => isVoiceSupported(voiceLocale(locale)), [locale]);
   const [speech, setSpeech] = useState(() => getSpeechPermission());
   const speechGranted = speech === 'granted';
   const mode = modeById(modeId);

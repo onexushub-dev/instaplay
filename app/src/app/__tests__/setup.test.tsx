@@ -244,6 +244,7 @@ test('the voice tile says when this phone cannot recognize speech offline', asyn
   await render(<Setup />);
   await openSettings();
   expect(screen.getByLabelText('Voz, Indisponível neste celular')).toBeTruthy();
+  expect(jest.requireMock('../../../modules/replay-camera').isVoiceSupported).toHaveBeenCalledWith('pt-BR');
 });
 
 test('Minhas gravações opens the game list, and is hidden during a game', async () => {

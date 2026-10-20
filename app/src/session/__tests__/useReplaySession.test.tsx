@@ -39,6 +39,7 @@ function fakeDeps() {
     deleteFile: (p) => void deleted.push(p),
     haptic: jest.fn(),
     now: () => t,
+    locale: () => 'pt-BR',
     useRemote: () => {},
   };
   return {
@@ -167,7 +168,7 @@ test('switching mode reapplies lens, buffer and triggers', async () => {
 
   await act(() => view.result.current.start('musculacao'));
   expect(f.camera.setGestureEnabled).toHaveBeenLastCalledWith(false);
-  expect(f.camera.setVoiceEnabled).toHaveBeenLastCalledWith(true);
+  expect(f.camera.setVoiceEnabled).toHaveBeenLastCalledWith(true, 'pt-BR');
 });
 
 test('a lens change saved for the mode reopens the camera', async () => {
@@ -232,7 +233,7 @@ test('starting a game applies the voice preference', async () => {
 
   await act(() => view.result.current.start('beachTennis'));
 
-  expect(f.camera.setVoiceEnabled).toHaveBeenLastCalledWith(true);
+  expect(f.camera.setVoiceEnabled).toHaveBeenLastCalledWith(true, 'pt-BR');
 });
 
 test('after a native error the camera is reopened for the next game', async () => {
@@ -284,7 +285,7 @@ test('voice stays off natively when the phone may not listen', async () => {
   f.camera.getSpeechPermission.mockReturnValue('denied');
   const view = await renderHook(() => useReplaySession(f.deps));
   await act(() => view.result.current.start('musculacao'));
-  expect(f.camera.setVoiceEnabled).toHaveBeenLastCalledWith(false);
+  expect(f.camera.setVoiceEnabled).toHaveBeenLastCalledWith(false, 'pt-BR');
 });
 
 test('starting a recording tells the watch', async () => {
@@ -414,4 +415,12 @@ test('the remote phone is told how a save ended', async () => {
   bad.camera.saveClip.mockRejectedValueOnce(new Error('x'));
   await act(async () => bad.view.result.current.trigger('screen'));
   expect(bad.camera.remoteSignal).toHaveBeenCalledWith(false);
+});
+
+test('the voice command listens in the app language', async () => {
+  const f = fakeDeps();
+  f.deps.locale = () => 'en';
+  const view = await renderHook(() => useReplaySession(f.deps));
+  await act(() => view.result.current.start('musculacao'));
+  expect(f.camera.setVoiceEnabled).toHaveBeenLastCalledWith(true, 'en-US');
 });

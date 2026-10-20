@@ -8,6 +8,7 @@ import type {
   RemotePeer,
   SavedClip,
   SessionOptions,
+  VoiceLocale,
   WatchStatus,
 } from './ReplayCamera.types';
 
@@ -59,14 +60,14 @@ export function watchSignal(saved: boolean): void {
   ReplayCameraModule.watchSignal(saved);
 }
 
-/** Listens for "salvar" or "gravar" in the game's audio (iOS; no-op on Android for now). */
-export function setVoiceEnabled(enabled: boolean): void {
-  ReplayCameraModule.setVoiceEnabled(enabled);
+/** Listens for the save command in `locale` ("salvar"/"gravar" or "save"/"record") in the game's audio (iOS; no-op on Android for now). */
+export function setVoiceEnabled(enabled: boolean, locale: VoiceLocale): void {
+  ReplayCameraModule.setVoiceEnabled(enabled, locale);
 }
 
-/** True when this phone can recognize "salvar"/"gravar" offline (iOS with the on-device pt-BR model). */
-export function isVoiceSupported(): boolean {
-  return ReplayCameraModule.isVoiceSupported();
+/** True when this phone can recognize the save command offline in `locale` (iOS with that on-device model). */
+export function isVoiceSupported(locale: VoiceLocale): boolean {
+  return ReplayCameraModule.isVoiceSupported(locale);
 }
 
 /** Current speech-recognition permission, without asking. */
