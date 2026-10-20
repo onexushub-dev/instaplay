@@ -1,11 +1,11 @@
-import { MODE_LABEL } from '../../components/format';
+import { modeLabel } from '../../components/format';
 import { DEFAULT_PREFS, type Prefs } from '../../data/schema';
 import { effectiveSettings, MODES, modeById, offeredMode, withModeOverride } from '../registry';
 
 const prefs = (over: Partial<Prefs> = {}): Prefs => ({ ...DEFAULT_PREFS, ...over });
 
 test('the app offers two modes: Quadra and Academia', () => {
-  expect(MODES.map((m) => [m.id, m.label, m.group, m.guide])).toEqual([
+  expect(MODES.map((m) => [m.id, modeLabel(m.id), m.group, m.guide])).toEqual([
     ['quadra', 'Quadra', 'quadra', 'court'],
     ['academia', 'Academia', 'academia', 'person'],
   ]);
@@ -54,8 +54,9 @@ test('old global prefs apply to Quadra only', () => {
 });
 
 test('games saved with a sport keep their label and follow their group', () => {
-  expect(MODE_LABEL.beachTennis).toBe('Beach tennis');
-  expect(MODE_LABEL.musculacao).toBe('Musculação');
+  expect(modeLabel('beachTennis')).toBe('Beach tennis');
+  expect(modeLabel('musculacao')).toBe('Musculação');
+  expect(modeLabel('musculacao', 'en')).toBe('Weightlifting');
   expect(offeredMode('futevolei')).toBe('quadra');
   expect(offeredMode('crossfit')).toBe('academia');
   expect(offeredMode('academia')).toBe('academia');

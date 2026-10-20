@@ -19,6 +19,7 @@ import {
 import type { RemotePeer, ReplayErrorCode } from '../../modules/replay-camera/src/ReplayCamera.types';
 import { Button } from '../components/Button';
 import { Chip } from '../components/Chip';
+import { modeLabel, modeTip } from '../components/format';
 import { PositionGuide } from '../components/PositionGuide';
 import { RecordingPanel } from '../components/RecordingPanel';
 import { ArmsUpIcon, MicIcon, PhoneIcon, RemoteIcon, WatchIcon } from '../components/icons';
@@ -123,7 +124,7 @@ export default function Setup() {
     update({ sport: id });
     setExpanded(false);
   };
-  const summary = `Ajustes: ${mode.label} · ${[
+  const summary = `Ajustes: ${modeLabel(mode.id)} · ${[
     `voz ${voiceOn ? 'ligada' : 'desligada'}`,
     `acenar com os braços ${settings.gestureEnabled ? 'ligado' : 'desligado'}`,
     `controle ${remoteWorks ? 'funcionando' : 'não testado'}`,
@@ -211,7 +212,7 @@ export default function Setup() {
             </View>
           </View>
           <View style={styles.tip}>
-            <Text style={styles.tipText}>{mode.tip}</Text>
+            <Text style={styles.tipText}>{modeTip(mode.group)}</Text>
           </View>
         </SafeAreaView>
 
@@ -248,7 +249,7 @@ export default function Setup() {
         accessibilityLabel={summary}
         onPress={() => setExpanded(true)}
         style={styles.summary}>
-        <Text style={styles.summaryMode}>{mode.label} ▾</Text>
+        <Text style={styles.summaryMode}>{modeLabel(mode.id)} ▾</Text>
         <View style={styles.summaryIcons}>
           <MicIcon color={iconColor(voiceOn)} />
           <ArmsUpIcon color={iconColor(settings.gestureEnabled)} size={20} />
@@ -266,7 +267,7 @@ export default function Setup() {
           <Text style={styles.section}>MODO</Text>
           <View style={styles.chips}>
             {MODES.map((m) => (
-              <Chip key={m.id} label={m.label} selected={modeId === m.id} onPress={() => chooseMode(m.id)} />
+              <Chip key={m.id} label={modeLabel(m.id)} selected={modeId === m.id} onPress={() => chooseMode(m.id)} />
             ))}
           </View>
         </View>

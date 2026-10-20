@@ -4,7 +4,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { Clip } from '../data/schema';
 import { colors, fonts } from '../theme/tokens';
 import { seconds, timeOfDay } from './format';
-import { SOURCE_LABEL } from './sourceLabel';
+import { sourceLabel } from './sourceLabel';
 import { useClipThumbnail } from './useClipThumbnail';
 
 type Props = { clip: Clip; number: number; onPress: () => void };
@@ -15,7 +15,7 @@ export function ClipCard({ clip, number, onPress }: Props) {
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`Clipe ${number}${clip.name ? ` · ${clip.name}` : ''}, ${duration}, ${SOURCE_LABEL[clip.source]}`}
+      accessibilityLabel={`Clipe ${number}${clip.name ? ` · ${clip.name}` : ''}, ${duration}, ${sourceLabel(clip.source)}`}
       onPress={onPress}
       style={styles.card}>
       <View style={styles.thumb}>
@@ -34,7 +34,7 @@ export function ClipCard({ clip, number, onPress }: Props) {
       ) : null}
       <View style={styles.meta}>
         <Text style={styles.metaText}>{timeOfDay(clip.createdAt)}</Text>
-        <Text style={styles.metaText}>{SOURCE_LABEL[clip.source]}</Text>
+        <Text style={styles.metaText}>{sourceLabel(clip.source)}</Text>
       </View>
     </Pressable>
   );

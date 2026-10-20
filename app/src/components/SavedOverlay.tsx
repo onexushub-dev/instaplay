@@ -4,7 +4,7 @@ import type { TriggerSource } from '../data/schema';
 import { colors, fonts } from '../theme/tokens';
 import { Button } from './Button';
 import { CheckIcon } from './icons';
-import { SOURCE_LABEL } from './sourceLabel';
+import { sourceLabel } from './sourceLabel';
 
 type Props = { number: number; source: TriggerSource; onUndo: () => void };
 
@@ -22,7 +22,7 @@ export function SavedOverlay({ number, source, onUndo }: Props) {
           </View>
           <View style={styles.text}>
             <Text style={styles.title}>{`CLIPE #${number} SALVO`}</Text>
-            <Text style={styles.via}>{`via ${SOURCE_LABEL[source]} · últimos 30s`}</Text>
+            <Text style={styles.via}>{`via ${sourceLabel(source)} · últimos 30s`}</Text>
           </View>
         </View>
         <Text style={styles.hint}>Dá para ajustar o corte depois, dentro dos 60s guardados.</Text>

@@ -3,19 +3,17 @@ import type { ModeId, ModeSettings, Prefs } from '../data/schema';
 export type ModeGroup = 'quadra' | 'academia';
 export type Guide = 'court' | 'person' | 'none';
 
+/** A mode's name and placement tip are translated: modeLabel(id) and modeTip(group) in components/format. */
 export type Mode = {
   id: ModeId;
   group: ModeGroup;
-  label: string;
   guide: Guide;
-  tip: string;
   defaults: ModeSettings;
 };
 
-const COURT: Omit<Mode, 'id' | 'label'> = {
+const COURT: Omit<Mode, 'id'> = {
   group: 'quadra',
   guide: 'court',
-  tip: 'Atrás da linha de fundo, na altura do ombro',
   defaults: {
     lens: 'ultraWide',
     gestureEnabled: true,
@@ -28,10 +26,9 @@ const COURT: Omit<Mode, 'id' | 'label'> = {
 
 // Gym: overhead lifts would fire the arms-up gesture, so it is off; a set can outlast 60s;
 // 1080p30 keeps a 120s buffer around 90 MB.
-const GYM: Omit<Mode, 'id' | 'label'> = {
+const GYM: Omit<Mode, 'id'> = {
   group: 'academia',
   guide: 'person',
-  tip: 'No chão ou no tripé, a 2–3 m, de lado para o exercício',
   defaults: {
     lens: 'wide',
     gestureEnabled: false,
@@ -44,20 +41,20 @@ const GYM: Omit<Mode, 'id' | 'label'> = {
 
 /** The modes the app offers. A new mode is a new entry here (plus a guide drawing if it needs one). */
 export const MODES: Mode[] = [
-  { ...COURT, id: 'quadra', label: 'Quadra' },
-  { ...GYM, id: 'academia', label: 'Academia' },
+  { ...COURT, id: 'quadra' },
+  { ...GYM, id: 'academia' },
 ];
 
-/** Sports offered before the two modes; games saved with them still need a label and settings. */
+/** Sports offered before the two modes; games saved with them still need a label (modeLabel) and settings. */
 const SAVED_SPORTS: Mode[] = [
-  { ...COURT, id: 'beachTennis', label: 'Beach tennis' },
-  { ...COURT, id: 'futevolei', label: 'Futevôlei' },
-  { ...COURT, id: 'voleiPraia', label: 'Vôlei de praia' },
-  { ...COURT, id: 'outro', label: 'Outro' },
-  { ...GYM, id: 'musculacao', label: 'Musculação' },
-  { ...GYM, id: 'crossfit', label: 'Crossfit' },
-  { ...GYM, id: 'funcional', label: 'Funcional' },
-  { ...GYM, id: 'outroAcademia', label: 'Outro' },
+  { ...COURT, id: 'beachTennis' },
+  { ...COURT, id: 'futevolei' },
+  { ...COURT, id: 'voleiPraia' },
+  { ...COURT, id: 'outro' },
+  { ...GYM, id: 'musculacao' },
+  { ...GYM, id: 'crossfit' },
+  { ...GYM, id: 'funcional' },
+  { ...GYM, id: 'outroAcademia' },
 ];
 
 export function modeById(id: ModeId): Mode {

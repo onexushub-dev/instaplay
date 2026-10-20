@@ -5,7 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Button } from '../../components/Button';
 import { ClipCard } from '../../components/ClipCard';
-import { dayAndTime, megabytes, recordedLabel, sessionLabel, SPORT_LABEL } from '../../components/format';
+import { dayAndTime, megabytes, modeLabel, recordedLabel, sessionLabel } from '../../components/format';
 import { repo } from '../../data/mmkv';
 import { MAX_GAME_NAME } from '../../data/schema';
 import { useSession } from '../../session/SessionContext';
@@ -37,7 +37,7 @@ export default function SessionSummary() {
     <SafeAreaView style={styles.root}>
       <View style={styles.header}>
         {session ? (
-          <Text style={styles.subtitle}>{`${SPORT_LABEL[session.sport]} · ${dayAndTime(session.startedAt)}`}</Text>
+          <Text style={styles.subtitle}>{`${modeLabel(session.sport)} · ${dayAndTime(session.startedAt)}`}</Text>
         ) : null}
         <Text style={styles.title} accessibilityRole="header" numberOfLines={2}>
           {session?.name ? sessionLabel(session) : 'GRAVAÇÃO ENCERRADA'}
