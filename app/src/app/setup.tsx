@@ -20,24 +20,28 @@ import type { RemotePeer, ReplayErrorCode } from '../../modules/replay-camera/sr
 import { Button } from '../components/Button';
 import { Chip } from '../components/Chip';
 import { modeLabel, modeTip } from '../components/format';
+import { sourceLabel } from '../components/sourceLabel';
 import { PositionGuide } from '../components/PositionGuide';
 import { RecordingPanel } from '../components/RecordingPanel';
 import { ArmsUpIcon, MicIcon, PhoneIcon, RemoteIcon, WatchIcon } from '../components/icons';
 import { TriggerTile } from '../components/TriggerTile';
 import { repo } from '../data/mmkv';
+import { type MessageKey, VOICE_WORDS } from '../i18n';
+import { useT } from '../i18n/useT';
 import type { ModeId, ModeSettings, Prefs } from '../data/schema';
 import { effectiveSettings, MODES, modeById, offeredMode, withModeOverride } from '../modes/registry';
 import { useSession } from '../session/SessionContext';
 import { colors, fonts } from '../theme/tokens';
 import { useVolumeRemote } from '../triggers/useVolumeRemote';
 
-const START_ERRORS: Partial<Record<ReplayErrorCode, string>> = {
-  LOW_STORAGE: 'Pouco espaço no celular. Libere pelo menos 500 MB para gravar.',
-  CAMERA_PERMISSION: 'Sem câmera não dá para gravar os clipes. Libere em Ajustes.',
+const START_ERRORS: Partial<Record<ReplayErrorCode, MessageKey>> = {
+  LOW_STORAGE: 'setup.lowStorage',
+  CAMERA_PERMISSION: 'common.cameraDenied',
 };
 
 export default function Setup() {
   const session = useSession();
+  const { t, locale } = useT();
   // This screen stays mounted under Minhas gravações, the editor and the save screen: only hold the camera,
   // the volume buttons and the screen awake while it is the visible one.
   const focused = useIsFocused();
@@ -72,7 +76,7 @@ export default function Setup() {
     return () => sub.remove();
   }, []);
   const watchStatus =
-    watch === 'ready' ? 'Pronto' : watch === 'notInstalled' ? 'Instale o app no relógio' : 'Sem relógio pareado';
+    watch === 'ready' ? t('setup.watchReady') : watch === 'notInstalled' ? t('setup.watchNotInstalled') : t('setup.watchNone');
   // The phone remote (a second iPhone that taps Salvar for this one). The camera phone waits for its paired remotes for
   // as long as the app is open (see the root layout); pairing happens on its own sheet (/pairing).
   const [remoteSupported] = useState(() => isRemoteSupported());
@@ -92,25 +96,25 @@ export default function Setup() {
   }, [remoteSupported, focused]);
   const remoteStatus =
     remotePeers.length === 0
-      ? 'Toque para conectar um controle'
+      ? t('setup.remoteConnect')
       : remoteLinked > 0
         ? remotePeers.length === 1
-          ? `Conectado: ${remotePeers[0].name}`
-          : `${remoteLinked} de ${remotePeers.length} conectados`
+          ? t('setup.remoteConnectedOne', { name: remotePeers[0].name })
+          : t('setup.remoteConnectedSome', { linked: remoteLinked, total: remotePeers.length })
         : remotePeers.length === 1
-          ? `Pareado: ${remotePeers[0].name}`
-          : `${remotePeers.length} controles pareados`;
+          ? t('setup.remotePairedOne', { name: remotePeers[0].name })
+          : t('setup.remotePairedMany', { count: remotePeers.length });
   // Voice counts as on only when this mode wants it and the phone may listen.
   const voiceOn = voiceSupported && settings.voiceEnabled && speechGranted;
   const voiceStatus = !voiceSupported
-    ? 'Indisponível neste celular'
+    ? t('setup.voiceUnavailable')
     : !settings.voiceEnabled
-      ? 'Desligado'
+      ? t('setup.off')
       : speechGranted
-        ? 'Diga “salvar” ou “gravar”'
+        ? t('setup.voiceSay', { first: VOICE_WORDS[locale][0], second: VOICE_WORDS[locale][1] })
         : speech === 'denied'
-          ? 'Negado · libere em Ajustes'
-          : 'Toque para permitir';
+          ? t('setup.voiceDenied')
+          : t('setup.tapToAllow');
 
   async function toggleVoice() {
     if (voiceOn) return updateMode({ voiceEnabled: false });
@@ -124,12 +128,15 @@ export default function Setup() {
     update({ sport: id });
     setExpanded(false);
   };
-  const summary = `Ajustes: ${modeLabel(mode.id)} · ${[
-    `voz ${voiceOn ? 'ligada' : 'desligada'}`,
-    `acenar com os braços ${settings.gestureEnabled ? 'ligado' : 'desligado'}`,
-    `controle ${remoteWorks ? 'funcionando' : 'não testado'}`,
-    ...(watch === 'ready' ? ['relógio pronto'] : []),
-  ].join(', ')}`;
+  const summary = t('setup.summary', {
+    mode: modeLabel(mode.id, locale),
+    items: [
+      t(voiceOn ? 'setup.summaryVoiceOn' : 'setup.summaryVoiceOff'),
+      t(settings.gestureEnabled ? 'setup.summaryGestureOn' : 'setup.summaryGestureOff'),
+      t(remoteWorks ? 'setup.summaryRemoteWorks' : 'setup.summaryRemoteUntested'),
+      ...(watch === 'ready' ? [t('setup.summaryWatchReady')] : []),
+    ].join(', '),
+  });
 
   const { phase, error, camera } = session.state;
   const { prepare, release } = session;
@@ -151,7 +158,7 @@ export default function Setup() {
 
   const opening = camera === 'starting';
   const starting = phase === 'starting' || opening;
-  const errorText = error ? (START_ERRORS[error] ?? 'Não foi possível abrir a câmera. Tente de novo.') : null;
+  const errorText = error ? t(START_ERRORS[error] ?? 'setup.cameraFailed') : null;
 
   const inGame = phase === 'recording' || phase === 'stopping' || (phase === 'ended' && error !== undefined);
 
@@ -190,10 +197,10 @@ export default function Setup() {
           <View style={styles.topRow}>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Minhas gravações"
+              accessibilityLabel={t('setup.myRecordings')}
               onPress={() => router.push('/games')}
               style={[styles.pill, styles.pillButton]}>
-              <Text style={styles.pillText}>Minhas gravações</Text>
+              <Text style={styles.pillText}>{t('setup.myRecordings')}</Text>
             </Pressable>
             <View style={styles.lens}>
               {(['ultraWide', 'wide'] as const).map((lens) => (
@@ -212,7 +219,7 @@ export default function Setup() {
             </View>
           </View>
           <View style={styles.tip}>
-            <Text style={styles.tipText}>{modeTip(mode.group)}</Text>
+            <Text style={styles.tipText}>{modeTip(mode.group, locale)}</Text>
           </View>
         </SafeAreaView>
 
@@ -220,7 +227,7 @@ export default function Setup() {
           <SafeAreaView edges={['bottom']} style={styles.sheetBody} {...swipe.panHandlers}>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={expanded ? 'Fechar ajustes' : 'Abrir ajustes'}
+              accessibilityLabel={expanded ? t('setup.closeSettings') : t('setup.openSettings')}
               onPress={() => setExpanded(!expanded)}
               hitSlop={12}
               style={styles.handleArea}>
@@ -230,7 +237,7 @@ export default function Setup() {
 
             {errorText ? <Text style={styles.error}>{errorText}</Text> : null}
             <Button
-              label={opening ? 'Abrindo a câmera…' : 'Começar a gravar'}
+              label={opening ? t('setup.openingCamera') : t('setup.start')}
               icon={starting ? <ActivityIndicator color={colors.onAccent} /> : undefined}
               disabled={starting}
               onPress={() => session.start(modeId)}
@@ -249,7 +256,7 @@ export default function Setup() {
         accessibilityLabel={summary}
         onPress={() => setExpanded(true)}
         style={styles.summary}>
-        <Text style={styles.summaryMode}>{modeLabel(mode.id)} ▾</Text>
+        <Text style={styles.summaryMode}>{modeLabel(mode.id, locale)} ▾</Text>
         <View style={styles.summaryIcons}>
           <MicIcon color={iconColor(voiceOn)} />
           <ArmsUpIcon color={iconColor(settings.gestureEnabled)} size={20} />
@@ -264,20 +271,20 @@ export default function Setup() {
     return (
       <>
         <View style={styles.modeHeader}>
-          <Text style={styles.section}>MODO</Text>
+          <Text style={styles.section}>{t('setup.mode')}</Text>
           <View style={styles.chips}>
             {MODES.map((m) => (
-              <Chip key={m.id} label={modeLabel(m.id)} selected={modeId === m.id} onPress={() => chooseMode(m.id)} />
+              <Chip key={m.id} label={modeLabel(m.id, locale)} selected={modeId === m.id} onPress={() => chooseMode(m.id)} />
             ))}
           </View>
         </View>
 
-        <Text style={styles.section}>COMO SALVAR O CLIPE</Text>
+        <Text style={styles.section}>{t('setup.howToSave')}</Text>
         <View style={styles.grid}>
           <View style={styles.gridRow}>
             <TriggerTile
               icon={<MicIcon />}
-              title="Voz"
+              title={sourceLabel('voice', locale)}
               status={voiceStatus}
               active={voiceOn}
               disabled={!voiceSupported}
@@ -285,8 +292,8 @@ export default function Setup() {
             />
             <TriggerTile
               icon={<ArmsUpIcon />}
-              title="Acenar com os braços"
-              status={settings.gestureEnabled ? 'Ativo' : 'Desligado'}
+              title={sourceLabel('gesture', locale)}
+              status={settings.gestureEnabled ? t('setup.on') : t('setup.off')}
               active={settings.gestureEnabled}
               onPress={() => updateMode({ gestureEnabled: !settings.gestureEnabled })}
             />
@@ -294,13 +301,13 @@ export default function Setup() {
           <View style={styles.gridRow}>
             <TriggerTile
               icon={<RemoteIcon />}
-              title="Controle"
-              status={remoteWorks ? 'Funcionando' : 'Aperte para testar'}
+              title={sourceLabel('remote', locale)}
+              status={remoteWorks ? t('setup.remoteWorking') : t('setup.pressToTest')}
               active={remoteWorks}
             />
             <TriggerTile
               icon={<WatchIcon />}
-              title="Relógio"
+              title={sourceLabel('watch', locale)}
               status={watchStatus}
               active={watch === 'ready'}
               disabled={watch === 'unsupported'}
@@ -310,7 +317,7 @@ export default function Setup() {
             <View style={styles.gridRow}>
               <TriggerTile
                 icon={<PhoneIcon />}
-                title="Celular"
+                title={sourceLabel('phone', locale)}
                 status={remoteStatus}
                 active={remoteLinked > 0}
                 onPress={() => router.push('/pairing')}
@@ -319,18 +326,18 @@ export default function Setup() {
           ) : null}
         </View>
 
-        {speechDenied ? <Text style={styles.error}>Libere o reconhecimento de fala em Ajustes.</Text> : null}
+        {speechDenied ? <Text style={styles.error}>{t('setup.speechDenied')}</Text> : null}
 
         <View style={styles.feedbackRow}>
-          <Text style={styles.section}>AVISOS AO SALVAR</Text>
+          <Text style={styles.section}>{t('setup.saveAlerts')}</Text>
           <View style={styles.chips}>
             <Chip
-              label="Som"
+              label={t('setup.sound')}
               selected={prefs.soundOnSave}
               onPress={() => update({ soundOnSave: !prefs.soundOnSave })}
             />
             <Chip
-              label="Flash"
+              label={t('setup.flash')}
               selected={prefs.flashOnSave}
               onPress={() => update({ flashOnSave: !prefs.flashOnSave })}
             />
@@ -340,16 +347,18 @@ export default function Setup() {
         {remoteSupported ? (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={controlHost === null ? 'Usar este celular como controle' : `Conectar ao controle de ${controlHost.name}`}
+            accessibilityLabel={
+              controlHost === null ? t('setup.useAsRemote') : t('setup.connectAsRemoteOf', { name: controlHost.name })
+            }
             hitSlop={8}
             onPress={() => router.push('/remote')}
             style={styles.remoteEntry}>
             {controlHost === null ? (
-              <Text style={styles.remoteEntryText}>Usar este celular como controle</Text>
+              <Text style={styles.remoteEntryText}>{t('setup.useAsRemote')}</Text>
             ) : (
               <>
-                <Text style={styles.remoteEntryName}>{`Controle de ${controlHost.name}`}</Text>
-                <Text style={styles.remoteEntryText}>Toque para conectar</Text>
+                <Text style={styles.remoteEntryName}>{t('setup.remoteOf', { name: controlHost.name })}</Text>
+                <Text style={styles.remoteEntryText}>{t('setup.tapToConnect')}</Text>
               </>
             )}
           </Pressable>

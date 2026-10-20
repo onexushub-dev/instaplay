@@ -8,6 +8,7 @@ import { useEffect } from 'react';
 import { AppState } from 'react-native';
 
 import { isRemoteSupported, remoteHostStart, remoteHostStop } from '../../modules/replay-camera';
+import { useLocaleSync } from '../i18n/useT';
 import { payments } from '../payments';
 import { SessionProvider } from '../session/SessionContext';
 import { colors } from '../theme/tokens';
@@ -22,6 +23,9 @@ export default function RootLayout() {
     Manrope_600SemiBold,
     Manrope_700Bold,
   });
+
+  // The app language follows the device (Android can change it while the app runs).
+  useLocaleSync();
 
   useEffect(() => {
     payments.start();
