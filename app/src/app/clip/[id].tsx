@@ -113,7 +113,6 @@ export default function ClipEditor() {
   const [videoSize, setVideoSize] = useState({ width: 1920, height: 1080 });
   // Exports wait for the real shape: a portrait clip exported with the landscape default gets wrong bands.
   const [sizeKnown, setSizeKnown] = useState(false);
-  const [area, setArea] = useState({ width: 0, height: 0 });
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string>();
   const exporting = useRef(false);
@@ -169,7 +168,7 @@ export default function ClipEditor() {
 
   if (!clip || !session || !options) {
     return (
-      <SafeAreaView style={styles.root}>
+      <SafeAreaView style={styles.missingRoot}>
         <IconButton label="Voltar" onPress={() => router.back()}>
           <BackIcon />
         </IconButton>
@@ -207,14 +206,24 @@ export default function ClipEditor() {
 
   /** While a handle is dragged the preview shows what that edge will cut; letting go plays the new cut again. */
   function scrub(next: { startMs: number; endMs: number }, moved: 'start' | 'end') {
+    setTrim(next);
+    scrubTo(moved === 'start' ? next.startMs : Math.max(next.startMs, next.endMs - 500));
+  }
+
+  /** The cursor (or a handle) is on `ms`: hold playback there while the finger is down. */
+  function scrubTo(ms: number) {
     if (!scrubbing.current) {
       scrubbing.current = true;
       player.pause();
     }
-    setTrim(next);
-    const at = moved === 'start' ? next.startMs : Math.max(next.startMs, next.endMs - 500);
-    setScrubMs(at);
-    seek(player, at);
+    setScrubMs(ms);
+    seek(player, ms);
+  }
+
+  function endScrub() {
+    scrubbing.current = false;
+    setScrubMs(undefined);
+    setPlaying(player, wantsPlay.current);
   }
 
   function commitTrim(next: { startMs: number; endMs: number }) {
@@ -286,8 +295,8 @@ export default function ClipEditor() {
 
   const share = () => run((path) => shareAsync(`file://${path}`, { mimeType: 'video/mp4', UTI: 'public.mpeg-4' }));
 
-  // Preview: as large as the middle of the screen allows, in the export's 9:16 frame.
-  const previewHeight = Math.min(area.height, (area.width * frame.height) / frame.width);
+  // Preview: the export's 9:16 frame as large as the whole screen allows; the controls sit over it.
+  const previewHeight = Math.min(window.height, (window.width * frame.height) / frame.width);
   const scale = previewHeight / frame.height;
   const pr = PixelRatio.get();
   const zoomed = (edit.zoom?.scale ?? 1) > 1;
@@ -345,36 +354,8 @@ export default function ClipEditor() {
   }
 
   return (
-    <SafeAreaView style={styles.root}>
-      <View style={styles.top}>
-        <IconButton label="Voltar" onPress={() => router.back()}>
-          <BackIcon />
-        </IconButton>
-        <TextInput
-          accessibilityLabel="Nome do clipe"
-          value={name}
-          onChangeText={setName}
-          onSubmitEditing={saveName}
-          onBlur={saveName}
-          placeholder={`Clipe #${number} · ${timeOfDay(clip.createdAt)}`}
-          placeholderTextColor={colors.muted}
-          maxLength={MAX_CLIP_NAME}
-          returnKeyType="done"
-          selectTextOnFocus
-          style={styles.nameInput}
-        />
-        <IconButton label="Apagar clipe" onPress={confirmDelete}>
-          <TrashIcon />
-        </IconButton>
-        <IconButton label="Salvar na galeria" disabled={busyActions} onPress={() => void save()}>
-          <DownloadIcon />
-        </IconButton>
-        <IconButton label="Compartilhar" disabled={busyActions} onPress={() => void share()}>
-          <ShareIcon />
-        </IconButton>
-      </View>
-
-      <View style={styles.area} onLayout={(e) => setArea(e.nativeEvent.layout)}>
+    <View style={styles.root}>
+      <View style={styles.stage}>
         <View style={[styles.preview, { width: frame.width * scale, height: previewHeight }]}>
           <ZoomableVideo
             key={zoomKey}
@@ -391,9 +372,49 @@ export default function ClipEditor() {
           </View>
           {!playing ? (
             <View pointerEvents="none" style={styles.pausedBadge}>
-              <PlayIcon color={colors.text} size={36} />
+              <View style={styles.pausedDisc}>
+                <PlayIcon color={colors.text} size={36} />
+              </View>
             </View>
           ) : null}
+        </View>
+      </View>
+
+      {/* Off-screen copy at exactly the export's pixel size, captured to PNG for the video overlay. */}
+      <View pointerEvents="none" style={styles.offscreen}>
+        <ShareOverlay ref={captureRefView} frame={frame} layout={layout} scale={1 / pr} />
+      </View>
+
+      {/* Everything below floats over the video, on dark translucent backgrounds so it reads in the sun. */}
+      <SafeAreaView edges={['top']} pointerEvents="box-none" style={styles.overTop}>
+        <View style={styles.top}>
+          <IconButton label="Voltar" onPress={() => router.back()}>
+            <BackIcon />
+          </IconButton>
+          <TextInput
+            accessibilityLabel="Nome do clipe"
+            value={name}
+            onChangeText={setName}
+            onSubmitEditing={saveName}
+            onBlur={saveName}
+            placeholder={`Clipe #${number} · ${timeOfDay(clip.createdAt)}`}
+            placeholderTextColor={colors.soft}
+            maxLength={MAX_CLIP_NAME}
+            returnKeyType="done"
+            selectTextOnFocus
+            style={styles.nameInput}
+          />
+          <IconButton label="Apagar clipe" onPress={confirmDelete}>
+            <TrashIcon />
+          </IconButton>
+          <IconButton label="Salvar na galeria" disabled={busyActions} onPress={() => void save()}>
+            <DownloadIcon />
+          </IconButton>
+          <IconButton label="Compartilhar" disabled={busyActions} onPress={() => void share()}>
+            <ShareIcon />
+          </IconButton>
+        </View>
+        <View pointerEvents="box-none" style={styles.sideRow}>
           {zoomed ? (
             <Pressable
               accessibilityRole="button"
@@ -405,75 +426,76 @@ export default function ClipEditor() {
               style={styles.zoomBadge}>
               <Text style={styles.zoomText}>{`${edit.zoom!.scale.toFixed(1)}x  ✕`}</Text>
             </Pressable>
-          ) : null}
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Girar vídeo"
-            onPress={() => {
-              // A zoom window means something else after a turn, so start from the whole picture again.
-              setEdit({ rotation: nextRotation(edit.rotation), zoom: undefined });
-              setZoomKey((k) => k + 1);
-            }}
-            style={[styles.fullButton, styles.rotateButton]}>
-            <RotateIcon />
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Tela cheia"
-            onPress={() => openFull(true)}
-            style={styles.fullButton}>
-            <ExpandIcon />
-          </Pressable>
-        </View>
-      </View>
-
-      {/* Off-screen copy at exactly the export's pixel size, captured to PNG for the video overlay. */}
-      <View pointerEvents="none" style={styles.offscreen}>
-        <ShareOverlay ref={captureRefView} frame={frame} layout={layout} scale={1 / pr} />
-      </View>
-
-      {busy ? (
-        <Text style={styles.notice}>Preparando vídeo…</Text>
-      ) : notice ? (
-        <Text style={styles.notice}>{notice}</Text>
-      ) : null}
-
-      <View style={styles.trim}>
-        <View style={styles.trimLabels}>
-          <Text style={styles.small}>{`-${seconds(clip.durationMs)}`}</Text>
-          <Text style={styles.cut}>{`Corte: ${seconds(outputMs(trim, edit.speed))}`}</Text>
-          <Text style={styles.small}>gatilho</Text>
-        </View>
-        <View style={styles.trimRow}>
-          <IconButton label={playing ? 'Pausar' : 'Reproduzir'} onPress={togglePlay}>
-            {playing ? <PauseIcon /> : <PlayIcon />}
-          </IconButton>
-          <View style={styles.trimBar}>
-            <TrimBar durationMs={clip.durationMs} trim={trim} maxMs={maxMs} onChange={scrub} onCommit={commitTrim}>
-              <Playhead player={player} durationMs={clip.durationMs} trim={trim} speed={edit.speed} scrubMs={scrubMs} />
-            </TrimBar>
+          ) : (
+            <View />
+          )}
+          <View style={styles.sideColumn}>
+            <IconButton
+              label="Girar vídeo"
+              onPress={() => {
+                // A zoom window means something else after a turn, so start from the whole picture again.
+                setEdit({ rotation: nextRotation(edit.rotation), zoom: undefined });
+                setZoomKey((k) => k + 1);
+              }}>
+              <RotateIcon />
+            </IconButton>
+            <IconButton label="Tela cheia" onPress={() => openFull(true)}>
+              <ExpandIcon />
+            </IconButton>
           </View>
         </View>
-      </View>
+      </SafeAreaView>
 
-      <View style={styles.tools}>
-        {SPEEDS.map((speed) => (
-          <Tool
-            key={speed}
-            label={`${speed}x`}
-            a11y={`Velocidade ${speed}x`}
-            active={edit.speed === speed}
-            onPress={() => setEdit({ speed })}
-          />
-        ))}
-        <Tool
-          label={edit.muted || edit.speed !== 1 ? 'Sem som' : 'Som'}
-          a11y="Som"
-          active={!edit.muted && edit.speed === 1}
-          onPress={edit.speed !== 1 ? undefined : () => setEdit({ muted: !edit.muted })}
-        />
-      </View>
-    </SafeAreaView>
+      <SafeAreaView edges={['bottom']} pointerEvents="box-none" style={styles.overBottom}>
+        <View style={styles.panel}>
+          {busy ? (
+            <Text style={styles.notice}>Preparando vídeo…</Text>
+          ) : notice ? (
+            <Text style={styles.notice}>{notice}</Text>
+          ) : null}
+          <View style={styles.trimLabels}>
+            <Text style={styles.small}>{`-${seconds(clip.durationMs)}`}</Text>
+            <Text style={styles.cut}>{`Corte: ${seconds(outputMs(trim, edit.speed))}`}</Text>
+            <Text style={styles.small}>gatilho</Text>
+          </View>
+          <View style={styles.trimRow}>
+            <IconButton label={playing ? 'Pausar' : 'Reproduzir'} onPress={togglePlay}>
+              {playing ? <PauseIcon /> : <PlayIcon />}
+            </IconButton>
+            <View style={styles.trimBar}>
+              <TrimBar durationMs={clip.durationMs} trim={trim} maxMs={maxMs} onChange={scrub} onCommit={commitTrim}>
+                <Playhead
+                  player={player}
+                  durationMs={clip.durationMs}
+                  trim={trim}
+                  speed={edit.speed}
+                  scrubMs={scrubMs}
+                  onScrub={scrubTo}
+                  onScrubEnd={endScrub}
+                />
+              </TrimBar>
+            </View>
+          </View>
+          <View style={styles.tools}>
+            {SPEEDS.map((speed) => (
+              <Tool
+                key={speed}
+                label={`${speed}x`}
+                a11y={`Velocidade ${speed}x`}
+                active={edit.speed === speed}
+                onPress={() => setEdit({ speed })}
+              />
+            ))}
+            <Tool
+              label={edit.muted || edit.speed !== 1 ? 'Sem som' : 'Som'}
+              a11y="Som"
+              active={!edit.muted && edit.speed === 1}
+              onPress={edit.speed !== 1 ? undefined : () => setEdit({ muted: !edit.muted })}
+            />
+          </View>
+        </View>
+      </SafeAreaView>
+    </View>
   );
 }
 
@@ -524,14 +546,26 @@ function Tool({
   );
 }
 
+const SCRIM = 'rgba(15,16,13,0.74)';
+const EDGE = 'rgba(243,239,228,0.22)';
+
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.ground, paddingHorizontal: 16, gap: 12, paddingBottom: 12 },
+  root: { flex: 1, backgroundColor: colors.ground },
+  missingRoot: { flex: 1, backgroundColor: colors.ground, paddingHorizontal: 16, gap: 12 },
+  stage: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center' },
+  preview: { overflow: 'hidden', backgroundColor: colors.ground },
+  overTop: { position: 'absolute', left: 0, right: 0, top: 0, paddingHorizontal: 12 },
+  overBottom: { position: 'absolute', left: 0, right: 0, bottom: 0 },
   top: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 },
+  sideRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginTop: 10 },
+  sideColumn: { gap: 8 },
   icon: {
     width: 42,
     height: 42,
     borderRadius: 21,
-    backgroundColor: colors.surface,
+    backgroundColor: SCRIM,
+    borderWidth: 1,
+    borderColor: EDGE,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -539,17 +573,26 @@ const styles = StyleSheet.create({
   nameInput: {
     flex: 1,
     minHeight: 42,
-    borderRadius: 12,
-    backgroundColor: colors.surface,
-    paddingHorizontal: 12,
+    borderRadius: 21,
+    backgroundColor: SCRIM,
+    borderWidth: 1,
+    borderColor: EDGE,
+    paddingHorizontal: 14,
     fontFamily: fonts.bodySemi,
     fontSize: 14,
     color: colors.text,
   },
-  area: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  preview: { borderRadius: 16, overflow: 'hidden', backgroundColor: colors.ground },
+  panel: {
+    marginHorizontal: 8,
+    marginBottom: 8,
+    padding: 12,
+    gap: 10,
+    borderRadius: 22,
+    backgroundColor: SCRIM,
+    borderWidth: 1,
+    borderColor: EDGE,
+  },
   full: { flex: 1, backgroundColor: '#000' },
-  rotateButton: { top: 54 },
   fullTop: {
     position: 'absolute',
     left: 0,
@@ -559,44 +602,38 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     padding: 16,
   },
-  fullButton: {
-    position: 'absolute',
-    right: 10,
-    top: 10,
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: 'rgba(15,16,13,0.7)',
+  pausedBadge: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center' },
+  pausedDisc: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    backgroundColor: SCRIM,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingLeft: 4,
   },
-  pausedBadge: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center' },
   zoomBadge: {
-    position: 'absolute',
-    left: 10,
-    top: 10,
     backgroundColor: colors.accent,
     borderRadius: 999,
     paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingVertical: 8,
   },
-  zoomText: { fontFamily: fonts.bodyBold, fontSize: 12, color: colors.onAccent },
+  zoomText: { fontFamily: fonts.bodyBold, fontSize: 13, color: colors.onAccent },
   offscreen: { position: 'absolute', left: -10000, top: 0 },
-  notice: { fontFamily: fonts.bodySemi, fontSize: 13, color: colors.soft, textAlign: 'center' },
-  trim: { gap: 8 },
+  notice: { fontFamily: fonts.bodySemi, fontSize: 13, color: colors.text, textAlign: 'center' },
   trimLabels: { flexDirection: 'row', justifyContent: 'space-between' },
   trimRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   trimBar: { flex: 1 },
-  small: { fontFamily: fonts.body, fontSize: 12, color: colors.muted },
-  cut: { fontFamily: fonts.bodyBold, fontSize: 12, color: colors.text },
+  small: { fontFamily: fonts.body, fontSize: 12, color: colors.text, opacity: 0.8 },
+  cut: { fontFamily: fonts.bodyBold, fontSize: 13, color: colors.text },
   tools: { flexDirection: 'row', gap: 6 },
   tool: {
     flex: 1,
-    minHeight: 48,
+    minHeight: 46,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
+    borderColor: EDGE,
+    backgroundColor: 'rgba(243,239,228,0.08)',
     alignItems: 'center',
     justifyContent: 'center',
   },

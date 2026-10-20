@@ -1,6 +1,6 @@
 import type { useVideoPlayer } from 'expo-video';
-import { useEffect, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { PanResponder, StyleSheet, Text, View } from 'react-native';
 
 import { colors, fonts } from '../theme/tokens';
 
@@ -11,13 +11,16 @@ type Props = {
   speed: number;
   /** While a trim handle is dragged the cursor sits on that edge instead of following playback. */
   scrubMs?: number;
+  /** The player drags the cursor: where it is now, kept inside the cut. */
+  onScrub?: (ms: number) => void;
+  onScrubEnd?: () => void;
 };
 
 /**
  * The cursor over the trim track: where the video is playing and how many seconds into the result that is.
  * It listens to the player itself, so playback redraws only this view and not the whole screen.
  */
-export function Playhead({ player, durationMs, trim, speed, scrubMs }: Props) {
+export function Playhead({ player, durationMs, trim, speed, scrubMs, onScrub, onScrubEnd }: Props) {
   const [playingMs, setPlayingMs] = useState(trim.startMs);
   useEffect(() => {
     const sub = player.addListener('timeUpdate', ({ currentTime }) => setPlayingMs(currentTime * 1000));
@@ -25,13 +28,49 @@ export function Playhead({ player, durationMs, trim, speed, scrubMs }: Props) {
   }, [player]);
 
   const at = scrubMs ?? playingMs;
+  const [width, setWidth] = useState(0);
+  // Pan callbacks read the latest props through this ref (updated after each commit).
+  const latest = useRef({ at, width, durationMs, trim, onScrub, onScrubEnd });
+  useLayoutEffect(() => {
+    latest.current = { at, width, durationMs, trim, onScrub, onScrubEnd };
+  });
+  // eslint-disable-next-line react-hooks/refs -- the ref is only read inside pan callbacks, never during render
+  const [pan] = useState(() => {
+    let origin = 0;
+    return PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onPanResponderGrant: () => {
+        origin = latest.current.at;
+        latest.current.onScrub?.(origin);
+      },
+      onPanResponderMove: (_, g) => {
+        const { width: w, durationMs: d, trim: t } = latest.current;
+        if (!w) return;
+        const ms = Math.min(Math.max(origin + (g.dx / w) * d, t.startMs), t.endMs);
+        latest.current.onScrub?.(ms);
+      },
+      onPanResponderRelease: () => latest.current.onScrubEnd?.(),
+      onPanResponderTerminate: () => latest.current.onScrubEnd?.(),
+    });
+  });
   const share = durationMs ? Math.min(Math.max(at / durationMs, 0), 1) : 0;
   const elapsed = Math.max(0, (at - trim.startMs) / speed / 1000);
 
   return (
-    <View testID="playhead" pointerEvents="none" style={[styles.line, { left: `${share * 100}%` }]}>
-      <View style={styles.pill}>
-        <Text style={styles.time}>{`${elapsed.toFixed(1)}s`}</Text>
+    <View
+      pointerEvents="box-none"
+      style={StyleSheet.absoluteFill}
+      onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
+      <View
+        testID="playhead"
+        {...pan.panHandlers}
+        hitSlop={{ left: 18, right: 18, top: 10, bottom: 10 }}
+        accessibilityRole="adjustable"
+        accessibilityLabel="Posição do vídeo"
+        style={[styles.line, { left: `${share * 100}%` }]}>
+        <View pointerEvents="none" style={styles.pill}>
+          <Text style={styles.time}>{`${elapsed.toFixed(1)}s`}</Text>
+        </View>
       </View>
     </View>
   );
