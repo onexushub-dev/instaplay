@@ -7,7 +7,8 @@ type Pending = { sessionId: string; before: Snapshot };
 
 export function createPaymentsStore(client: PaymentsClient, repo: Pick<Repo, 'getSession' | 'setSessionPass'>) {
   let current: Snapshot | null = null;
-  let pending: Pending | undefined;
+  let pendings: Pending[] = [];
+  const bound = new Set<string>(); // transaction ids this store already bound; never bind one twice
   let open = false;
   let version = 0;
   let started = false;
@@ -18,19 +19,29 @@ export function createPaymentsStore(client: PaymentsClient, repo: Pick<Repo, 'ge
     listeners.forEach((fn) => fn());
   }
 
-  /** Binds a newly bought pass (if any) to the session. */
-  function bindFrom(p: Pending, after: Snapshot): void {
-    const { passTransactionId } = detectPurchase(p.before, after);
-    if (passTransactionId) repo.setSessionPass(p.sessionId, passTransactionId);
+  /** Binds every pending purchase that `snapshot` can now explain; keeps the rest. */
+  function resolvePendings(snapshot: Snapshot) {
+    pendings = pendings.filter((p) => {
+      const before: Snapshot = {
+        ...p.before,
+        passTransactions: [
+          ...p.before.passTransactions,
+          ...[...bound].map((id) => ({ id, productId: '', purchasedAt: 0 })),
+        ],
+      };
+      const { pro, passTransactionId } = detectPurchase(before, snapshot);
+      if (passTransactionId) {
+        repo.setSessionPass(p.sessionId, passTransactionId);
+        bound.add(passTransactionId);
+        return false;
+      }
+      return !pro;
+    });
   }
 
   function apply(s: Snapshot) {
     current = s;
-    if (pending) {
-      const p = pending;
-      pending = undefined;
-      bindFrom(p, s);
-    }
+    resolvePendings(s);
     notify();
   }
 
@@ -48,7 +59,7 @@ export function createPaymentsStore(client: PaymentsClient, repo: Pick<Repo, 'ge
       started = true;
       client.onSnapshot(apply);
       void read(() => client.getSnapshot()).then((s) => {
-        if (s) apply(s);
+        if (s && current === null) apply(s); // a stale initial read must not overwrite newer data
       });
     },
 
@@ -79,17 +90,31 @@ export function createPaymentsStore(client: PaymentsClient, repo: Pick<Repo, 'ge
       if (open) return 'cancelled';
       open = true;
       try {
-        const before = current ?? (await read(() => client.getSnapshot())) ?? EMPTY_SNAPSHOT;
-        const outcome = await client.showPaywall();
+        let beforeKnown = true;
+        let before = current;
+        if (!before) {
+          before = await read(() => client.getSnapshot());
+          if (before) apply(before);
+        }
+        if (!before) {
+          beforeKnown = false;
+          before = EMPTY_SNAPSHOT;
+        }
+        let outcome: PaywallOutcome;
+        try {
+          outcome = await client.showPaywall();
+        } catch {
+          return 'error';
+        }
         if (outcome === 'purchased' || outcome === 'restored') {
-          const p: Pending = { sessionId, before };
+          // Without a known "before", a restore could re-bind an old pass to the wrong game.
+          if (beforeKnown || outcome === 'purchased') pendings.push({ sessionId, before });
           const after = await read(() => client.getSnapshot());
-          if (after) {
-            bindFrom(p, after);
-            current = after;
+          if (after) apply(after);
+          else if (current) {
+            // The SDK listener may already have delivered the new data during the paywall.
+            resolvePendings(current);
             notify();
-          } else {
-            pending = p;
           }
         }
         return outcome;
@@ -99,9 +124,13 @@ export function createPaymentsStore(client: PaymentsClient, repo: Pick<Repo, 'ge
     },
 
     async restore(): Promise<boolean> {
-      const s = await client.restore();
-      apply(s);
-      return s.proActive;
+      try {
+        const s = await client.restore();
+        apply(s);
+        return s.proActive;
+      } catch {
+        return false;
+      }
     },
   };
 }

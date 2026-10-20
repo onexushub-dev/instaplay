@@ -129,4 +129,96 @@ describe('payments store', () => {
     await expect(store.restore()).resolves.toBe(true);
     expect(store.getSnapshot().proActive).toBe(true);
   });
+
+  it('a stale emit without the new transaction does not clear the pending bind', async () => {
+    const before = snap({ passTransactions: [tx('tx-1')] });
+    const { client, repo, store } = await setup(before);
+    client.nextOutcome = 'purchased';
+    client.failSnapshot = true;
+    await store.showPaywall('s1');
+    client.emit(before); // stale
+    expect(repo.setSessionPass).not.toHaveBeenCalled();
+    client.emit(snap({ passTransactions: [tx('tx-1'), tx('tx-2', 2)] }));
+    expect(repo.setSessionPass).toHaveBeenCalledWith('s1', 'tx-2');
+  });
+
+  it('emit during the paywall followed by a failed read still binds from current', async () => {
+    const { client, repo, store } = await setup(snap({ passTransactions: [tx('tx-1')] }));
+    let release!: () => void;
+    client.paywallGate = new Promise<void>((r) => (release = r));
+    client.nextOutcome = 'purchased';
+    const p = store.showPaywall('s1');
+    await flush();
+    client.emit(snap({ passTransactions: [tx('tx-1'), tx('tx-2', 2)] }));
+    client.failSnapshot = true;
+    release();
+    await p;
+    expect(repo.setSessionPass).toHaveBeenCalledWith('s1', 'tx-2');
+    expect(repo.setSessionPass).toHaveBeenCalledTimes(1);
+  });
+
+  it('S1 pending then S2 paywall never binds the same transaction twice', async () => {
+    const { client, repo, store } = await setup(snap({ passTransactions: [tx('tx-1')] }));
+    client.nextOutcome = 'purchased';
+    client.failSnapshot = true;
+    await store.showPaywall('s1');
+    client.failSnapshot = false;
+    client.snapshot = snap({ passTransactions: [tx('tx-1'), tx('tx-2', 2), tx('tx-3', 3)] });
+    await store.showPaywall('s2');
+    const calls = repo.setSessionPass.mock.calls;
+    expect(calls).toHaveLength(2);
+    expect(new Set(calls.map((c) => c[1])).size).toBe(2);
+    expect(calls.map((c) => c[0]).sort()).toEqual(['s1', 's2']);
+  });
+
+  it('restored does not bind when the before snapshot is unknown', async () => {
+    const client = createFakeClient();
+    client.failSnapshot = true;
+    const repo = memRepo();
+    const store = createPaymentsStore(client, repo);
+    store.start();
+    await flush();
+    client.nextOutcome = 'restored';
+    client.snapshot = snap({ passTransactions: [tx('old')] });
+    // the read before the paywall fails, the one after succeeds
+    let calls = 0;
+    client.getSnapshot = async () => {
+      calls += 1;
+      if (calls === 1) throw new Error('x');
+      return client.snapshot;
+    };
+    await store.showPaywall('s1');
+    expect(repo.setSessionPass).not.toHaveBeenCalled();
+  });
+
+  it('purchased still binds when the before snapshot is unknown', async () => {
+    const client = createFakeClient();
+    const repo = memRepo();
+    const store = createPaymentsStore(client, repo);
+    client.nextOutcome = 'purchased';
+    client.snapshot = snap({ passTransactions: [tx('new', 5)] });
+    let calls = 0;
+    client.getSnapshot = async () => {
+      calls += 1;
+      if (calls === 1) throw new Error('x');
+      return client.snapshot;
+    };
+    await store.showPaywall('s1');
+    expect(repo.setSessionPass).toHaveBeenCalledWith('s1', 'new');
+  });
+
+  it('a throwing showPaywall maps to error and releases the guard', async () => {
+    const { client, store } = await setup();
+    client.failPaywall = true;
+    await expect(store.showPaywall('s1')).resolves.toBe('error');
+    client.failPaywall = false;
+    client.nextOutcome = 'cancelled';
+    await expect(store.showPaywall('s1')).resolves.toBe('cancelled');
+  });
+
+  it('a throwing restore resolves false', async () => {
+    const { client, store } = await setup();
+    client.failRestore = true;
+    await expect(store.restore()).resolves.toBe(false);
+  });
 });
