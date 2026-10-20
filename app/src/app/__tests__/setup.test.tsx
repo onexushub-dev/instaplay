@@ -14,6 +14,7 @@ jest.mock('../../../modules/replay-camera', () => {
     isRemoteSupported: jest.fn(() => false),
     remoteHostStart: jest.fn(),
     remoteHostStop: jest.fn(),
+    remoteHostControllers: jest.fn(() => 0),
     remoteHostPeers: jest.fn(() => []),
     addReplayListener: jest.fn(() => ({ remove: jest.fn() })),
     ReplayCameraView: (props: { style?: unknown }) => {
@@ -443,13 +444,22 @@ test('with several paired remotes the tile counts them', async () => {
   expect(screen.getByLabelText('Celular, 2 controles pareados')).toBeTruthy();
 });
 
-test('the phone waits for its remotes while the setup screen is in front, and stops when it leaves', async () => {
-  enableRemote([]);
+test('the setup screen does not start or stop the host: it lives as long as the app is open (root layout)', async () => {
+  enableRemote([{ id: 'a', name: 'iPhone da Ana' }]);
   session({});
   const view = await render(<Setup />);
-  expect(camera().remoteHostStart).toHaveBeenCalledTimes(1);
   await view.unmount();
-  expect(camera().remoteHostStop).toHaveBeenCalledTimes(1);
+  expect(camera().remoteHostStart).not.toHaveBeenCalled();
+  expect(camera().remoteHostStop).not.toHaveBeenCalled();
+});
+
+test('a remote that connected before this screen opened shows as connected, not only as paired', async () => {
+  enableRemote([{ id: 'a', name: 'iPhone da Ana' }]);
+  camera().remoteHostControllers.mockReturnValue(1);
+  session({});
+  await render(<Setup />);
+  await openSettings();
+  expect(screen.getByLabelText('Celular, Conectado: iPhone da Ana')).toBeTruthy();
 });
 
 test('the entry to the remote is offered only where the phone remote is supported', async () => {

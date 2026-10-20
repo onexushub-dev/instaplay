@@ -21,11 +21,22 @@ export type RemoteScreen =
 export function remoteScreen(input: RemoteInput): RemoteScreen {
   if (input.link === 'denied') return { kind: 'denied' };
   const state = input.state;
-  if (state === null) return { kind: 'searching', hostName: input.hostName };
   const hostName = input.hostName === null ? GENERIC_HOST : input.hostName;
+  // Linked but the first state has not been heard yet (it can arrive while the pairing screen was still open): the link
+  // is up, so say so instead of "searching".
+  if (state === null) return input.link === 'connected' ? { kind: 'waiting', hostName } : { kind: 'searching', hostName: input.hostName };
   if (input.link !== 'connected' || state.ageSec > STALE_AFTER) return { kind: 'stale', hostName };
   if (!state.recording) return { kind: 'waiting', hostName };
   return { kind: 'recording', hostName, clipCount: state.clipCount, startedAt: state.startedAt };
+}
+
+export type ConnectionTone = 'ok' | 'warn' | 'bad';
+
+/** The colour of the connection dot: green when the camera phone is there, amber while looking or lost, red when denied. */
+export function connectionTone(screen: RemoteScreen): ConnectionTone {
+  if (screen.kind === 'denied') return 'bad';
+  if (screen.kind === 'searching' || screen.kind === 'stale') return 'warn';
+  return 'ok';
 }
 
 export function canSave(nowMs: number, lastSaveMs: number | null): boolean {

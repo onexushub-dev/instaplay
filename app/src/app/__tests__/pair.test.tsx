@@ -1,4 +1,5 @@
-import { act, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { Linking } from 'react-native';
 
 import Pair from '../pair';
 
@@ -9,7 +10,7 @@ jest.mock('../../../modules/replay-camera', () => ({
   addReplayListener: jest.fn(() => ({ remove: jest.fn() })),
 }));
 jest.mock('expo-router', () => ({
-  router: { back: jest.fn(), push: jest.fn(), replace: jest.fn() },
+  router: { back: jest.fn(), push: jest.fn(), replace: jest.fn(), canGoBack: jest.fn(() => true) },
   useLocalSearchParams: jest.fn(),
 }));
 
@@ -76,4 +77,59 @@ test('leaving without pairing lets the search go', async () => {
   const view = await render(<Pair />);
   await view.unmount();
   expect(camera().remoteControllerStop).toHaveBeenCalledTimes(1);
+});
+
+test('says this iPhone is the remote, so the two phones are not mixed up', async () => {
+  await render(<Pair />);
+  expect(screen.getByText('ESTE IPHONE É O CONTROLE')).toBeTruthy();
+});
+
+test('a camera phone that does not answer ends in "not found" instead of spinning forever', async () => {
+  await render(<Pair />);
+  await act(async () => {
+    jest.advanceTimersByTime(15_000);
+  });
+  expect(
+    screen.getByText('Não encontrei o celular da câmera. Chegue mais perto e confira se o LANCE está aberto lá.'),
+  ).toBeTruthy();
+});
+
+test('not found: one tap tries the same link again and goes back to connecting', async () => {
+  await render(<Pair />);
+  await emit({ phase: 'failed', reason: 'notFound' });
+  await fireEvent.press(screen.getByRole('button', { name: 'Tentar de novo' }));
+  expect(camera().remoteControllerPairWithLink).toHaveBeenCalledTimes(2);
+  expect(camera().remoteControllerPairWithLink).toHaveBeenLastCalledWith('h1', 'AAECAwQFBgcICQoLDA0ODw', 'Quadra 1');
+  expect(screen.getByText('Conectando a Quadra 1…')).toBeTruthy();
+});
+
+test('an expired or locked code sends the player to type a new one', async () => {
+  await render(<Pair />);
+  await emit({ phase: 'failed', reason: 'expired' });
+  expect(screen.queryByRole('button', { name: 'Tentar de novo' })).toBeNull();
+  await fireEvent.press(screen.getByRole('button', { name: 'Digitar código' }));
+  expect(router().replace).toHaveBeenCalledWith('/remote');
+});
+
+test('Local Network denied offers Settings', async () => {
+  const open = jest.spyOn(Linking, 'openSettings').mockResolvedValue(undefined);
+  await render(<Pair />);
+  await emit({ phase: 'failed', reason: 'denied' });
+  await fireEvent.press(screen.getByRole('button', { name: 'Abrir Ajustes' }));
+  expect(open).toHaveBeenCalled();
+});
+
+test('a broken link offers to type the code instead', async () => {
+  params({ h: 'h1', s: 'curto' });
+  await render(<Pair />);
+  await fireEvent.press(screen.getByRole('button', { name: 'Digitar código' }));
+  expect(router().replace).toHaveBeenCalledWith('/remote');
+});
+
+test('Fechar leaves even when the QR code opened the app straight on this screen', async () => {
+  router().canGoBack.mockReturnValueOnce(false);
+  await render(<Pair />);
+  await fireEvent.press(screen.getByRole('button', { name: 'Fechar' }));
+  expect(router().back).not.toHaveBeenCalled();
+  expect(router().replace).toHaveBeenCalledWith('/');
 });

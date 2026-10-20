@@ -8,6 +8,8 @@ jest.mock('../../../modules/replay-camera', () => ({
   remoteHostEndPairing: jest.fn(),
   remoteHostPeers: jest.fn(() => []),
   remoteHostRemove: jest.fn(),
+  remoteDeviceName: jest.fn(() => 'iPhone 16 Pro Max#AB12'),
+  remoteSetDeviceName: jest.fn(),
   addReplayListener: jest.fn(() => ({ remove: jest.fn() })),
 }));
 jest.mock('expo-router', () => ({ router: { back: jest.fn(), push: jest.fn() } }));
@@ -34,11 +36,10 @@ afterEach(() => jest.useRealTimers());
 test('tells the player to read the code with the Camera app of the remote phone, above the code', async () => {
   await render(<Pairing />);
   expect(screen.getByText('Parear um celular como controle')).toBeTruthy();
-  expect(
-    screen.getByText(
-      "No celular que vai ser o controle, abra o app Câmera do iPhone (o da câmera normal) e aponte para este código. Depois toque em 'Abrir no LANCE'.",
-    ),
-  ).toBeTruthy();
+  expect(screen.getByText('ESTE IPHONE É A CÂMERA')).toBeTruthy();
+  expect(screen.getByText('No outro iPhone, abra o app Câmera (o da câmera normal).')).toBeTruthy();
+  expect(screen.getByText('Aponte para este código.')).toBeTruthy();
+  expect(screen.getByText("Toque em 'Abrir no LANCE'.")).toBeTruthy();
   expect(screen.getByText('042517')).toBeTruthy();
   expect(
     screen.getByText("Não leu? Abra o LANCE no controle, toque em 'Usar este celular como controle' e digite o código:"),
@@ -50,7 +51,12 @@ test('tells the player to read the code with the Camera app of the remote phone,
 test('the instruction is there even when no code could be made', async () => {
   camera().remoteHostBeginPairing.mockReturnValue(null);
   await render(<Pairing />);
-  expect(screen.getByText(/abra o app Câmera do iPhone/)).toBeTruthy();
+  expect(screen.getByText('No outro iPhone, abra o app Câmera (o da câmera normal).')).toBeTruthy();
+});
+
+test('while the code is good it shows that the camera phone is waiting for the remote', async () => {
+  await render(<Pairing />);
+  expect(screen.getByText('Aguardando o controle…')).toBeTruthy();
 });
 
 test('counts down the two minutes, and says when the code is no longer good', async () => {
@@ -64,6 +70,13 @@ test('counts down the two minutes, and says when the code is no longer good', as
     jest.advanceTimersByTime(60_000);
   });
   expect(screen.getByText('Código vencido. Gere um novo.')).toBeTruthy();
+  expect(screen.queryByText('Aguardando o controle…')).toBeNull();
+});
+
+test('never shows more than the two minutes a code is good for, even if making the QR took a moment', async () => {
+  camera().remoteHostBeginPairing.mockReturnValue(offer(121));
+  await render(<Pairing />);
+  expect(screen.getByText('Válido por 2:00')).toBeTruthy();
 });
 
 test('"Gerar novo código" opens a new pairing', async () => {
@@ -103,6 +116,27 @@ test('shows that a remote paired as soon as the camera phone says so', async () 
   const listener = camera().addReplayListener.mock.calls.find((c: any[]) => c[0] === 'onRemoteStatus')[1];
   await act(async () => listener({ link: 'connected', controllers: 1 }));
   expect(screen.getByText('Pronto! iPhone da Ana agora é um controle.')).toBeTruthy();
+  expect(screen.queryByText('Aguardando o controle…')).toBeNull();
+});
+
+test('pairing a remote that was already in the list still counts as paired', async () => {
+  camera().remoteHostPeers.mockReturnValue([{ id: 'a', name: 'iPhone da Ana' }]);
+  await render(<Pairing />);
+  const listener = camera().addReplayListener.mock.calls.find((c: any[]) => c[0] === 'onRemotePairing')[1];
+  await act(async () => listener({ phase: 'paired', peer: { id: 'a', name: 'iPhone da Ana' } }));
+  expect(screen.getByText('Pronto! iPhone da Ana agora é um controle.')).toBeTruthy();
+});
+
+test('after pairing the sheet closes by itself', async () => {
+  await render(<Pairing />);
+  camera().remoteHostPeers.mockReturnValue([{ id: 'a', name: 'iPhone da Ana' }]);
+  const listener = camera().addReplayListener.mock.calls.find((c: any[]) => c[0] === 'onRemoteStatus')[1];
+  await act(async () => listener({ link: 'connected', controllers: 1 }));
+  expect(jest.requireMock('expo-router').router.back).not.toHaveBeenCalled();
+  await act(async () => {
+    jest.advanceTimersByTime(1500);
+  });
+  expect(jest.requireMock('expo-router').router.back).toHaveBeenCalledTimes(1);
 });
 
 test('closes the pairing when the sheet goes away, and the button leaves', async () => {
@@ -111,4 +145,9 @@ test('closes the pairing when the sheet goes away, and the button leaves', async
   expect(jest.requireMock('expo-router').router.back).toHaveBeenCalled();
   await view.unmount();
   expect(camera().remoteHostEndPairing).toHaveBeenCalled();
+});
+
+test('the camera phone can be renamed from the pairing sheet', async () => {
+  await render(<Pairing />);
+  expect(screen.getByLabelText('Nome deste celular').props.value).toBe('iPhone 16 Pro Max#AB12');
 });

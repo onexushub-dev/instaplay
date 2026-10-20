@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { Alert, BackHandler, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { addReplayListener } from '../../modules/replay-camera';
 import { useSession } from '../session/SessionContext';
 import { colors, fonts } from '../theme/tokens';
 import { Button } from './Button';
@@ -51,6 +52,14 @@ export function RecordingPanel({ bufferSeconds = 60, gesture = true, voice = fal
     const id = await stop();
     if (id) router.replace(`/session/${id}`);
   }
+
+  // The remote phone's "Segure para encerrar a gravação" ends the game the same way the one on this screen does.
+  useEffect(() => {
+    const sub = addReplayListener('onRemoteStop', () => {
+      if (state.phase === 'recording') void end();
+    });
+    return () => sub.remove();
+  });
 
   // Android back = end the game, after a confirmation.
   useEffect(() => {

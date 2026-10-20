@@ -35,6 +35,8 @@ export type ReplayCameraModuleEvents = {
   onRemoteState: (e: { recording: boolean; clipCount: number; startedAt?: number }) => void;
   /** Remote phone only: how the last save ended. */
   onRemoteResult: (e: { saved: boolean }) => void;
+  /** Camera phone only: a remote asked to end the recording (the game screen decides whether it makes sense). */
+  onRemoteStop: () => void;
   onRemotePairing: (e: { phase: 'paired'; peer: RemotePeer } | { phase: 'failed'; reason: RemotePairFailure }) => void;
   onThermalChange: (e: { level: ThermalLevel; degraded: boolean }) => void;
   onInterrupted: () => void;

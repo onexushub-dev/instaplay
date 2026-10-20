@@ -1,4 +1,4 @@
-import { canSave, remoteScreen, SAVE_COOLDOWN, STALE_AFTER, type RemoteInput } from '../remoteScreen';
+import { canSave, connectionTone, remoteScreen, SAVE_COOLDOWN, STALE_AFTER, type RemoteInput } from '../remoteScreen';
 
 const state = (over: Partial<NonNullable<RemoteInput['state']>> = {}) => ({
   recording: true,
@@ -29,10 +29,14 @@ test('looking for the camera phone, before anything has been heard', () => {
   });
 });
 
-test('connected but no state yet still reads as searching', () => {
+test('connected but no state yet is already connected: it waits for the game, it does not keep searching', () => {
   expect(remoteScreen({ link: 'connected', hostName: 'Quadra 1', state: null })).toEqual({
-    kind: 'searching',
+    kind: 'waiting',
     hostName: 'Quadra 1',
+  });
+  expect(remoteScreen({ link: 'connected', hostName: null, state: null })).toEqual({
+    kind: 'waiting',
+    hostName: 'Celular da câmera',
   });
 });
 
@@ -78,4 +82,15 @@ test('one save per 3 seconds', () => {
   expect(canSave(10_000, null)).toBe(true);
   expect(canSave(12_999, 10_000)).toBe(false);
   expect(canSave(13_000, 10_000)).toBe(true);
+});
+
+describe('connectionTone', () => {
+  const tone = (input: RemoteInput) => connectionTone(remoteScreen(input));
+  test('green when the camera phone is there, amber while looking or lost, red when denied', () => {
+    expect(tone({ link: 'connected', hostName: 'Q', state: state() })).toBe('ok');
+    expect(tone({ link: 'connected', hostName: 'Q', state: state({ recording: false }) })).toBe('ok');
+    expect(tone({ link: 'searching', hostName: 'Q', state: null })).toBe('warn');
+    expect(tone({ link: 'connected', hostName: 'Q', state: state({ ageSec: 20 }) })).toBe('warn');
+    expect(tone({ link: 'denied', hostName: 'Q', state: null })).toBe('bad');
+  });
 });

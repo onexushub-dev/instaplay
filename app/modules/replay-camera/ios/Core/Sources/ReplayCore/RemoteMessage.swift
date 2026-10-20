@@ -8,6 +8,8 @@ public enum RemoteMessage: Equatable {
 
   /// Remote → camera: save a clip now.
   case save
+  /// Remote → camera: end the recording (the remote asks for it by holding a button, like the camera phone's own).
+  case stop
   /// Camera → remote: the recording as it is; `startedAt` is ms since 1970, nil when idle.
   case state(recording: Bool, clipCount: Int, startedAt: Double?)
   /// Camera → remote: how the last save ended.
@@ -23,6 +25,8 @@ public enum RemoteMessage: Equatable {
     switch self {
     case .save:
       return ["cmd": "save"]
+    case .stop:
+      return ["cmd": "stop"]
     case let .state(recording, clipCount, startedAt):
       var out: [String: Any] = ["recording": recording, "clipCount": clipCount]
       if let startedAt { out["startedAt"] = startedAt }
@@ -42,7 +46,13 @@ public enum RemoteMessage: Equatable {
 
   /// nil for anything unknown or malformed: a stray message must never crash or save a clip.
   public static func decode(_ payload: [String: Any]) -> RemoteMessage? {
-    if let cmd = payload["cmd"] as? String { return cmd == "save" ? .save : nil }
+    if let cmd = payload["cmd"] as? String {
+      switch cmd {
+      case "save": return .save
+      case "stop": return .stop
+      default: return nil
+      }
+    }
     if let unpaired = payload["unpaired"] { return (unpaired as? Bool) == true ? .unpaired : nil }
     if let refused = payload["refused"] {
       guard let raw = refused as? String, let reason = Reason(rawValue: raw) else { return nil }

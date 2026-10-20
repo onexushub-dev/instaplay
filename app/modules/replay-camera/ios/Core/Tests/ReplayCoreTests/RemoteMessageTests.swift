@@ -6,6 +6,7 @@ final class RemoteMessageTests: XCTestCase {
 
   func testKeysAreFixed() {
     XCTAssertEqual(RemoteMessage.save.payload["cmd"] as? String, "save")
+    XCTAssertEqual(RemoteMessage.stop.payload["cmd"] as? String, "stop")
     let state = RemoteMessage.state(recording: true, clipCount: 3, startedAt: 1_700_000_000_000).payload
     XCTAssertEqual(Set(state.keys), ["recording", "clipCount", "startedAt"])
     XCTAssertEqual(RemoteMessage.result(saved: true).payload["result"] as? String, "saved")
@@ -20,6 +21,7 @@ final class RemoteMessageTests: XCTestCase {
   func testRoundTrips() {
     let cases: [RemoteMessage] = [
       .save,
+      .stop,
       .state(recording: true, clipCount: 3, startedAt: 1_700_000_000_000),
       .state(recording: false, clipCount: 0, startedAt: nil),
       .result(saved: true),

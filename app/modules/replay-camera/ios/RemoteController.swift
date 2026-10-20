@@ -69,10 +69,15 @@ final class RemoteController: NSObject {
 
   func pair(code: String) { onMain { beginPairing(.code(code)) } }
 
-  func save() {
+  func save() { send(.save) }
+
+  /// Asks the camera phone to end the recording.
+  func endRecording() { send(.stop) }
+
+  private func send(_ message: RemoteMessage) {
     onMain {
       guard let session, let peer = connectedHost else { return }
-      try? session.send(RemoteMessage.save.data, toPeers: [peer], with: .reliable)
+      try? session.send(message.data, toPeers: [peer], with: .reliable)
     }
   }
 
@@ -96,7 +101,7 @@ final class RemoteController: NSObject {
       if retryTimer == nil {
         let timer = DispatchSource.makeTimerSource(queue: .main)
         timer.schedule(deadline: .now() + 2, repeating: 3)
-        timer.setEventHandler { [weak self] in self?.tryReconnect() }
+        timer.setEventHandler { [weak self] in self?.tick() }
         timer.resume()
         retryTimer = timer
       }
@@ -185,6 +190,30 @@ final class RemoteController: NSObject {
     }
   }
 
+  /// Without a link for this long the search starts over: a browser that has been looking for a while may never
+  /// notice a camera phone that went away and came back.
+  private static let restartAfter: TimeInterval = 8
+  private var lastBrowserRestart = Date()
+
+  /// Every 3 s: restart a search that found nothing for too long, then invite whoever we should.
+  private func tick() {
+    if wanted, pairMode == nil, connectedHost == nil, Date().timeIntervalSince(lastBrowserRestart) > Self.restartAfter {
+      restartBrowser()
+    }
+    tryReconnect()
+  }
+
+  private func restartBrowser() {
+    lastBrowserRestart = Date()
+    browser?.stopBrowsingForPeers()
+    seen.removeAll()
+    lastInvite.removeAll()
+    let created = MCNearbyServiceBrowser(peer: peerID, serviceType: RemoteHost.serviceType)
+    created.delegate = self
+    created.startBrowsingForPeers()
+    browser = created
+  }
+
   private func recentlyInvited(_ peer: MCPeerID) -> Bool {
     if let last = lastInvite[peer] { return Date().timeIntervalSince(last) < 5 }
     return false
@@ -212,7 +241,7 @@ final class RemoteController: NSObject {
       emit?("onRemoteState", body)
     case let .result(saved):
       emit?("onRemoteResult", ["saved": saved])
-    case .save:
+    case .save, .stop:
       break
     }
   }
@@ -229,6 +258,8 @@ extension RemoteController: MCNearbyServiceBrowserDelegate {
 
   func browser(_ browser: MCNearbyServiceBrowser, lostPeer peerID: MCPeerID) {
     DispatchQueue.main.async {
+      // When it comes back (a restarted advertiser) it is a new chance to connect, not a repeat of an old invite.
+      self.lastInvite.removeValue(forKey: peerID)
       for (hostId, found) in self.seen where found.peer == peerID { self.seen.removeValue(forKey: hostId) }
     }
   }
@@ -252,7 +283,14 @@ extension RemoteController: MCSessionDelegate {
         if self.pairMode == nil { self.connectedHost = peerID }
         self.emitStatus()
       case .notConnected:
-        if self.connectedHost == peerID { self.connectedHost = nil }
+        if self.connectedHost == peerID {
+          self.connectedHost = nil
+          self.lastBrowserRestart = Date()  // give the quick retry below a few seconds before starting the search over
+          // A working link was lost: forget the last invite so the next try is not held back by its 5 s window,
+          // and try again right away instead of waiting for the next tick of the retry timer.
+          self.lastInvite.removeValue(forKey: peerID)
+          DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in self?.tryReconnect() }
+        }
         self.emitStatus()
       default:
         break

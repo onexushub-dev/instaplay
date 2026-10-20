@@ -37,6 +37,7 @@ declare class ReplayCameraModule extends NativeModule<ReplayCameraModuleEvents> 
   remoteHostEndPairing?(): void;
   remoteHostPeers?(): RemotePeer[];
   remoteHostRemove?(id: string): void;
+  remoteHostControllers?(): number;
   remoteSync?(recording: boolean, clipCount: number, startedAt: number | null): void;
   remoteSignal?(saved: boolean): void;
   remoteControllerStart?(): void;
@@ -46,6 +47,9 @@ declare class ReplayCameraModule extends NativeModule<ReplayCameraModuleEvents> 
   remoteControllerPairWithLink?(hostId: string, secret: string, hostName: string): void;
   remoteControllerPairWithCode?(code: string): void;
   remoteControllerSave?(): void;
+  remoteControllerEndRecording?(): void;
+  remoteDeviceName?(): string;
+  remoteSetDeviceName?(name: string): void;
   shareToInstagramStory(videoPath: string, metaAppId: string): Promise<'opened' | 'unavailable'>;
 }
 

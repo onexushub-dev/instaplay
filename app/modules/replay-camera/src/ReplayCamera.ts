@@ -132,6 +132,11 @@ export function remoteHostRemove(id: string): void {
   if (ReplayCameraModule.remoteHostRemove) ReplayCameraModule.remoteHostRemove(id);
 }
 
+/** Camera phone: how many remotes are connected right now. */
+export function remoteHostControllers(): number {
+  return ReplayCameraModule.remoteHostControllers ? ReplayCameraModule.remoteHostControllers() : 0;
+}
+
 /** Camera phone → remotes: the same state the watch gets. */
 export function remoteSync(state: { recording: boolean; clipCount: number; startedAt?: number }): void {
   if (ReplayCameraModule.remoteSync) {
@@ -177,6 +182,21 @@ export function remoteControllerPairWithCode(code: string): void {
 /** Remote phone: ask the camera phone to save a clip. */
 export function remoteControllerSave(): void {
   if (ReplayCameraModule.remoteControllerSave) ReplayCameraModule.remoteControllerSave();
+}
+
+/** Remote phone: ask the camera phone to end the recording (what holding its own "Segure para encerrar" does). */
+export function remoteControllerEndRecording(): void {
+  if (ReplayCameraModule.remoteControllerEndRecording) ReplayCameraModule.remoteControllerEndRecording();
+}
+
+/** The name this phone shows to the other one while pairing ("iPhone XR#1234" unless the person renamed it). */
+export function remoteDeviceName(): string {
+  return ReplayCameraModule.remoteDeviceName ? ReplayCameraModule.remoteDeviceName() : '';
+}
+
+/** Renames this phone for the next pairings; an empty name goes back to the default. */
+export function remoteSetDeviceName(name: string): void {
+  if (ReplayCameraModule.remoteSetDeviceName) ReplayCameraModule.remoteSetDeviceName(name);
 }
 
 export function addReplayListener<E extends keyof ReplayCameraModuleEvents>(

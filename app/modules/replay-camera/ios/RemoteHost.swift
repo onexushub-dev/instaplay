@@ -32,6 +32,10 @@ final class RemoteHost: NSObject {
   private var authenticated: [MCPeerID: String] = [:]
   private var lastState: RemoteMessage = .state(recording: false, clipCount: 0, startedAt: nil)
   private var heartbeat: DispatchSourceTimer?
+  /// Pending shutdown of the session; see `scheduleTeardown`.
+  private var teardown: DispatchWorkItem?
+  /// How long the host stays up after nothing wants it any more.
+  private static let teardownGrace: TimeInterval = 3
 
   private override init() {
     peerID = MCPeerID(displayName: DeviceIdentity.name)
@@ -47,11 +51,22 @@ final class RemoteHost: NSObject {
   // MARK: JS API
 
   /// The setup screen is in front: wait for the paired remotes.
-  func start() { onMain { wanted = true; refresh() } }
+  /// Asked again while already running (the app came back to the front), it also starts advertising over: iOS may have
+  /// dropped the old advertiser while the app was away.
+  func start() {
+    onMain {
+      if wanted { advertisedMode = nil }
+      wanted = true
+      refresh()
+    }
+  }
 
   func stop() { onMain { wanted = false; refresh() } }
 
   var peers: [TrustedPeer] { onMain { trusted.all } }
+
+  /// How many remotes are connected right now (a screen that opens later cannot have heard the status events).
+  var controllers: Int { onMain { authenticated.count } }
 
   func remove(id: String) {
     onMain {
@@ -104,6 +119,8 @@ final class RemoteHost: NSObject {
   private func refresh() {
     let active = wanted || offer != nil
     if active {
+      teardown?.cancel()
+      teardown = nil
       if session == nil {
         let created = MCSession(peer: peerID, securityIdentity: nil, encryptionPreference: .required)
         created.delegate = self
@@ -111,16 +128,37 @@ final class RemoteHost: NSObject {
       }
       updateAdvertising()
     } else {
-      advertiser?.stopAdvertisingPeer()
-      advertiser = nil
-      advertisedMode = nil
-      session?.disconnect()
-      session = nil
-      pending.removeAll()
-      authenticated.removeAll()
-      heartbeat?.cancel()
-      heartbeat = nil
+      scheduleTeardown()
     }
+    emitStatus()
+  }
+
+  /// The setup screen and the pairing sheet hand the host over to each other (`endPairing()` just before `start()`,
+  /// or `stop()` just before `beginPairing()`), so for a moment nothing wants it. Dropping the session right then cut
+  /// the remote off every time the pairing sheet was opened or closed, and the remote needed ~10 s to find us again.
+  /// Wait a little: if something wants the host back in time, the session is never touched.
+  private func scheduleTeardown() {
+    guard teardown == nil else { return }
+    let work = DispatchWorkItem { [weak self] in
+      guard let self else { return }
+      self.teardown = nil
+      guard !(self.wanted || self.offer != nil) else { return }
+      self.tearDownNow()
+    }
+    teardown = work
+    DispatchQueue.main.asyncAfter(deadline: .now() + Self.teardownGrace, execute: work)
+  }
+
+  private func tearDownNow() {
+    advertiser?.stopAdvertisingPeer()
+    advertiser = nil
+    advertisedMode = nil
+    session?.disconnect()
+    session = nil
+    pending.removeAll()
+    authenticated.removeAll()
+    heartbeat?.cancel()
+    heartbeat = nil
     emitStatus()
   }
 
@@ -204,6 +242,7 @@ final class RemoteHost: NSObject {
       let key = Data((0..<32).map { _ in UInt8.random(in: 0...255) })
       if trusted.add(TrustedPeer(id: remoteId, name: name, key: key)) {
         send(.paired(hostId: DeviceIdentity.id, hostName: DeviceIdentity.name, pairKey: key), to: [peer])
+        emit?("onRemotePairing", ["phase": "paired", "peer": ["id": remoteId, "name": name]])
         authenticated[peer] = remoteId
         send(lastState, to: [peer])
       } else {
@@ -254,11 +293,16 @@ extension RemoteHost: MCSessionDelegate {
     }
   }
 
-  /// Only `save` from a remote that proved who it is counts; anything else is dropped.
+  /// Only `save` and `stop` from a remote that proved who it is count; anything else is dropped. JS decides whether the
+  /// game is in a state where each one makes sense (a `save` outside a recording must not use up the debounce).
   func session(_ session: MCSession, didReceive data: Data, fromPeer peerID: MCPeerID) {
     DispatchQueue.main.async {
-      guard self.authenticated[peerID] != nil, RemoteMessage.decode(data: data) == .save else { return }
-      self.emit?("onTrigger", ["source": "phone", "at": self.nowMs])
+      guard self.authenticated[peerID] != nil, let message = RemoteMessage.decode(data: data) else { return }
+      switch message {
+      case .save: self.emit?("onTrigger", ["source": "phone", "at": self.nowMs])
+      case .stop: self.emit?("onRemoteStop", [:])
+      default: break
+      }
     }
   }
 

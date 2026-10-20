@@ -11,8 +11,7 @@ import {
   isRemoteSupported,
   isVoiceSupported,
   remoteHostPeers,
-  remoteHostStart,
-  remoteHostStop,
+  remoteHostControllers,
   ReplayCameraView,
   requestSpeechPermission,
 } from '../../modules/replay-camera';
@@ -72,11 +71,11 @@ export default function Setup() {
   }, []);
   const watchStatus =
     watch === 'ready' ? 'Pronto' : watch === 'notInstalled' ? 'Instale o app no relógio' : 'Sem relógio pareado';
-  // The phone remote (a second iPhone that taps Salvar for this one). The camera phone waits for its paired remotes
-  // while this screen is in front; pairing happens on its own sheet (/pairing).
+  // The phone remote (a second iPhone that taps Salvar for this one). The camera phone waits for its paired remotes for
+  // as long as the app is open (see the root layout); pairing happens on its own sheet (/pairing).
   const [remoteSupported] = useState(() => isRemoteSupported());
   const [remotePeers, setRemotePeers] = useState<RemotePeer[]>(() => (isRemoteSupported() ? remoteHostPeers() : []));
-  const [remoteLinked, setRemoteLinked] = useState(0);
+  const [remoteLinked, setRemoteLinked] = useState(() => remoteHostControllers());
   useEffect(() => {
     if (!remoteSupported) return;
     const sub = addReplayListener('onRemoteStatus', (e) => setRemoteLinked(e.controllers === undefined ? 0 : e.controllers));
@@ -85,8 +84,7 @@ export default function Setup() {
   useEffect(() => {
     if (!remoteSupported || !focused) return;
     setRemotePeers(remoteHostPeers()); // the list may have changed on the pairing sheet
-    remoteHostStart();
-    return () => remoteHostStop();
+    setRemoteLinked(remoteHostControllers()); // the status events of a remote that connected meanwhile were not heard
   }, [remoteSupported, focused]);
   const remoteStatus =
     remotePeers.length === 0

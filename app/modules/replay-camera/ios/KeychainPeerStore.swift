@@ -74,10 +74,36 @@ enum DeviceIdentity {
     return fresh
   }
 
-  /// Since iOS 16 the system name is just "iPhone" for apps without a special entitlement; two of those would look
-  /// identical, so a few characters of the id are added.
+  private static let nameAccount = "lance.remote.deviceName"
+
+  /// The name the person chose for this phone, if any (an empty or blank one means "use the default").
+  static var customName: String? {
+    guard let data = Keychain.read(account: nameAccount), let text = String(data: data, encoding: .utf8) else { return nil }
+    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    return trimmed.isEmpty ? nil : trimmed
+  }
+
+  static func setCustomName(_ name: String) {
+    let clean = String(name.trimmingCharacters(in: .whitespacesAndNewlines).prefix(DeviceName.maxLength))
+    // The Keychain does not like empty values: a single space stands for "no custom name".
+    Keychain.write(Data((clean.isEmpty ? " " : clean).utf8), account: nameAccount)
+  }
+
+  /// "iPhone11,8" and the like; on the simulator the model it pretends to be.
+  private static var modelIdentifier: String {
+    if let simulated = ProcessInfo.processInfo.environment["SIMULATOR_MODEL_IDENTIFIER"] { return simulated }
+    var info = utsname()
+    uname(&info)
+    return withUnsafePointer(to: &info.machine) {
+      $0.withMemoryRebound(to: CChar.self, capacity: 1) { String(cString: $0) }
+    }
+  }
+
+  /// Since iOS 16 the system name is just "iPhone" for apps without a special entitlement, so the default is the
+  /// model plus a few characters of the id ("iPhone XR#1234"); see `DeviceName` in Core. The person can rename it.
   static var name: String {
-    let system = UIDevice.current.name
-    return system == "iPhone" || system == "iPad" ? "\(system) \(id.prefix(4).uppercased())" : system
+    DeviceName.resolve(
+      custom: customName, system: UIDevice.current.name, identifier: modelIdentifier,
+      code: String(id.prefix(4).uppercased()))
   }
 }

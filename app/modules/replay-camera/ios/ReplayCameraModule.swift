@@ -64,7 +64,7 @@ public class ReplayCameraModule: Module {
     Name("ReplayCamera")
 
     Events("onTrigger", "onThermalChange", "onInterrupted", "onResumed", "onError", "onGestureDebug", "onWatchStatus",
-           "onRemoteStatus", "onRemoteState", "onRemoteResult", "onRemotePairing")
+           "onRemoteStatus", "onRemoteState", "onRemoteResult", "onRemotePairing", "onRemoteStop")
 
     OnCreate {
       self.engine.emit = { [weak self] name, body in self?.sendEvent(name, body) }
@@ -157,6 +157,8 @@ public class ReplayCameraModule: Module {
 
     Function("remoteHostRemove") { (id: String) in RemoteHost.shared.remove(id: id) }
 
+    Function("remoteHostControllers") { () -> Int in RemoteHost.shared.controllers }
+
     Function("remoteSync") { (recording: Bool, clipCount: Int, startedAt: Double?) in
       RemoteHost.shared.sync(recording: recording, clipCount: clipCount, startedAt: startedAt)
     }
@@ -182,6 +184,13 @@ public class ReplayCameraModule: Module {
     Function("remoteControllerPairWithCode") { (code: String) in RemoteController.shared.pair(code: code) }
 
     Function("remoteControllerSave") { RemoteController.shared.save() }
+
+    Function("remoteControllerEndRecording") { RemoteController.shared.endRecording() }
+
+    // The name this phone shows to the other one while pairing, and the way to change it.
+    Function("remoteDeviceName") { () -> String in DeviceIdentity.name }
+
+    Function("remoteSetDeviceName") { (name: String) in DeviceIdentity.setCustomName(name) }
 
     Function("isVoiceSupported") { VoiceTrigger.isSupported }
 
