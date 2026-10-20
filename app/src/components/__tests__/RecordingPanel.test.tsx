@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { RecordingPanel as Recording } from '../RecordingPanel';
 
 jest.mock('expo-router', () => ({ router: { replace: jest.fn() } }));
+jest.mock('../../../modules/replay-camera', () => ({ addReplayListener: jest.fn(() => ({ remove: jest.fn() })) }));
 jest.mock('../../session/SessionContext', () => ({ useSession: jest.fn() }));
 
 const { useSession } = jest.requireMock('../../session/SessionContext');
@@ -53,7 +54,7 @@ test('a saved clipe shows the overlay with its number and source', async () => {
   session({ clipCount: 3, lastSaved: { clipId: 'c3', number: 3, source: 'gesture', at: Date.now() } });
   await render(<Recording />);
   expect(screen.getByText('CLIPE #3 SALVO')).toBeTruthy();
-  expect(screen.getByText('via Braços para cima · últimos 30s')).toBeTruthy();
+  expect(screen.getByText('via Acenar com os braços · últimos 30s')).toBeTruthy();
 });
 
 test('Desfazer undoes the last clipe', async () => {
@@ -109,5 +110,24 @@ test('the hint lists the triggers on in this mode and the buffer length', async 
 test('a court game keeps the arms-up hint', async () => {
   session({});
   await render(<Recording bufferSeconds={60} gesture voice={false} />);
-  expect(screen.getByText('Últimos 60s prontos · ou levante os braços · ou use o controle')).toBeTruthy();
+  expect(screen.getByText('Últimos 60s prontos · ou acene com os braços · ou use o controle')).toBeTruthy();
+});
+
+test('a remote phone asking to end the recording ends it like the hold button does', async () => {
+  const s = session({});
+  await render(<Recording />);
+  const calls = jest.requireMock('../../../modules/replay-camera').addReplayListener.mock.calls;
+  const ask = calls.filter((c: any[]) => c[0] === 'onRemoteStop').pop()[1];
+  await act(async () => ask());
+  expect(s.stop).toHaveBeenCalledTimes(1);
+  expect(router.replace).toHaveBeenCalledWith('/session/s1');
+});
+
+test('a stop asked outside a recording is ignored', async () => {
+  const s = session({ phase: 'idle' });
+  await render(<Recording />);
+  const calls = jest.requireMock('../../../modules/replay-camera').addReplayListener.mock.calls;
+  const ask = calls.filter((c: any[]) => c[0] === 'onRemoteStop').pop()[1];
+  await act(async () => ask());
+  expect(s.stop).not.toHaveBeenCalled();
 });

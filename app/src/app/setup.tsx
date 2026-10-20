@@ -8,16 +8,20 @@ import {
   addReplayListener,
   getSpeechPermission,
   getWatchStatus,
+  isRemoteSupported,
   isVoiceSupported,
+  remoteControllerHost,
+  remoteHostPeers,
+  remoteHostControllers,
   ReplayCameraView,
   requestSpeechPermission,
 } from '../../modules/replay-camera';
-import type { ReplayErrorCode } from '../../modules/replay-camera/src/ReplayCamera.types';
+import type { RemotePeer, ReplayErrorCode } from '../../modules/replay-camera/src/ReplayCamera.types';
 import { Button } from '../components/Button';
 import { Chip } from '../components/Chip';
 import { PositionGuide } from '../components/PositionGuide';
 import { RecordingPanel } from '../components/RecordingPanel';
-import { ArmsUpIcon, MicIcon, RemoteIcon, WatchIcon } from '../components/icons';
+import { ArmsUpIcon, MicIcon, PhoneIcon, RemoteIcon, WatchIcon } from '../components/icons';
 import { TriggerTile } from '../components/TriggerTile';
 import { repo } from '../data/mmkv';
 import type { ModeId, ModeSettings, Prefs } from '../data/schema';
@@ -68,6 +72,33 @@ export default function Setup() {
   }, []);
   const watchStatus =
     watch === 'ready' ? 'Pronto' : watch === 'notInstalled' ? 'Instale o app no relógio' : 'Sem relógio pareado';
+  // The phone remote (a second iPhone that taps Salvar for this one). The camera phone waits for its paired remotes for
+  // as long as the app is open (see the root layout); pairing happens on its own sheet (/pairing).
+  const [remoteSupported] = useState(() => isRemoteSupported());
+  const [remotePeers, setRemotePeers] = useState<RemotePeer[]>(() => (isRemoteSupported() ? remoteHostPeers() : []));
+  const [controlHost, setControlHost] = useState<RemotePeer | null>(() => (isRemoteSupported() ? remoteControllerHost() : null));
+  const [remoteLinked, setRemoteLinked] = useState(() => remoteHostControllers());
+  useEffect(() => {
+    if (!remoteSupported) return;
+    const sub = addReplayListener('onRemoteStatus', (e) => setRemoteLinked(e.controllers === undefined ? 0 : e.controllers));
+    return () => sub.remove();
+  }, [remoteSupported]);
+  useEffect(() => {
+    if (!remoteSupported || !focused) return;
+    setRemotePeers(remoteHostPeers()); // the list may have changed on the pairing sheet
+    setControlHost(remoteControllerHost()); // it may have been paired or forgotten on the remote screen
+    setRemoteLinked(remoteHostControllers()); // the status events of a remote that connected meanwhile were not heard
+  }, [remoteSupported, focused]);
+  const remoteStatus =
+    remotePeers.length === 0
+      ? 'Toque para conectar um controle'
+      : remoteLinked > 0
+        ? remotePeers.length === 1
+          ? `Conectado: ${remotePeers[0].name}`
+          : `${remoteLinked} de ${remotePeers.length} conectados`
+        : remotePeers.length === 1
+          ? `Pareado: ${remotePeers[0].name}`
+          : `${remotePeers.length} controles pareados`;
   // Voice counts as on only when this mode wants it and the phone may listen.
   const voiceOn = voiceSupported && settings.voiceEnabled && speechGranted;
   const voiceStatus = !voiceSupported
@@ -94,7 +125,7 @@ export default function Setup() {
   };
   const summary = `Ajustes: ${mode.label} · ${[
     `voz ${voiceOn ? 'ligada' : 'desligada'}`,
-    `braços para cima ${settings.gestureEnabled ? 'ligado' : 'desligado'}`,
+    `acenar com os braços ${settings.gestureEnabled ? 'ligado' : 'desligado'}`,
     `controle ${remoteWorks ? 'funcionando' : 'não testado'}`,
     ...(watch === 'ready' ? ['relógio pronto'] : []),
   ].join(', ')}`;
@@ -122,6 +153,18 @@ export default function Setup() {
   const errorText = error ? (START_ERRORS[error] ?? 'Não foi possível abrir a câmera. Tente de novo.') : null;
 
   const inGame = phase === 'recording' || phase === 'stopping' || (phase === 'ended' && error !== undefined);
+
+  // The remote phone's "Iniciar gravação": starts a game from whatever screen is in front (the summary of the last game,
+  // say), as long as no game is running.
+  useEffect(() => {
+    const sub = addReplayListener('onRemoteStart', () => {
+      if (starting) return;
+      if (phase !== 'idle' && !(phase === 'ended' && error === undefined)) return;
+      router.navigate('/setup');
+      void session.start(modeId);
+    });
+    return () => sub.remove();
+  });
 
   // One camera view for the whole game: setup and recording only swap the controls drawn over it.
   return (
@@ -241,7 +284,7 @@ export default function Setup() {
             />
             <TriggerTile
               icon={<ArmsUpIcon />}
-              title="Braços para cima"
+              title="Acenar com os braços"
               status={settings.gestureEnabled ? 'Ativo' : 'Desligado'}
               active={settings.gestureEnabled}
               onPress={() => updateMode({ gestureEnabled: !settings.gestureEnabled })}
@@ -262,6 +305,17 @@ export default function Setup() {
               disabled={watch === 'unsupported'}
             />
           </View>
+          {remoteSupported ? (
+            <View style={styles.gridRow}>
+              <TriggerTile
+                icon={<PhoneIcon />}
+                title="Celular"
+                status={remoteStatus}
+                active={remoteLinked > 0}
+                onPress={() => router.push('/pairing')}
+              />
+            </View>
+          ) : null}
         </View>
 
         {speechDenied ? <Text style={styles.error}>Libere o reconhecimento de fala em Ajustes.</Text> : null}
@@ -281,6 +335,24 @@ export default function Setup() {
             />
           </View>
         </View>
+
+        {remoteSupported ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={controlHost === null ? 'Usar este celular como controle' : `Conectar ao controle de ${controlHost.name}`}
+            hitSlop={8}
+            onPress={() => router.push('/remote')}
+            style={styles.remoteEntry}>
+            {controlHost === null ? (
+              <Text style={styles.remoteEntryText}>Usar este celular como controle</Text>
+            ) : (
+              <>
+                <Text style={styles.remoteEntryName}>{`Controle de ${controlHost.name}`}</Text>
+                <Text style={styles.remoteEntryText}>Toque para conectar</Text>
+              </>
+            )}
+          </Pressable>
+        ) : null}
       </>
     );
   }
@@ -356,6 +428,9 @@ const styles = StyleSheet.create({
     color: colors.muted,
   },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  remoteEntry: { minHeight: 44, justifyContent: 'center', alignItems: 'center' },
+  remoteEntryName: { fontFamily: fonts.bodyBold, fontSize: 16, color: colors.text },
+  remoteEntryText: { fontFamily: fonts.bodySemi, fontSize: 14, color: colors.soft, textDecorationLine: 'underline' },
   grid: { gap: 8 },
   gridRow: { flexDirection: 'row', gap: 8 },
   error: { fontFamily: fonts.bodySemi, fontSize: 14, color: colors.warning },

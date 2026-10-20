@@ -5,7 +5,9 @@ import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
+import { AppState } from 'react-native';
 
+import { isRemoteSupported, remoteHostStart, remoteHostStop } from '../../modules/replay-camera';
 import { SessionProvider } from '../session/SessionContext';
 import { colors } from '../theme/tokens';
 
@@ -23,6 +25,21 @@ export default function RootLayout() {
   useEffect(() => {
     if (loaded || error) SplashScreen.hideAsync();
   }, [loaded, error]);
+
+  // The camera phone answers its paired remotes for as long as the app is open, whatever screen is in front: tying it to
+  // one screen dropped the link every time the player moved between the setup, the recording and the summary.
+  // Coming back to the front starts the advertising over, since iOS may have dropped it while the app was away.
+  useEffect(() => {
+    if (!isRemoteSupported()) return;
+    remoteHostStart();
+    const sub = AppState.addEventListener('change', (next) => {
+      if (next === 'active') remoteHostStart();
+    });
+    return () => {
+      sub.remove();
+      remoteHostStop();
+    };
+  }, []);
 
   if (!loaded && !error) return null;
 

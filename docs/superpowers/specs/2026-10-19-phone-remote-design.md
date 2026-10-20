@@ -41,7 +41,7 @@ layer on top. JS only sees the module API and events.
 | `PairingOffer` | Core | One pairing attempt on the camera phone: secret, 6-digit code, expiry, wrong-attempt counter and lock. | Foundation, clock |
 | `RemoteProof` | Core | HMAC-SHA256 proofs for pairing and reconnecting, with a timestamp window. | CryptoKit |
 | `TrustedPeers` | Core | The list of trusted pairs (add, replace, remove, lookup) behind a `PeerKeyStore` protocol. | none |
-| `RemoteLinkModel` | Core | Pure state machine for what the remote screen shows (searching, connected, recording, stale, denied). Mirrors `WatchModel`. | none |
+| `remoteScreen` | `src/remote` (TypeScript) | Pure function for what the remote screen shows (searching, waiting, recording, stale, denied). Mirrors `WatchModel`, but lives in TypeScript because the remote screen is a React Native screen. | none |
 | `RemoteLink` | iOS glue | Multipeer advertiser/browser/session, Keychain `PeerKeyStore`, QR image from CoreImage. Not unit-testable. | the Core units |
 | Module API + events | `ReplayCameraModule` | Exposes the link to JS (section 7). | `RemoteLink` |
 | JS screens | `src/app` | Pairing sheet, `/pair`, `/remote`, the "Celular" tile. | module API |
@@ -107,7 +107,7 @@ All user-facing text is Brazilian Portuguese. Texts below are the intended copy.
   4. Fallback: "Não leu? Abra o LANCE no controle, toque em 'Usar este celular como controle' e digite o código:" and the code, big.
   5. "Válido por 1:59" countdown and "Gerar novo código".
   6. "O LANCE precisa estar instalado no celular controle."
-  7. The list of paired remotes with "Remover".
+  7. The list of paired remotes with "Remover". With 4 remotes already paired, the sheet says "Limite de 4 controles. Remova um para parear outro." and offers no new code.
 
 ### 6.2 Remote phone
 
@@ -168,9 +168,8 @@ Core (`swift test`, run on a Mac):
 - `PairingOffer`: valid proof inside the window; expired; wrong proof counts an attempt; lock after 5; new offer resets; code and secret differ.
 - `RemoteProof`: reconnect proof accepted; tampered, wrong key, wrong id and out-of-window timestamp rejected.
 - `TrustedPeers`: add, replace on re-pair, remove, lookup, the limit of 4.
-- `RemoteLinkModel`: searching, connected, recording, stale after 12 s, recovery, denied.
 
-JavaScript (the repo's existing test runner, native module mocked): `TriggerSource` and label for `phone`; the "Celular" tile statuses; `/pair` parameter parsing (valid,
+JavaScript (the repo's existing test runner, native module mocked): `remoteScreen` (searching, waiting, recording, stale after 12 s, recovery, denied); `TriggerSource` and label for `phone`; the "Celular" tile statuses; `/pair` parameter parsing (valid,
 expired, malformed link); `/remote` states and button enabled only while recording; the pairing sheet contains the Camera-app
 instruction text of section 6.1 and the remote's no-pair screen contains the one of section 6.2.
 

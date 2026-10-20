@@ -16,7 +16,7 @@ import {
 } from '../../modules/replay-camera';
 
 const bufferDir = new Directory(Paths.cache, 'replay-buffer');
-const EMPTY_COUNTS: Record<TriggerSource, number> = { screen: 0, gesture: 0, remote: 0, watch: 0, voice: 0 };
+const EMPTY_COUNTS: Record<TriggerSource, number> = { screen: 0, gesture: 0, remote: 0, watch: 0, voice: 0, phone: 0 };
 
 function bufferMb(): number {
   try {
@@ -154,7 +154,7 @@ export default function SpikeScreen() {
         </Text>
         <Text style={styles.stat}>
           salvos: tela {counts.screen} · gesto {counts.gesture} · controle {counts.remote} · relógio{' '}
-          {counts.watch} · gatilhos recebidos {received}
+          {counts.watch} · celular {counts.phone} · gatilhos recebidos {received}
         </Text>
         <Text style={styles.stat}>
           temp {thermal}

@@ -38,6 +38,8 @@ final class ReplayEngine {
   private var observers: [NSObjectProtocol] = []
   private(set) var running = false
   let watchPreview = WatchPreview()
+  /// Bigger and quicker pictures for the remote phone's camera view.
+  let remotePreview = WatchPreview(longSide: 480, interval: 0.25, quality: 0.5)
 
   enum Failure: Error { case lowStorage, permission, unavailable(Error), noSession, encoder(Error?) }
 
@@ -45,7 +47,9 @@ final class ReplayEngine {
     capture.onVideo = { [weak self] buffer in
       self?.writer?.appendVideo(buffer)
       self?.gesture.consider(buffer)
-      self?.watchPreview.offer(buffer) { [weak self] in GestureDetector.orientation(for: self?.gesture.currentUpright() ?? .landscapeLeft) }
+      let upright: () -> CGImagePropertyOrientation = { [weak self] in GestureDetector.orientation(for: self?.gesture.currentUpright() ?? .landscapeLeft) }
+      self?.watchPreview.offer(buffer, orientation: upright)
+      self?.remotePreview.offer(buffer, orientation: upright)
     }
     capture.onAudio = { [weak self] buffer in
       self?.writer?.appendAudio(buffer)

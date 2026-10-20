@@ -17,7 +17,12 @@
         "LSApplicationQueriesSchemes": [
           "instagram-stories"
         ],
-        "NSPhotoLibraryAddUsageDescription": "O LANCE salva os clipes que você exportar na sua galeria."
+        "NSPhotoLibraryAddUsageDescription": "O LANCE salva os clipes que você exportar na sua galeria.",
+        "NSLocalNetworkUsageDescription": "O LANCE usa a rede local para conversar com o outro celular que serve de controle.",
+        "NSBonjourServices": [
+          "_lance-remote._tcp",
+          "_lance-remote._udp"
+        ]
       },
       "appleTeamId": "2J67Z98LDX"
     },
@@ -53,7 +58,8 @@
       "expo-video",
       "expo-sharing",
       "@bacons/apple-targets",
-      "./plugins/withPodsDeploymentTarget"
+      "./plugins/withPodsDeploymentTarget",
+      "expo-image"
     ],
     "experiments": {
       "typedRoutes": true,

@@ -21,3 +21,15 @@ test('disabled button does not call onPress and reports disabled', async () => {
   expect(onPress).not.toHaveBeenCalled();
   expect(button).toBeDisabled();
 });
+
+test('loading shows the label, blocks presses and reports busy', async () => {
+  const onPress = jest.fn();
+  await render(<Button label="Conectando…" onPress={onPress} loading />);
+
+  const button = screen.getByRole('button', { name: 'Conectando…' });
+  await fireEvent.press(button);
+
+  expect(onPress).not.toHaveBeenCalled();
+  expect(button).toBeDisabled();
+  expect(button.props.accessibilityState).toMatchObject({ busy: true });
+});

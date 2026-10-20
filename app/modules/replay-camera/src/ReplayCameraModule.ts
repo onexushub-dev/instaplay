@@ -5,6 +5,8 @@ import type {
   ExportedClip,
   ReplayCameraModuleEvents,
   SaveClipOptions,
+  RemotePairing,
+  RemotePeer,
   SavedClip,
   SessionOptions,
   WatchStatus,
@@ -28,6 +30,28 @@ declare class ReplayCameraModule extends NativeModule<ReplayCameraModuleEvents> 
   getWatchStatus(): WatchStatus;
   watchSync(recording: boolean, clipCount: number, startedAt: number | null): void;
   watchSignal(saved: boolean): void;
+  // Second iPhone as a remote (iOS only: these are missing on Android).
+  remoteHostStart?(): void;
+  remoteHostStop?(): void;
+  remoteHostBeginPairing?(): RemotePairing | null;
+  remoteHostEndPairing?(): void;
+  remoteHostPeers?(): RemotePeer[];
+  remoteHostRemove?(id: string): void;
+  remoteHostControllers?(): number;
+  remoteSync?(recording: boolean, clipCount: number, startedAt: number | null): void;
+  remoteSignal?(saved: boolean): void;
+  remoteControllerStart?(): void;
+  remoteControllerStop?(): void;
+  remoteControllerHost?(): RemotePeer | null;
+  remoteControllerForget?(): void;
+  remoteControllerPairWithLink?(hostId: string, secret: string, hostName: string): void;
+  remoteControllerPairWithCode?(code: string): void;
+  remoteControllerSave?(): void;
+  remoteControllerEndRecording?(): void;
+  remoteControllerStartRecording?(): void;
+  remoteControllerPreview?(on: boolean): void;
+  remoteDeviceName?(): string;
+  remoteSetDeviceName?(name: string): void;
   shareToInstagramStory(videoPath: string, metaAppId: string): Promise<'opened' | 'unavailable'>;
 }
 

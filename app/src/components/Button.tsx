@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { colors, fonts, radius } from '../theme/tokens';
 
@@ -8,25 +8,28 @@ type Props = {
   onPress: () => void;
   variant?: 'primary' | 'secondary';
   disabled?: boolean;
+  /** Shows a spinner and blocks presses while something is being done; the label should then say what ("Conectando…"). */
+  loading?: boolean;
   icon?: ReactNode;
 };
 
-export function Button({ label, onPress, variant = 'primary', disabled = false, icon }: Props) {
+export function Button({ label, onPress, variant = 'primary', disabled = false, loading = false, icon }: Props) {
   const primary = variant === 'primary';
+  const blocked = disabled || loading;
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
-      accessibilityState={{ disabled }}
-      disabled={disabled}
+      accessibilityState={{ disabled: blocked, busy: loading }}
+      disabled={blocked}
       onPress={onPress}
       style={({ pressed }) => [
         styles.base,
         primary ? styles.primary : styles.secondary,
-        (pressed || disabled) && { opacity: disabled ? 0.4 : 0.85 },
+        (pressed || blocked) && { opacity: disabled ? 0.4 : 0.85 },
       ]}>
       <View style={styles.row}>
-        {icon}
+        {loading ? <ActivityIndicator color={primary ? colors.onAccent : colors.text} /> : icon}
         <Text
           numberOfLines={1}
           adjustsFontSizeToFit

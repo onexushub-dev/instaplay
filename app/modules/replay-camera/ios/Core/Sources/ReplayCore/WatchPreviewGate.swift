@@ -8,9 +8,11 @@ public enum WatchPreviewGate {
   public static let askTimeout = 2.5
 
   /// `lastAsk` is nil until the watch has asked at all. Times are seconds on one clock.
-  public static func shouldEncode(now: Double, lastFrame: Double, lastAsk: Double?, busy: Bool) -> Bool {
-    guard let lastAsk, now - lastAsk < askTimeout, !busy else { return false }
-    return now - lastFrame >= frameInterval
+  /// `interval` and `timeout` default to the watch's; the remote phone's view asks for more pictures a second.
+  public static func shouldEncode(now: Double, lastFrame: Double, lastAsk: Double?, busy: Bool,
+                                  interval: Double = frameInterval, timeout: Double = askTimeout) -> Bool {
+    guard let lastAsk, now - lastAsk < timeout, !busy else { return false }
+    return now - lastFrame >= interval
   }
 
   /// The picture's size: `longSide` on the long edge, same shape, never bigger than the source.
