@@ -451,3 +451,19 @@ test('the phone waits for its remotes while the setup screen is in front, and st
   await view.unmount();
   expect(camera().remoteHostStop).toHaveBeenCalledTimes(1);
 });
+
+test('the entry to the remote is offered only where the phone remote is supported', async () => {
+  session({});
+  await render(<Setup />);
+  await openSettings();
+  expect(screen.queryByRole('button', { name: 'Usar este celular como controle' })).toBeNull();
+});
+
+test('"Usar este celular como controle" opens the remote screen', async () => {
+  enableRemote([]);
+  session({});
+  await render(<Setup />);
+  await openSettings();
+  await fireEvent.press(screen.getByRole('button', { name: 'Usar este celular como controle' }));
+  expect(router.push).toHaveBeenCalledWith('/remote');
+});

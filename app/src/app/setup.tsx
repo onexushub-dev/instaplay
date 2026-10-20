@@ -322,6 +322,17 @@ export default function Setup() {
             />
           </View>
         </View>
+
+        {remoteSupported ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Usar este celular como controle"
+            hitSlop={8}
+            onPress={() => router.push('/remote')}
+            style={styles.remoteEntry}>
+            <Text style={styles.remoteEntryText}>Usar este celular como controle</Text>
+          </Pressable>
+        ) : null}
       </>
     );
   }
@@ -397,6 +408,8 @@ const styles = StyleSheet.create({
     color: colors.muted,
   },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  remoteEntry: { minHeight: 44, justifyContent: 'center', alignItems: 'center' },
+  remoteEntryText: { fontFamily: fonts.bodySemi, fontSize: 14, color: colors.soft, textDecorationLine: 'underline' },
   grid: { gap: 8 },
   gridRow: { flexDirection: 'row', gap: 8 },
   error: { fontFamily: fonts.bodySemi, fontSize: 14, color: colors.warning },
