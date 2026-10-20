@@ -1,6 +1,7 @@
 import { StyleSheet, Text, View } from 'react-native';
 
 import type { TriggerSource } from '../data/schema';
+import { useT } from '../i18n/useT';
 import { colors, fonts } from '../theme/tokens';
 import { Button } from './Button';
 import { CheckIcon } from './icons';
@@ -13,6 +14,7 @@ type Props = { number: number; source: TriggerSource; onUndo: () => void };
  * so the camera picture stays visible and the rest of the screen still saves on tap.
  */
 export function SavedOverlay({ number, source, onUndo }: Props) {
+  const { t, locale } = useT();
   return (
     <View pointerEvents="box-none" style={styles.frame}>
       <View style={styles.card} accessibilityLiveRegion="assertive">
@@ -21,12 +23,12 @@ export function SavedOverlay({ number, source, onUndo }: Props) {
             <CheckIcon size={28} />
           </View>
           <View style={styles.text}>
-            <Text style={styles.title}>{`CLIPE #${number} SALVO`}</Text>
-            <Text style={styles.via}>{`via ${sourceLabel(source)} · últimos 30s`}</Text>
+            <Text style={styles.title}>{t('recording.savedTitle', { number })}</Text>
+            <Text style={styles.via}>{t('recording.savedVia', { source: sourceLabel(source, locale) })}</Text>
           </View>
         </View>
-        <Text style={styles.hint}>Dá para ajustar o corte depois, dentro dos 60s guardados.</Text>
-        <Button label="Desfazer" variant="secondary" onPress={onUndo} />
+        <Text style={styles.hint}>{t('recording.savedHint')}</Text>
+        <Button label={t('recording.undo')} variant="secondary" onPress={onUndo} />
       </View>
     </View>
   );

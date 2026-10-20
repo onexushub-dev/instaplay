@@ -4,6 +4,8 @@ import { Alert, BackHandler, Pressable, StyleSheet, Text, View } from 'react-nat
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { addReplayListener } from '../../modules/replay-camera';
+import { VOICE_WORDS } from '../i18n';
+import { useT } from '../i18n/useT';
 import { useSession } from '../session/SessionContext';
 import { colors, fonts } from '../theme/tokens';
 import { Button } from './Button';
@@ -33,6 +35,7 @@ type Props = {
 
 export function RecordingPanel({ bufferSeconds = 60, gesture = true, voice = false }: Props) {
   const { state, trigger, undoLast, stop } = useSession();
+  const { t, locale } = useT();
   const [now, setNow] = useState(() => Date.now());
   const [dismissed, setDismissed] = useState<string>();
   const last = state.lastSaved;
@@ -64,9 +67,9 @@ export function RecordingPanel({ bufferSeconds = 60, gesture = true, voice = fal
   // Android back = end the game, after a confirmation.
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      Alert.alert('Encerrar a gravação?', undefined, [
-        { text: 'Continuar', style: 'cancel' },
-        { text: 'Encerrar', style: 'destructive', onPress: () => void end() },
+      Alert.alert(t('recording.endConfirm'), undefined, [
+        { text: t('recording.keepGoing'), style: 'cancel' },
+        { text: t('recording.end'), style: 'destructive', onPress: () => void end() },
       ]);
       return true;
     });
@@ -74,30 +77,30 @@ export function RecordingPanel({ bufferSeconds = 60, gesture = true, voice = fal
   });
 
   if (state.phase === 'ended' && state.error) {
-    const reason = state.thermalStop ? 'celular muito quente' : 'erro na câmera';
+    const reason = t(state.thermalStop ? 'recording.reasonHot' : 'recording.reasonError');
     return (
       <SafeAreaView style={styles.stopped}>
-        <Text style={styles.stoppedText}>{`A gravação parou: ${reason}`}</Text>
-        <Button label="Ver clipes" onPress={() => router.replace(`/session/${state.sessionId}`)} />
+        <Text style={styles.stoppedText}>{t('recording.stopped', { reason })}</Text>
+        <Button label={t('recording.seeClips')} onPress={() => router.replace(`/session/${state.sessionId}`)} />
       </SafeAreaView>
     );
   }
 
   const showOverlay = last !== undefined && dismissed !== last.clipId;
   const hintSub = [
-    `Últimos ${bufferSeconds}s prontos`,
-    ...(voice ? ['ou diga “salvar”'] : []),
-    ...(gesture ? ['ou acene com os braços'] : []),
-    'ou use o controle',
+    t('recording.lastReady', { seconds: bufferSeconds }),
+    ...(voice ? [t('recording.orSay', { word: VOICE_WORDS[locale][0] })] : []),
+    ...(gesture ? [t('recording.orWave')] : []),
+    t('recording.orRemote'),
   ].join(' · ');
-  const clips = `${state.clipCount} ${state.clipCount === 1 ? 'clipe' : 'clipes'}`;
+  const clips = t('summary.clips', { count: state.clipCount });
 
   return (
     <View style={StyleSheet.absoluteFill}>
       {/* The whole screen is the save button; nothing covers the picture. */}
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel="Toque em qualquer lugar para salvar o clipe"
+        accessibilityLabel={t('recording.tapAnywhere')}
         onPress={() => trigger('screen')}
         style={StyleSheet.absoluteFill}
       />
@@ -106,7 +109,7 @@ export function RecordingPanel({ bufferSeconds = 60, gesture = true, voice = fal
         <View pointerEvents="none" style={styles.topRow}>
           <View style={styles.pill}>
             <View style={styles.recDot} />
-            <Text style={styles.pillLabel}>Gravando</Text>
+            <Text style={styles.pillLabel}>{t('recording.recording')}</Text>
             <Text style={styles.elapsed}>{clock(now - (state.startedAt ?? now))}</Text>
           </View>
           <View style={styles.pill}>
@@ -117,14 +120,14 @@ export function RecordingPanel({ bufferSeconds = 60, gesture = true, voice = fal
         {state.thermal.degraded ? (
           <View pointerEvents="none" style={styles.banner}>
             <Text style={styles.bannerText}>
-              <Text style={styles.bold}>Celular quente. </Text>
-              Passamos para 720p/30 para não parar a gravação. Coloque na sombra se puder.
+              <Text style={styles.bold}>{t('recording.hotTitle')}</Text>
+              {t('recording.hotBody')}
             </Text>
           </View>
         ) : null}
         {state.paused ? (
           <View pointerEvents="none" style={styles.banner}>
-            <Text style={styles.bannerText}>Gravação pausada. Volte para o app para continuar.</Text>
+            <Text style={styles.bannerText}>{t('recording.paused')}</Text>
           </View>
         ) : null}
 
@@ -132,7 +135,7 @@ export function RecordingPanel({ bufferSeconds = 60, gesture = true, voice = fal
           <View pointerEvents="none" style={styles.hintCard}>
             <TapIcon color={colors.accent} size={28} />
             <View style={styles.hintText}>
-              <Text style={styles.hint}>Toque na tela para salvar o clipe</Text>
+              <Text style={styles.hint}>{t('recording.tapHint')}</Text>
               <Text style={styles.hintSub}>{hintSub}</Text>
             </View>
             <View style={styles.icons}>
@@ -143,8 +146,8 @@ export function RecordingPanel({ bufferSeconds = 60, gesture = true, voice = fal
             </View>
           </View>
           <HoldButton
-            label="Segure para encerrar a gravação"
-            holdingLabel="Continue segurando…"
+            label={t('recording.holdToEnd')}
+            holdingLabel={t('recording.keepHolding')}
             onComplete={() => void end()}
           />
         </View>
