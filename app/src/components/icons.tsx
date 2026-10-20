@@ -39,6 +39,38 @@ export function ShareIcon({ color = colors.text, size = 22 }: IconProps) {
   );
 }
 
+export function DownloadIcon({ color = colors.text, size = 22 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" accessibilityElementsHidden>
+      <Path d="M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4M8 10l4 4 4-4M12 3v11" {...stroke(color)} />
+    </Svg>
+  );
+}
+
+export function TrashIcon({ color = colors.text, size = 22 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" accessibilityElementsHidden>
+      <Path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6" {...stroke(color)} />
+    </Svg>
+  );
+}
+
+export function PlayIcon({ color = colors.text, size = 22 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" accessibilityElementsHidden>
+      <Path d="M8 5l11 7-11 7z" fill={color} />
+    </Svg>
+  );
+}
+
+export function PauseIcon({ color = colors.text, size = 22 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" accessibilityElementsHidden>
+      <Path d="M8 5v14M16 5v14" {...stroke(color)} strokeWidth={3} />
+    </Svg>
+  );
+}
+
 export function ShieldIcon({ color = colors.soft, size = 20 }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" accessibilityElementsHidden>

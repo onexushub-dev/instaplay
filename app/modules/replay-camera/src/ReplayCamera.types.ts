@@ -49,8 +49,11 @@ export type ExportClipOptions = {
   clipPath: string;
   startMs: number;
   endMs: number;
-  speed: 1 | 0.5;
+  /** 0.5, 1, 1.5 or 2. Anything but 1 plays without sound. */
+  speed: number;
   muted: boolean;
+  /** The visible part of the video (0..1 of its size) after a zoom; omit for the whole video. iOS only for now. */
+  crop?: { x: number; y: number; width: number; height: number };
   width: number;
   height: number;
   /** Full-frame PNG drawn over the video (the Story template bands). */

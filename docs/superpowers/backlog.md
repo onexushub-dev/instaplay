@@ -60,3 +60,6 @@ Itens adiados nas revisões finais. Nada aqui bloqueia o uso, mas vale resolver 
 - Rodar o app do relógio pelo Xcode reinstala o app do iPhone em Debug: colocar a configuração Run do esquema "LANCE Watch" em Release.
 - Quando o iPhone mata o app com o relógio em alcance, um toque no relógio ainda tenta abrir o app em segundo plano (a mensagem pode chegar antes do módulo estar pronto); hoje a tela do relógio vira "Sem conexão" em até 12 s.
 - Câmera ocupada por outro app (ligação de vídeo no Meet/FaceTime): o iOS devolve -11800 e a tela só diz "A gravação parou: erro na câmera". Mostrar "A câmera está em uso por outro app. Encerre a ligação e tente de novo." quando o erro vier logo ao abrir.
+
+## Editor unificado (zoom e velocidades)
+- Android: a exportação ignora `crop` (zoom da prévia não vai para o arquivo). Fazer com `Crop` do Media3 na etapa do Android.

@@ -42,8 +42,8 @@ export type Clip = {
   path: string;
   durationMs: number;
   trim: { startMs: number; endMs: number };
-  /** Editor choices; absent = no slow motion, with sound. */
-  edit?: { slowmo: boolean; muted: boolean };
+  /** Editor choices; absent = normal speed, with sound, no zoom. `slowmo` is how clips saved before speeds were stored. */
+  edit?: { slowmo?: boolean; speed?: 0.5 | 1 | 1.5 | 2; muted: boolean; zoom?: { scale: number; cx: number; cy: number } };
   /** Optional name the player gives the clip (like a recording's name). */
   name?: string;
 };

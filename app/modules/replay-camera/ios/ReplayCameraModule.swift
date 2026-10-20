@@ -36,12 +36,20 @@ final class ReplayException: Exception, @unchecked Sendable {
   }
 }
 
+struct CropRect: Record {
+  @Field var x: Double = 0
+  @Field var y: Double = 0
+  @Field var width: Double = 1
+  @Field var height: Double = 1
+}
+
 struct ExportClipOptions: Record {
   @Field var clipPath: String = ""
   @Field var startMs: Double = 0
   @Field var endMs: Double = 0
   @Field var speed: Double = 1
   @Field var muted: Bool = false
+  @Field var crop: CropRect?
   @Field var width: Int = 1080
   @Field var height: Int = 1920
   @Field var overlayPngPath: String?
@@ -96,6 +104,7 @@ public class ReplayCameraModule: Module {
       do {
         let result = try await ClipExporter.export(.init(
           clipPath: o.clipPath, startMs: o.startMs, endMs: o.endMs, speed: o.speed, muted: o.muted,
+          crop: o.crop.map { CGRect(x: $0.x, y: $0.y, width: $0.width, height: $0.height) },
           width: o.width, height: o.height, overlayPngPath: o.overlayPngPath, background: UIColor(hex: o.background)))
         return ["path": result.path, "durationMs": result.durationMs]
       } catch {

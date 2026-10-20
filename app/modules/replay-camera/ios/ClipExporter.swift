@@ -1,8 +1,8 @@
 import AVFoundation
 import UIKit
 
-/// Renders a Story/share video from a saved clip: the cut, optional half speed and mute, the whole video
-/// aspect-fit in a `width`×`height` frame, and a full-frame PNG overlay (the template bands) on top.
+/// Renders a share video from a saved clip: the cut, any speed (silent unless 1x) and mute, the video (or the part of it
+/// the player zoomed to) aspect-fit in a `width`×`height` frame, and a full-frame PNG overlay (the bands and mark) on top.
 enum ClipExporter {
   struct Options {
     let clipPath: String
@@ -10,6 +10,8 @@ enum ClipExporter {
     let endMs: Double
     let speed: Double
     let muted: Bool
+    /// The visible part of the video, 0..1 of its (rotated) size; nil = all of it.
+    let crop: CGRect?
     let width: Int
     let height: Int
     let overlayPngPath: String?
@@ -34,26 +36,30 @@ enum ClipExporter {
     guard let video = composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid)
     else { throw Failure.noVideo }
     try video.insertTimeRange(range, of: source, at: .zero)
-    let slow = o.speed < 1
-    if !o.muted, !slow, let audio = try await asset.loadTracks(withMediaType: .audio).first,
+    let changed = o.speed != 1
+    if !o.muted, !changed, let audio = try await asset.loadTracks(withMediaType: .audio).first,
        let track = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid)
     {
       try track.insertTimeRange(range, of: audio, at: .zero)
     }
-    if slow {
+    if changed {
       let cut = CMTimeRange(start: .zero, duration: range.duration)
       composition.scaleTimeRange(cut, toDuration: CMTimeMultiplyByFloat64(range.duration, multiplier: 1 / o.speed))
     }
 
-    // Place the (possibly rotated) video in the middle of the frame, whole, never cropped.
+    // Place the (possibly rotated) video in the middle of the frame. A zoom shows only `crop` of it, scaled to fill the
+    // same spot; whatever spills past that spot is hidden by the overlay's opaque bands and the frame's edges.
     let render = CGSize(width: o.width, height: o.height)
     let transform = try await source.load(.preferredTransform)
     let natural = try await source.load(.naturalSize)
     let rotated = CGRect(origin: .zero, size: natural).applying(transform)
     let target = FitRect.fit(rotated.size, into: render)
-    let scale = target.width / rotated.width
+    let visible = o.crop.map {
+      CGRect(x: $0.minX * rotated.width, y: $0.minY * rotated.height, width: $0.width * rotated.width, height: $0.height * rotated.height)
+    } ?? CGRect(origin: .zero, size: rotated.size)
+    let scale = target.width / visible.width
     let placement = transform
-      .concatenating(CGAffineTransform(translationX: -rotated.minX, y: -rotated.minY))
+      .concatenating(CGAffineTransform(translationX: -rotated.minX - visible.minX, y: -rotated.minY - visible.minY))
       .concatenating(CGAffineTransform(scaleX: scale, y: scale))
       .concatenating(CGAffineTransform(translationX: target.minX, y: target.minY))
 

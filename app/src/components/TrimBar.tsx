@@ -10,7 +10,8 @@ type Props = {
   trim: Cut;
   /** Longest cut allowed: the mode's buffer (60s court, 120s gym). */
   maxMs?: number;
-  onChange: (trim: Cut) => void;
+  /** `moved`: which edge the player is dragging, so the preview can follow it. */
+  onChange: (trim: Cut, moved: 'start' | 'end') => void;
   onCommit: (trim: Cut) => void;
 };
 
@@ -38,9 +39,12 @@ export function TrimBar({ durationMs, trim, maxMs, onChange, onCommit }: Props) 
         const { width: w, durationMs: d } = latest.current;
         if (!w) return;
         const delta = (g.dx / w) * d;
-        const next = moved === 'start' ? { ...origin, startMs: origin.startMs + delta } : { ...origin, endMs: origin.endMs + delta };
+        const next =
+          moved === 'start'
+            ? { ...origin, startMs: origin.startMs + delta }
+            : { ...origin, endMs: origin.endMs + delta };
         current = clampTrim(next, d, moved, latest.current.maxMs);
-        latest.current.onChange(current);
+        latest.current.onChange(current, moved);
       },
       onPanResponderRelease: () => latest.current.onCommit(current),
       onPanResponderTerminate: () => latest.current.onCommit(current),
@@ -77,7 +81,15 @@ export function TrimBar({ durationMs, trim, maxMs, onChange, onCommit }: Props) 
 
 const styles = StyleSheet.create({
   track: { height: 56, borderRadius: 10, backgroundColor: colors.surface, justifyContent: 'center' },
-  window: { position: 'absolute', top: 0, bottom: 0, borderWidth: 3, borderColor: colors.accent, borderRadius: 10, backgroundColor: 'rgba(214,242,63,0.12)' },
+  window: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    borderWidth: 3,
+    borderColor: colors.accent,
+    borderRadius: 10,
+    backgroundColor: 'rgba(214,242,63,0.12)',
+  },
   handle: { position: 'absolute', top: 0, bottom: 0, width: HANDLE, alignItems: 'center', justifyContent: 'center' },
   grip: { width: 12, height: 32, borderRadius: 4, backgroundColor: colors.accent },
 });
