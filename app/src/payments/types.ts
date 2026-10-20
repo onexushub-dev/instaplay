@@ -8,4 +8,4 @@ export const EMPTY_SNAPSHOT: Snapshot = { proActive: false, passTransactions: []
 
 export const FREE_CLIPS = 5;
 export const PRO_ENTITLEMENT = 'pro';
-export const PASS_PRODUCT_ID = 'lance_game_pass';
+export const PASS_PRODUCT_ID = 'game_pass';

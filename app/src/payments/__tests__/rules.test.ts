@@ -1,7 +1,7 @@
 import { detectPurchase, isClipLocked, shouldLockOnSave, tierFor } from '../rules';
 import { EMPTY_SNAPSHOT, type PassTransaction, type Snapshot } from '../types';
 
-const tx = (id: string, purchasedAt: number): PassTransaction => ({ id, productId: 'lance_game_pass', purchasedAt });
+const tx = (id: string, purchasedAt: number): PassTransaction => ({ id, productId: 'game_pass', purchasedAt });
 const snap = (proActive: boolean, passTransactions: PassTransaction[] = []): Snapshot => ({ proActive, passTransactions });
 
 test('tierFor: Pro beats pass, pass beats free', () => {

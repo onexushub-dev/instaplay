@@ -2,7 +2,7 @@ import { createFakeClient } from '../fakeClient';
 import { createPaymentsStore } from '../store';
 import { EMPTY_SNAPSHOT, type Snapshot } from '../types';
 
-const tx = (id: string, purchasedAt = 1) => ({ id, productId: 'lance_game_pass', purchasedAt });
+const tx = (id: string, purchasedAt = 1) => ({ id, productId: 'game_pass', purchasedAt });
 const snap = (over: Partial<Snapshot> = {}): Snapshot => ({ ...EMPTY_SNAPSHOT, ...over });
 
 function memRepo(sessions: Record<string, { passTransactionId?: string }> = { s1: {}, s2: {} }) {
