@@ -47,3 +47,13 @@ test('dragging moves the window the opposite way, scaled by the zoom', () => {
 test('dragging does nothing without zoom', () => {
   expect(panZoom({ scale: 1, cx: 0.5, cy: 0.5 }, 0.3, 0.3)).toEqual({ scale: 1, cx: 0.5, cy: 0.5 });
 });
+
+test('pinching keeps the point under the fingers where it is', () => {
+  // fingers at the right edge of the picture: the right edge stays under them while zooming in
+  const zoomed = pinchZoom({ scale: 1, cx: 0.5, cy: 0.5 }, 2, { x: 1, y: 0.5 });
+  expect(zoomed).toEqual({ scale: 2, cx: 0.75, cy: 0.5 });
+});
+
+test('pinching with fingers in the middle zooms around the centre', () => {
+  expect(pinchZoom({ scale: 1, cx: 0.3, cy: 0.6 }, 2, { x: 0.5, y: 0.5 }).scale).toBe(2);
+});

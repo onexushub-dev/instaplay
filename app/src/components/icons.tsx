@@ -71,6 +71,22 @@ export function PauseIcon({ color = colors.text, size = 22 }: IconProps) {
   );
 }
 
+export function ExpandIcon({ color = colors.text, size = 20 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" accessibilityElementsHidden>
+      <Path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" {...stroke(color)} />
+    </Svg>
+  );
+}
+
+export function CloseIcon({ color = colors.text, size = 20 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" accessibilityElementsHidden>
+      <Path d="M6 6l12 12M18 6L6 18" {...stroke(color)} strokeWidth={2} />
+    </Svg>
+  );
+}
+
 export function ShieldIcon({ color = colors.soft, size = 20 }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" accessibilityElementsHidden>

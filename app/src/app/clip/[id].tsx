@@ -2,25 +2,44 @@ import { Directory, File, Paths } from 'expo-file-system';
 import { Asset, requestPermissionsAsync } from 'expo-media-library';
 import { router, useLocalSearchParams } from 'expo-router';
 import { shareAsync } from 'expo-sharing';
-import { useVideoPlayer, VideoView } from 'expo-video';
+import { useVideoPlayer } from 'expo-video';
 import { type ComponentRef, type ReactNode, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { Alert, Image, PixelRatio, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import {
+  Alert,
+  Image,
+  PixelRatio,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { createThumbnail, exportClip } from '../../../modules/replay-camera';
 import { seconds, timeOfDay } from '../../components/format';
-import { BackIcon, DownloadIcon, PauseIcon, PlayIcon, ShareIcon, TrashIcon } from '../../components/icons';
+import {
+  BackIcon,
+  CloseIcon,
+  DownloadIcon,
+  ExpandIcon,
+  PauseIcon,
+  PlayIcon,
+  ShareIcon,
+  TrashIcon,
+} from '../../components/icons';
 import { TrimBar } from '../../components/TrimBar';
 import { removeFile, repo } from '../../data/mmkv';
 import { MAX_CLIP_NAME } from '../../data/schema';
 import { effectiveSettings } from '../../modes/registry';
 import { captureOverlay } from '../../share/captureOverlay';
-import { NO_ZOOM, outputMs, readEdit, SPEEDS, type Zoom } from '../../share/editing';
+import { outputMs, readEdit, SPEEDS } from '../../share/editing';
 import { useEntitlement } from '../../share/entitlement';
 import { exportOptions } from '../../share/exportOptions';
 import { frameLayout } from '../../share/layout';
 import { ShareOverlay } from '../../share/ShareOverlay';
-import { useZoomGesture } from '../../share/useZoomGesture';
+import { ZoomableVideo } from '../../share/ZoomableVideo';
 import { colors, fonts } from '../../theme/tokens';
 
 const PREPARE_FAILED = 'Não foi possível preparar o vídeo. Tente de novo.';
@@ -79,7 +98,10 @@ export default function ClipEditor() {
 
   const [trim, setTrim] = useState(() => clip?.trim ?? { startMs: 0, endMs: 0 });
   const edit = readEdit(clip?.edit);
-  const [liveZoom, setLiveZoom] = useState<Zoom>(edit.zoom ?? NO_ZOOM);
+  // Bumped to start the zoomed video over from the saved zoom (reset, or switching to/from full screen).
+  const [zoomKey, setZoomKey] = useState(0);
+  const [full, setFull] = useState(false);
+  const window = useWindowDimensions();
   const [name, setName] = useState(() => clip?.name ?? '');
   const [playing, setPlayingState] = useState(true);
   const scrubbing = useRef(false);
@@ -140,14 +162,6 @@ export default function ClipEditor() {
     return () => sub.remove();
   }, [player, trim, edit.speed, edit.muted]);
 
-  const zoom = useZoomGesture({
-    zoom: liveZoom,
-    size: { width: layout.video.width, height: layout.video.height },
-    onChange: setLiveZoom,
-    onCommit: (z) => setEdit({ zoom: z.scale > 1 ? z : undefined }),
-    onTap: () => togglePlay(),
-  });
-
   if (!clip || !session || !options) {
     return (
       <SafeAreaView style={styles.root}>
@@ -162,6 +176,15 @@ export default function ClipEditor() {
   function setEdit(patch: Partial<ReturnType<typeof readEdit>>) {
     const next = { ...edit, ...patch };
     repo.updateClip(id, { edit: { speed: next.speed, muted: next.muted, ...(next.zoom ? { zoom: next.zoom } : {}) } });
+  }
+
+  function commitZoom(z: { scale: number; cx: number; cy: number }) {
+    setEdit({ zoom: z.scale > 1 ? z : undefined });
+  }
+
+  function openFull(on: boolean) {
+    setFull(on);
+    setZoomKey((k) => k + 1);
   }
 
   function togglePlay() {
@@ -252,7 +275,7 @@ export default function ClipEditor() {
   const previewHeight = Math.min(area.height, (area.width * frame.height) / frame.width);
   const scale = previewHeight / frame.height;
   const pr = PixelRatio.get();
-  const zoomed = liveZoom.scale > 1;
+  const zoomed = (edit.zoom?.scale ?? 1) > 1;
   const videoBox = {
     left: layout.video.x * scale,
     top: layout.video.y * scale,
@@ -260,6 +283,50 @@ export default function ClipEditor() {
     height: layout.video.height * scale,
   };
   const busyActions = busy || !sizeKnown;
+
+  if (full) {
+    // The whole screen shows the raw video, so a pinch has room; the zoom is the same one the export uses.
+    const fit = Math.min(window.width / videoSize.width, window.height / videoSize.height);
+    const w = videoSize.width * fit;
+    const h = videoSize.height * fit;
+    return (
+      <View style={styles.full}>
+        <ZoomableVideo
+          key={zoomKey}
+          player={player}
+          area={window}
+          box={{ left: (window.width - w) / 2, top: (window.height - h) / 2, width: w, height: h }}
+          zoom={edit.zoom}
+          onCommit={commitZoom}
+          onTap={togglePlay}
+        />
+        {!playing ? (
+          <View pointerEvents="none" style={styles.pausedBadge}>
+            <PlayIcon color={colors.text} size={36} />
+          </View>
+        ) : null}
+        <SafeAreaView pointerEvents="box-none" style={styles.fullTop}>
+          {zoomed ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Voltar zoom para 1x"
+              onPress={() => {
+                setEdit({ zoom: undefined });
+                setZoomKey((k) => k + 1);
+              }}
+              style={styles.zoomBadge}>
+              <Text style={styles.zoomText}>{`${edit.zoom!.scale.toFixed(1)}x  ✕`}</Text>
+            </Pressable>
+          ) : (
+            <View />
+          )}
+          <IconButton label="Sair da tela cheia" onPress={() => openFull(false)}>
+            <CloseIcon />
+          </IconButton>
+        </SafeAreaView>
+      </View>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.root}>
@@ -293,23 +360,15 @@ export default function ClipEditor() {
 
       <View style={styles.area} onLayout={(e) => setArea(e.nativeEvent.layout)}>
         <View style={[styles.preview, { width: frame.width * scale, height: previewHeight }]}>
-          <View {...zoom} accessibilityLabel="Vídeo" style={[styles.videoBox, videoBox]}>
-            <VideoView
-              player={player}
-              contentFit="contain"
-              nativeControls={false}
-              style={[
-                StyleSheet.absoluteFill,
-                {
-                  transform: [
-                    { translateX: (0.5 - liveZoom.cx) * videoBox.width * liveZoom.scale },
-                    { translateY: (0.5 - liveZoom.cy) * videoBox.height * liveZoom.scale },
-                    { scale: liveZoom.scale },
-                  ],
-                },
-              ]}
-            />
-          </View>
+          <ZoomableVideo
+            key={zoomKey}
+            player={player}
+            area={{ width: frame.width * scale, height: previewHeight }}
+            box={videoBox}
+            zoom={edit.zoom}
+            onCommit={commitZoom}
+            onTap={togglePlay}
+          />
           <View pointerEvents="none" style={StyleSheet.absoluteFill}>
             <ShareOverlay frame={frame} layout={layout} scale={scale} />
           </View>
@@ -323,13 +382,20 @@ export default function ClipEditor() {
               accessibilityRole="button"
               accessibilityLabel="Voltar zoom para 1x"
               onPress={() => {
-                setLiveZoom(NO_ZOOM);
                 setEdit({ zoom: undefined });
+                setZoomKey((k) => k + 1);
               }}
               style={styles.zoomBadge}>
-              <Text style={styles.zoomText}>{`${liveZoom.scale.toFixed(1)}x  ✕`}</Text>
+              <Text style={styles.zoomText}>{`${edit.zoom!.scale.toFixed(1)}x  ✕`}</Text>
             </Pressable>
           ) : null}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Tela cheia"
+            onPress={() => openFull(true)}
+            style={styles.fullButton}>
+            <ExpandIcon />
+          </Pressable>
         </View>
       </View>
 
@@ -452,7 +518,27 @@ const styles = StyleSheet.create({
   },
   area: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   preview: { borderRadius: 16, overflow: 'hidden', backgroundColor: colors.ground },
-  videoBox: { position: 'absolute', overflow: 'hidden' },
+  full: { flex: 1, backgroundColor: '#000' },
+  fullTop: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    padding: 16,
+  },
+  fullButton: {
+    position: 'absolute',
+    right: 10,
+    top: 10,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: 'rgba(15,16,13,0.7)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   pausedBadge: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center' },
   zoomBadge: {
     position: 'absolute',

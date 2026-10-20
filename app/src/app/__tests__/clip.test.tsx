@@ -253,3 +253,21 @@ test('a name typed without closing the keyboard is saved when the player shares'
   await pressAction('Compartilhar');
   expect(repo.renameClip).toHaveBeenCalledWith('c1', 'Match point');
 });
+
+test('full screen shows only the video and a way out, then brings the editor back', async () => {
+  await open();
+  await pressAction('Tela cheia');
+  expect(screen.getByRole('button', { name: 'Sair da tela cheia' })).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'Compartilhar' })).toBeNull();
+  await pressAction('Sair da tela cheia');
+  expect(screen.getByRole('button', { name: 'Compartilhar' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Tela cheia' })).toBeTruthy();
+});
+
+test('a zoomed clip shows its zoom and can go back to 1x', async () => {
+  __setClip({ ...base, edit: { speed: 1, muted: false, zoom: { scale: 2.5, cx: 0.5, cy: 0.5 } } });
+  await open();
+  expect(screen.getByText('2.5x  ✕')).toBeTruthy();
+  await pressAction('Voltar zoom para 1x');
+  expect(repo.updateClip).toHaveBeenLastCalledWith('c1', { edit: { speed: 1, muted: false } });
+});
