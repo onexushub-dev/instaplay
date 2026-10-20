@@ -3,7 +3,7 @@ import CoreImage
 import CoreMotion
 import Vision
 
-/// Samples camera frames at ~4 fps and fires `onGesture` when a player holds both arms up.
+/// Samples camera frames at ~4 fps and fires `onGesture` when a player holds both arms up or waves both hands above the head.
 /// Frame orientation follows the phone's physical position (accelerometer), not the UI, which is portrait-locked.
 ///
 /// Far from the phone a player is only ~100 px tall, too small for body pose on the whole frame. So each
@@ -11,8 +11,12 @@ import Vision
 final class GestureDetector {
   static let sampleInterval = 0.25
   static let maxPeople = 4
+  /// Waving is quick: while somebody has their hands up, sample twice as fast for a couple of seconds.
+  static let armedSampleInterval = 0.125
+  static let armedSeconds = 2.0
   /// When the phone is hot (720p30 mode), sample less and look at fewer people.
   static let hotSampleInterval = 0.5
+  static let hotArmedSampleInterval = 0.25
   static let hotMaxPeople = 2
 
   var onGesture: (() -> Void)?
@@ -22,9 +26,11 @@ final class GestureDetector {
   private let queue = DispatchQueue(label: "replay.gesture", qos: .userInitiated)
   private let motion = CMMotionManager()
   private let tracker = HoldTracker()
+  private let wave = WaveTracker()
   private let lock = NSLock()
   private var _enabled = true
   private var _degraded = false
+  private var _armedUntil = -Double.infinity
   private var busy = false
   private var lastSample = -Double.infinity
   private var upright: DeviceUpright = .landscapeLeft
@@ -62,7 +68,9 @@ final class GestureDetector {
   func consider(_ buffer: CMSampleBuffer) {
     let t = CMSampleBufferGetPresentationTimeStamp(buffer).seconds
     let take: Bool = lock.withLock {
-      let interval = _degraded ? Self.hotSampleInterval : Self.sampleInterval
+      let armed = t < _armedUntil
+      let interval = _degraded ? (armed ? Self.hotArmedSampleInterval : Self.hotSampleInterval)
+                               : (armed ? Self.armedSampleInterval : Self.sampleInterval)
       guard _enabled, !busy, t - lastSample >= interval else { return false }
       busy = true
       lastSample = t
@@ -76,20 +84,26 @@ final class GestureDetector {
     let maxPeople = degraded ? Self.hotMaxPeople : Self.maxPeople
     queue.async {
       defer { self.lock.withLock { self.busy = false } }
-      let poses = Self.poses(in: image, maxPeople: maxPeople)
-      let isUp = poses.contains { ArmsUp.isUp($0) }
-      if self.tracker.update(isX: isUp, at: t) { self.onGesture?() }
+      let sightings = Self.sightings(in: image, maxPeople: maxPeople)
+      let isUp = sightings.contains { ArmsUp.isUp($0.pose) }
+      let raised = sightings.contains { WaveTracker.armsRaised($0.pose) }
+      if raised { self.lock.withLock { self._armedUntil = t + Self.armedSeconds } }
+      let held = self.tracker.update(isX: isUp, at: t)
+      let waved = self.wave.update(sightings, at: t) // both trackers see every sample, so run both before deciding
+      if held || waved { self.onGesture?() }
       self.samples += 1
       if t - self.lastDebug >= 1 {
         self.lastDebug = t
-        self.onDebug?(Self.debugInfo(poses: poses, isUp: isUp, samples: self.samples))
+        self.onDebug?(Self.debugInfo(poses: sightings.map { $0.pose }, isUp: isUp, raised: raised, waved: waved,
+                                     samples: self.samples))
         self.samples = 0
       }
     }
   }
 
   /// Poses in pixel units (y down) of their own crop: ArmsUp only compares lengths within one body.
-  private static func poses(in image: CIImage, maxPeople: Int) -> [Pose] {
+  /// Each comes with where its person was in the frame, so the wave tracker can follow people between samples.
+  private static func sightings(in image: CIImage, maxPeople: Int) -> [Sighting] {
     let people = VNDetectHumanRectanglesRequest()
     people.upperBodyOnly = false
     try? VNImageRequestHandler(ciImage: image).perform([people])
@@ -104,7 +118,11 @@ final class GestureDetector {
       let crop = image.cropped(to: rect).transformed(by: CGAffineTransform(translationX: -rect.minX, y: -rect.minY))
       let request = VNDetectHumanBodyPoseRequest()
       try? VNImageRequestHandler(ciImage: crop).perform([request])
-      return request.results?.first.map { pose(from: $0, size: rect.size) }
+      guard let observation = request.results?.first else { return nil }
+      let extent = image.extent
+      return Sighting(pose: pose(from: observation, size: rect.size),
+                      x: (rect.midX - extent.minX) / extent.width,
+                      y: (rect.midY - extent.minY) / extent.height)
     }
   }
 
@@ -119,8 +137,9 @@ final class GestureDetector {
                 leftShoulder: point(.leftShoulder), rightShoulder: point(.rightShoulder), nose: point(.nose))
   }
 
-  private static func debugInfo(poses: [Pose], isUp: Bool, samples: Int) -> [String: Any] {
-    var info: [String: Any] = ["people": poses.count, "isX": isUp, "orientation": 0, "samples": samples]
+  private static func debugInfo(poses: [Pose], isUp: Bool, raised: Bool, waved: Bool, samples: Int) -> [String: Any] {
+    var info: [String: Any] = ["people": poses.count, "isX": isUp, "raised": raised, "waved": waved,
+                               "orientation": 0, "samples": samples]
     guard let p = poses.first else { return info }
     let points: [(String, Point?)] = [("lw", p.leftWrist), ("rw", p.rightWrist), ("le", p.leftElbow),
                                       ("re", p.rightElbow), ("ls", p.leftShoulder), ("rs", p.rightShoulder),
@@ -130,7 +149,7 @@ final class GestureDetector {
     if let lw = p.leftWrist, let rw = p.rightWrist, let nose = p.nose, let ls = p.leftShoulder, let rs = p.rightShoulder {
       let width = abs(ls.x - rs.x)
       if width > 0 {
-        // How far the lower wrist is above the nose, in shoulder widths (needs > 0.5).
+        // How far the lower wrist is above the nose, in shoulder widths (needs > ArmsUp.minWristRise).
         info["wristGap"] = ((nose.y - max(lw.y, rw.y)) / width * 100).rounded() / 100
       }
     }
