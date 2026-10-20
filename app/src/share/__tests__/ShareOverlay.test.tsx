@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react-native';
 import { StyleSheet } from 'react-native';
 
+import { setLocale } from '../../i18n';
 import { frameLayout } from '../layout';
 import { ShareOverlay } from '../ShareOverlay';
 
@@ -10,6 +11,16 @@ const layout = frameLayout({ width: 1920, height: 1080 }, frame);
 test('every clip carries the app mark, so whoever sees it knows what made it', async () => {
   await render(<ShareOverlay frame={frame} layout={layout} scale={1} />);
   expect(screen.getByText('feito com LANCE')).toBeTruthy();
+});
+
+test('the mark follows the app language', async () => {
+  setLocale('en');
+  try {
+    await render(<ShareOverlay frame={frame} layout={layout} scale={1} />);
+    expect(screen.getByText('made with LANCE')).toBeTruthy();
+  } finally {
+    setLocale('pt-BR');
+  }
 });
 
 test('the mark ignores the system font size, so the export matches the design', async () => {

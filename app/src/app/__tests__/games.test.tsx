@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
 
+import { setLocale } from '../../i18n';
 import Games from '../games';
 
 jest.mock('expo-router', () => ({ router: { push: jest.fn(), back: jest.fn() } }));
@@ -37,4 +38,20 @@ test('empty state', async () => {
   repo.listSessions.mockReturnValue([]);
   await render(<Games />);
   expect(screen.getByText('Nenhuma gravação com clipes ainda.')).toBeTruthy();
+});
+
+test('an English phone sees the list in English', async () => {
+  setLocale('en');
+  try {
+    repo.listSessions.mockReturnValue([
+      { session: { id: 's1', sport: 'futevolei', startedAt: new Date(2026, 9, 17, 18, 40).getTime() }, clips: 1, firstClip: clip },
+    ]);
+    repo.sessionStats.mockReturnValue({ clips: 1, bytes: 1, recordedMs: 74 * 60_000 });
+    await render(<Games />);
+    expect(screen.getByText('MY RECORDINGS')).toBeTruthy();
+    expect(screen.getByText('1 clip · 1h 14m')).toBeTruthy();
+    expect(screen.getByText(/^Footvolley · 10\/17, 6:40\sPM$/)).toBeTruthy();
+  } finally {
+    setLocale('pt-BR');
+  }
 });

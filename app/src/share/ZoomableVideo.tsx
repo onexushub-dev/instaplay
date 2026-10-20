@@ -2,6 +2,7 @@ import { VideoView } from 'expo-video';
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
+import { useT } from '../i18n/useT';
 import { NO_ZOOM, type Rotation, type Zoom } from './editing';
 import { useZoomGesture } from './useZoomGesture';
 
@@ -21,11 +22,12 @@ type Props = {
 
 /** The video with pinch zoom (around the fingers), drag to move it, and tap. Remount it to start again from `zoom`. */
 export function ZoomableVideo({ player, area, box, zoom, rotation, onCommit, onTap }: Props) {
+  const { t } = useT();
   const [live, setLive] = useState<Zoom>(zoom ?? NO_ZOOM);
   const panHandlers = useZoomGesture({ zoom: live, box, onChange: setLive, onCommit, onTap });
 
   return (
-    <View {...panHandlers} accessibilityLabel="Vídeo" style={[styles.area, area]}>
+    <View {...panHandlers} accessibilityLabel={t('clip.video')} style={[styles.area, area]}>
       <View pointerEvents="none" style={[styles.box, box]}>
         <View
           style={[

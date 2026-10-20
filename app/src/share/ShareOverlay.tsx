@@ -2,6 +2,7 @@ import { type ComponentRef, forwardRef } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
+import { useT } from '../i18n/useT';
 import { colors, fonts } from '../theme/tokens';
 import type { Rect as Box } from './layout';
 
@@ -25,6 +26,7 @@ export const ShareOverlay = forwardRef<ComponentRef<typeof View>, Props>(functio
   { frame, layout, scale },
   ref,
 ) {
+  const { t } = useT();
   const s = (n: number) => n * scale;
   const box = (r: Box) => ({
     position: 'absolute' as const,
@@ -64,7 +66,7 @@ export const ShareOverlay = forwardRef<ComponentRef<typeof View>, Props>(functio
         ]}>
         <View style={[styles.dot, { width: s(16), height: s(16), borderRadius: s(8) }]} />
         <Text allowFontScaling={false} style={[styles.markText, { fontSize: s(28) }]}>
-          feito com LANCE
+          {t('share.madeWith')}
         </Text>
       </View>
     </View>

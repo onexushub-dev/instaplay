@@ -34,6 +34,8 @@ import { Playhead } from '../../components/Playhead';
 import { TrimBar } from '../../components/TrimBar';
 import { removeFile, repo } from '../../data/mmkv';
 import { MAX_CLIP_NAME } from '../../data/schema';
+import type { MessageKey } from '../../i18n';
+import { useT } from '../../i18n/useT';
 import { effectiveSettings } from '../../modes/registry';
 import { captureOverlay } from '../../share/captureOverlay';
 import { contentFloor, nextRotation, outputMs, raiseToFloor, readEdit, SPEEDS, turnedSize } from '../../share/editing';
@@ -43,8 +45,6 @@ import { frameLayout } from '../../share/layout';
 import { ShareOverlay } from '../../share/ShareOverlay';
 import { ZoomableVideo } from '../../share/ZoomableVideo';
 import { colors, fonts } from '../../theme/tokens';
-
-const PREPARE_FAILED = 'Não foi possível preparar o vídeo. Tente de novo.';
 
 type Player = ReturnType<typeof useVideoPlayer>;
 
@@ -86,6 +86,7 @@ function clearOldExports() {
  */
 export default function ClipEditor() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const { t, locale } = useT();
   const version = useSyncExternalStore(repo.subscribe, repo.version);
   // eslint-disable-next-line react-hooks/exhaustive-deps -- version is the change signal
   const clip = useMemo(() => repo.getClip(id), [id, version]);
@@ -115,7 +116,8 @@ export default function ClipEditor() {
   // Exports wait for the real shape: a portrait clip exported with the landscape default gets wrong bands.
   const [sizeKnown, setSizeKnown] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [notice, setNotice] = useState<string>();
+  // A key, not a text: it is shown in whatever language is current.
+  const [notice, setNotice] = useState<MessageKey>();
   const exporting = useRef(false);
   const exported = useRef<{ key: string; path: string } | undefined>(undefined);
   const made = useRef<string[]>([]);
@@ -193,10 +195,10 @@ export default function ClipEditor() {
   if (!clip || !session || !options) {
     return (
       <SafeAreaView style={styles.missingRoot}>
-        <IconButton label="Voltar" onPress={() => router.back()}>
+        <IconButton label={t('common.back')} onPress={() => router.back()}>
           <BackIcon />
         </IconButton>
-        <Text style={styles.missing}>Este clipe não está mais no celular.</Text>
+        <Text style={styles.missing}>{t('clip.missing')}</Text>
       </SafeAreaView>
     );
   }
@@ -263,10 +265,10 @@ export default function ClipEditor() {
   };
 
   function confirmDelete() {
-    Alert.alert('Apagar este clipe?', undefined, [
-      { text: 'Cancelar', style: 'cancel' },
+    Alert.alert(t('clip.deleteConfirm'), undefined, [
+      { text: t('common.cancel'), style: 'cancel' },
       {
-        text: 'Apagar',
+        text: t('clip.delete'),
         style: 'destructive',
         onPress: () => {
           removeFile(clip!.path);
@@ -302,7 +304,7 @@ export default function ClipEditor() {
     try {
       await action(await ensureExport());
     } catch {
-      setNotice(PREPARE_FAILED);
+      setNotice('clip.prepareFailed');
     } finally {
       exporting.current = false;
       setBusy(false);
@@ -312,9 +314,9 @@ export default function ClipEditor() {
   const save = () =>
     run(async (path) => {
       const { granted } = await requestPermissionsAsync(true, ['video']);
-      if (!granted) return setNotice('Sem acesso às fotos. Libere em Ajustes.');
+      if (!granted) return setNotice('clip.noPhotos');
       await Asset.create(`file://${path}`);
-      setNotice('Salvo na galeria.');
+      setNotice('clip.savedToPhotos');
     });
 
   const share = () => run((path) => shareAsync(`file://${path}`, { mimeType: 'video/mp4', UTI: 'public.mpeg-4' }));
@@ -358,7 +360,7 @@ export default function ClipEditor() {
           {zoomed ? (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Voltar zoom para 1x"
+              accessibilityLabel={t('clip.resetZoom')}
               onPress={() => {
                 setEdit({ zoom: undefined });
                 setZoomKey((k) => k + 1);
@@ -369,7 +371,7 @@ export default function ClipEditor() {
           ) : (
             <View />
           )}
-          <IconButton label="Sair da tela cheia" onPress={() => openFull(false)}>
+          <IconButton label={t('clip.exitFullScreen')} onPress={() => openFull(false)}>
             <CloseIcon />
           </IconButton>
         </SafeAreaView>
@@ -412,29 +414,29 @@ export default function ClipEditor() {
       {/* Everything below floats over the video, on dark translucent backgrounds so it reads in the sun. */}
       <SafeAreaView edges={['top']} pointerEvents="box-none" style={styles.overTop}>
         <View style={styles.top}>
-          <IconButton label="Voltar" onPress={() => router.back()}>
+          <IconButton label={t('common.back')} onPress={() => router.back()}>
             <BackIcon />
           </IconButton>
           <TextInput
-            accessibilityLabel="Nome do clipe"
+            accessibilityLabel={t('clip.name')}
             value={name}
             onChangeText={setName}
             onSubmitEditing={saveName}
             onBlur={saveName}
-            placeholder={`Clipe #${number} · ${timeOfDay(clip.createdAt)}`}
+            placeholder={t('clip.namePlaceholder', { number, time: timeOfDay(clip.createdAt, locale) })}
             placeholderTextColor={colors.soft}
             maxLength={MAX_CLIP_NAME}
             returnKeyType="done"
             selectTextOnFocus
             style={styles.nameInput}
           />
-          <IconButton label="Apagar clipe" onPress={confirmDelete}>
+          <IconButton label={t('clip.deleteClip')} onPress={confirmDelete}>
             <TrashIcon />
           </IconButton>
-          <IconButton label="Salvar na galeria" disabled={busyActions} onPress={() => void save()}>
+          <IconButton label={t('clip.saveToPhotos')} disabled={busyActions} onPress={() => void save()}>
             <DownloadIcon />
           </IconButton>
-          <IconButton label="Compartilhar" disabled={busyActions} onPress={() => void share()}>
+          <IconButton label={t('clip.share')} disabled={busyActions} onPress={() => void share()}>
             <ShareIcon />
           </IconButton>
         </View>
@@ -442,7 +444,7 @@ export default function ClipEditor() {
           {zoomed ? (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Voltar zoom para 1x"
+              accessibilityLabel={t('clip.resetZoom')}
               onPress={() => {
                 setEdit({ zoom: undefined });
                 setZoomKey((k) => k + 1);
@@ -455,7 +457,7 @@ export default function ClipEditor() {
           )}
           <View style={styles.sideColumn}>
             <IconButton
-              label="Girar vídeo"
+              label={t('clip.rotate')}
               onPress={() => {
                 // A zoom window means something else after a turn, so start from the whole picture again.
                 setEdit({ rotation: nextRotation(edit.rotation), zoom: undefined });
@@ -463,7 +465,7 @@ export default function ClipEditor() {
               }}>
               <RotateIcon />
             </IconButton>
-            <IconButton label="Tela cheia" onPress={() => openFull(true)}>
+            <IconButton label={t('clip.fullScreen')} onPress={() => openFull(true)}>
               <ExpandIcon />
             </IconButton>
           </View>
@@ -473,17 +475,17 @@ export default function ClipEditor() {
       <SafeAreaView edges={['bottom']} pointerEvents="box-none" style={styles.overBottom}>
         <View style={styles.panel}>
           {busy ? (
-            <Text style={styles.notice}>Preparando vídeo…</Text>
+            <Text style={styles.notice}>{t('clip.preparing')}</Text>
           ) : notice ? (
-            <Text style={styles.notice}>{notice}</Text>
+            <Text style={styles.notice}>{t(notice)}</Text>
           ) : null}
           <View style={styles.trimLabels}>
             <Text style={styles.small}>{`-${seconds(clip.durationMs - floor)}`}</Text>
-            <Text style={styles.cut}>{`Corte: ${seconds(outputMs(trim, edit.speed))}`}</Text>
-            <Text style={styles.small}>gatilho</Text>
+            <Text style={styles.cut}>{t('clip.cut', { time: seconds(outputMs(trim, edit.speed)) })}</Text>
+            <Text style={styles.small}>{t('clip.trigger')}</Text>
           </View>
           <View style={styles.trimRow}>
-            <IconButton label={playing ? 'Pausar' : 'Reproduzir'} onPress={togglePlay}>
+            <IconButton label={playing ? t('clip.pause') : t('clip.play')} onPress={togglePlay}>
               {playing ? <PauseIcon /> : <PlayIcon />}
             </IconButton>
             <View style={styles.trimBar}>
@@ -512,14 +514,14 @@ export default function ClipEditor() {
               <Tool
                 key={speed}
                 label={`${speed}x`}
-                a11y={`Velocidade ${speed}x`}
+                a11y={t('clip.speed', { speed })}
                 active={edit.speed === speed}
                 onPress={() => setEdit({ speed })}
               />
             ))}
             <Tool
-              label={edit.muted || edit.speed !== 1 ? 'Sem som' : 'Som'}
-              a11y="Som"
+              label={edit.muted || edit.speed !== 1 ? t('clip.muted') : t('clip.sound')}
+              a11y={t('clip.sound')}
               active={!edit.muted && edit.speed === 1}
               onPress={edit.speed !== 1 ? undefined : () => setEdit({ muted: !edit.muted })}
             />

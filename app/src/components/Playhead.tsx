@@ -2,6 +2,7 @@ import type { useVideoPlayer } from 'expo-video';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { PanResponder, StyleSheet, Text, View } from 'react-native';
 
+import { useT } from '../i18n/useT';
 import { colors, fonts } from '../theme/tokens';
 
 type Props = {
@@ -23,6 +24,7 @@ type Props = {
  * It listens to the player itself, so playback redraws only this view and not the whole screen.
  */
 export function Playhead({ player, durationMs, floorMs = 0, trim, speed, scrubMs, onScrub, onScrubEnd }: Props) {
+  const { t } = useT();
   const [playingMs, setPlayingMs] = useState(trim.startMs);
   useEffect(() => {
     const sub = player.addListener('timeUpdate', ({ currentTime }) => setPlayingMs(currentTime * 1000));
@@ -69,7 +71,7 @@ export function Playhead({ player, durationMs, floorMs = 0, trim, speed, scrubMs
         {...pan.panHandlers}
         hitSlop={{ left: 18, right: 18, top: 10, bottom: 10 }}
         accessibilityRole="adjustable"
-        accessibilityLabel="Posição do vídeo"
+        accessibilityLabel={t('clip.position')}
         style={[styles.line, { left: `${share * 100}%` }]}>
         <View pointerEvents="none" style={styles.pill}>
           <Text style={styles.time}>{`${elapsed.toFixed(1)}s`}</Text>
