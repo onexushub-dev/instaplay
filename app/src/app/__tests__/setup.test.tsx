@@ -11,6 +11,10 @@ jest.mock('../../../modules/replay-camera', () => {
     isVoiceSupported: jest.fn(() => true),
     getSpeechPermission: jest.fn(() => 'granted'),
     getWatchStatus: jest.fn(() => 'unsupported'),
+    isRemoteSupported: jest.fn(() => false),
+    remoteHostStart: jest.fn(),
+    remoteHostStop: jest.fn(),
+    remoteHostPeers: jest.fn(() => []),
     addReplayListener: jest.fn(() => ({ remove: jest.fn() })),
     ReplayCameraView: (props: { style?: unknown }) => {
       mounts.style = props.style;
@@ -85,6 +89,9 @@ async function openSettings() {
 beforeEach(() => {
   jest.clearAllMocks();
   jest.requireMock('../../data/mmkv').__reset();
+  const module = jest.requireMock('../../../modules/replay-camera');
+  module.isRemoteSupported.mockReturnValue(false);
+  module.remoteHostPeers.mockReturnValue([]);
 });
 
 test('keeps the screen awake while the phone is being positioned', async () => {
@@ -388,4 +395,59 @@ test('without a watch the other triggers behave as before', async () => {
   await openSettings();
   expect(screen.getByLabelText('Acenar com os braços, Ativo')).toBeTruthy();
   expect(screen.getByRole('button', { name: 'Começar a gravar' })).toBeEnabled();
+});
+
+// ---- Second iPhone as a remote ("Celular" tile)
+
+function enableRemote(peers: { id: string; name: string }[]) {
+  camera().isRemoteSupported.mockReturnValue(true);
+  camera().remoteHostPeers.mockReturnValue(peers);
+}
+
+test('the Celular tile is hidden where the phone remote is not supported', async () => {
+  session({});
+  await render(<Setup />);
+  await openSettings();
+  expect(screen.queryByLabelText(/^Celular,/)).toBeNull();
+  expect(camera().remoteHostStart).not.toHaveBeenCalled();
+});
+
+test('the Celular tile says that no remote is paired, and opens the pairing sheet', async () => {
+  enableRemote([]);
+  session({});
+  await render(<Setup />);
+  await openSettings();
+  await fireEvent.press(screen.getByRole('button', { name: 'Celular, Nenhum controle pareado' }));
+  expect(router.push).toHaveBeenCalledWith('/pairing');
+});
+
+test('the Celular tile names the paired remote, and says when it is connected', async () => {
+  enableRemote([{ id: 'a', name: 'iPhone da Ana' }]);
+  session({});
+  await render(<Setup />);
+  await openSettings();
+  expect(screen.getByLabelText('Celular, Pareado: iPhone da Ana')).toBeTruthy();
+  const listener = camera().addReplayListener.mock.calls.find((c: any[]) => c[0] === 'onRemoteStatus')[1];
+  await act(async () => listener({ link: 'connected', controllers: 1 }));
+  expect(screen.getByLabelText('Celular, Conectado: iPhone da Ana')).toBeTruthy();
+});
+
+test('with several paired remotes the tile counts them', async () => {
+  enableRemote([
+    { id: 'a', name: 'iPhone da Ana' },
+    { id: 'b', name: 'iPhone do Beto' },
+  ]);
+  session({});
+  await render(<Setup />);
+  await openSettings();
+  expect(screen.getByLabelText('Celular, 2 controles pareados')).toBeTruthy();
+});
+
+test('the phone waits for its remotes while the setup screen is in front, and stops when it leaves', async () => {
+  enableRemote([]);
+  session({});
+  const view = await render(<Setup />);
+  expect(camera().remoteHostStart).toHaveBeenCalledTimes(1);
+  await view.unmount();
+  expect(camera().remoteHostStop).toHaveBeenCalledTimes(1);
 });

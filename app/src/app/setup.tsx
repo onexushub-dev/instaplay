@@ -8,16 +8,20 @@ import {
   addReplayListener,
   getSpeechPermission,
   getWatchStatus,
+  isRemoteSupported,
   isVoiceSupported,
+  remoteHostPeers,
+  remoteHostStart,
+  remoteHostStop,
   ReplayCameraView,
   requestSpeechPermission,
 } from '../../modules/replay-camera';
-import type { ReplayErrorCode } from '../../modules/replay-camera/src/ReplayCamera.types';
+import type { RemotePeer, ReplayErrorCode } from '../../modules/replay-camera/src/ReplayCamera.types';
 import { Button } from '../components/Button';
 import { Chip } from '../components/Chip';
 import { PositionGuide } from '../components/PositionGuide';
 import { RecordingPanel } from '../components/RecordingPanel';
-import { ArmsUpIcon, MicIcon, RemoteIcon, WatchIcon } from '../components/icons';
+import { ArmsUpIcon, MicIcon, PhoneIcon, RemoteIcon, WatchIcon } from '../components/icons';
 import { TriggerTile } from '../components/TriggerTile';
 import { repo } from '../data/mmkv';
 import type { ModeId, ModeSettings, Prefs } from '../data/schema';
@@ -68,6 +72,32 @@ export default function Setup() {
   }, []);
   const watchStatus =
     watch === 'ready' ? 'Pronto' : watch === 'notInstalled' ? 'Instale o app no relógio' : 'Sem relógio pareado';
+  // The phone remote (a second iPhone that taps Salvar for this one). The camera phone waits for its paired remotes
+  // while this screen is in front; pairing happens on its own sheet (/pairing).
+  const [remoteSupported] = useState(() => isRemoteSupported());
+  const [remotePeers, setRemotePeers] = useState<RemotePeer[]>(() => (isRemoteSupported() ? remoteHostPeers() : []));
+  const [remoteLinked, setRemoteLinked] = useState(0);
+  useEffect(() => {
+    if (!remoteSupported) return;
+    const sub = addReplayListener('onRemoteStatus', (e) => setRemoteLinked(e.controllers === undefined ? 0 : e.controllers));
+    return () => sub.remove();
+  }, [remoteSupported]);
+  useEffect(() => {
+    if (!remoteSupported || !focused) return;
+    setRemotePeers(remoteHostPeers()); // the list may have changed on the pairing sheet
+    remoteHostStart();
+    return () => remoteHostStop();
+  }, [remoteSupported, focused]);
+  const remoteStatus =
+    remotePeers.length === 0
+      ? 'Nenhum controle pareado'
+      : remoteLinked > 0
+        ? remotePeers.length === 1
+          ? `Conectado: ${remotePeers[0].name}`
+          : `${remoteLinked} de ${remotePeers.length} conectados`
+        : remotePeers.length === 1
+          ? `Pareado: ${remotePeers[0].name}`
+          : `${remotePeers.length} controles pareados`;
   // Voice counts as on only when this mode wants it and the phone may listen.
   const voiceOn = voiceSupported && settings.voiceEnabled && speechGranted;
   const voiceStatus = !voiceSupported
@@ -262,6 +292,17 @@ export default function Setup() {
               disabled={watch === 'unsupported'}
             />
           </View>
+          {remoteSupported ? (
+            <View style={styles.gridRow}>
+              <TriggerTile
+                icon={<PhoneIcon />}
+                title="Celular"
+                status={remoteStatus}
+                active={remoteLinked > 0}
+                onPress={() => router.push('/pairing')}
+              />
+            </View>
+          ) : null}
         </View>
 
         {speechDenied ? <Text style={styles.error}>Libere o reconhecimento de fala em Ajustes.</Text> : null}

@@ -63,11 +63,14 @@ public class ReplayCameraModule: Module {
   public func definition() -> ModuleDefinition {
     Name("ReplayCamera")
 
-    Events("onTrigger", "onThermalChange", "onInterrupted", "onResumed", "onError", "onGestureDebug", "onWatchStatus")
+    Events("onTrigger", "onThermalChange", "onInterrupted", "onResumed", "onError", "onGestureDebug", "onWatchStatus",
+           "onRemoteStatus", "onRemoteState", "onRemoteResult", "onRemotePairing")
 
     OnCreate {
       self.engine.emit = { [weak self] name, body in self?.sendEvent(name, body) }
       WatchBridge.shared.emit = { [weak self] name, body in self?.sendEvent(name, body) }
+      RemoteHost.shared.emit = { [weak self] name, body in self?.sendEvent(name, body) }
+      RemoteController.shared.emit = { [weak self] name, body in self?.sendEvent(name, body) }
       WatchBridge.shared.preview = self.engine.watchPreview
       WatchBridge.shared.activate()
     }
@@ -135,6 +138,50 @@ public class ReplayCameraModule: Module {
     Function("watchSignal") { (saved: Bool) in
       WatchBridge.shared.signal(saved: saved)
     }
+
+    // Second iPhone as a remote. Camera phone side:
+    Function("remoteHostStart") { RemoteHost.shared.start() }
+
+    Function("remoteHostStop") { RemoteHost.shared.stop() }
+
+    Function("remoteHostBeginPairing") { () -> [String: Any]? in
+      guard let pairing = RemoteHost.shared.beginPairing() else { return nil }
+      return ["url": pairing.url, "code": pairing.code, "expiresAt": pairing.expiresAt, "qrPath": pairing.qrPath]
+    }
+
+    Function("remoteHostEndPairing") { RemoteHost.shared.endPairing() }
+
+    Function("remoteHostPeers") { () -> [[String: String]] in
+      RemoteHost.shared.peers.map { ["id": $0.id, "name": $0.name] }
+    }
+
+    Function("remoteHostRemove") { (id: String) in RemoteHost.shared.remove(id: id) }
+
+    Function("remoteSync") { (recording: Bool, clipCount: Int, startedAt: Double?) in
+      RemoteHost.shared.sync(recording: recording, clipCount: clipCount, startedAt: startedAt)
+    }
+
+    Function("remoteSignal") { (saved: Bool) in RemoteHost.shared.signal(saved: saved) }
+
+    // Remote phone side:
+    Function("remoteControllerStart") { RemoteController.shared.start() }
+
+    Function("remoteControllerStop") { RemoteController.shared.stop() }
+
+    Function("remoteControllerHost") { () -> [String: String]? in
+      guard let host = RemoteController.shared.host else { return nil }
+      return ["id": host.id, "name": host.name]
+    }
+
+    Function("remoteControllerForget") { RemoteController.shared.forget() }
+
+    Function("remoteControllerPairWithLink") { (hostId: String, secret: String, hostName: String) in
+      RemoteController.shared.pair(hostId: hostId, secret: secret, hostName: hostName)
+    }
+
+    Function("remoteControllerPairWithCode") { (code: String) in RemoteController.shared.pair(code: code) }
+
+    Function("remoteControllerSave") { RemoteController.shared.save() }
 
     Function("isVoiceSupported") { VoiceTrigger.isSupported }
 
