@@ -14,7 +14,23 @@ jest.mock('expo', () => {
   return { requireNativeModule: () => mockNative, NativeModule: class {} };
 });
 
-import { getWatchStatus, requestPermissions, saveClip, startSession, watchSignal, watchSync } from '../ReplayCamera';
+import {
+  getWatchStatus,
+  isRemoteSupported,
+  remoteControllerHost,
+  remoteControllerPairWithCode,
+  remoteControllerSave,
+  remoteHostBeginPairing,
+  remoteHostPeers,
+  remoteHostRemove,
+  remoteSignal,
+  remoteSync,
+  requestPermissions,
+  saveClip,
+  startSession,
+  watchSignal,
+  watchSync,
+} from '../ReplayCamera';
 
 const mockNative = jest.requireMock('expo').requireNativeModule();
 
@@ -56,4 +72,53 @@ test('the watch calls pass plain values to native, with a missing start as null'
   expect(mockNative.watchSync).toHaveBeenLastCalledWith(false, 0, null);
   watchSignal(false);
   expect(mockNative.watchSignal).toHaveBeenCalledWith(false);
+});
+
+test('without the remote functions on native, the remote calls do nothing and nothing throws', () => {
+  expect(isRemoteSupported()).toBe(false);
+  expect(remoteHostBeginPairing()).toBeNull();
+  expect(remoteHostPeers()).toEqual([]);
+  expect(remoteControllerHost()).toBeNull();
+  expect(() => {
+    remoteControllerSave();
+    remoteControllerPairWithCode('123456');
+    remoteHostRemove('a');
+    remoteSync({ recording: true, clipCount: 1 });
+    remoteSignal(true);
+  }).not.toThrow();
+});
+
+test('with the remote functions on native, the calls pass plain values through', () => {
+  const remote = {
+    remoteHostStart: jest.fn(),
+    remoteHostBeginPairing: jest.fn(() => ({ url: 'lance://pair?h=h1', code: '042517', expiresAt: 9, qrPath: '/qr.png' })),
+    remoteHostPeers: jest.fn(() => [{ id: 'a', name: 'iPhone da Ana' }]),
+    remoteHostRemove: jest.fn(),
+    remoteSync: jest.fn(),
+    remoteSignal: jest.fn(),
+    remoteControllerHost: jest.fn(() => ({ id: 'h1', name: 'Quadra 1' })),
+    remoteControllerPairWithCode: jest.fn(),
+    remoteControllerSave: jest.fn(),
+  };
+  Object.assign(mockNative, remote);
+  try {
+    expect(isRemoteSupported()).toBe(true);
+    expect(remoteHostBeginPairing()).toMatchObject({ code: '042517', qrPath: '/qr.png' });
+    expect(remoteHostPeers()).toEqual([{ id: 'a', name: 'iPhone da Ana' }]);
+    expect(remoteControllerHost()).toEqual({ id: 'h1', name: 'Quadra 1' });
+    remoteHostRemove('a');
+    expect(remote.remoteHostRemove).toHaveBeenCalledWith('a');
+    remoteControllerPairWithCode('042517');
+    expect(remote.remoteControllerPairWithCode).toHaveBeenCalledWith('042517');
+    remoteControllerSave();
+    expect(remote.remoteControllerSave).toHaveBeenCalledTimes(1);
+    remoteSync({ recording: true, clipCount: 2, startedAt: 5 });
+    expect(remote.remoteSync).toHaveBeenLastCalledWith(true, 2, 5);
+    remoteSync({ recording: false, clipCount: 0 });
+    expect(remote.remoteSync).toHaveBeenLastCalledWith(false, 0, null);
+    remoteSignal(false);
+    expect(remote.remoteSignal).toHaveBeenCalledWith(false);
+  } finally {
+    Object.keys(remote).forEach((key) => delete mockNative[key]);
+  }
 });

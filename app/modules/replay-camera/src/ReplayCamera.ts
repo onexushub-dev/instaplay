@@ -4,6 +4,8 @@ import type {
   ExportedClip,
   ReplayCameraModuleEvents,
   SaveClipOptions,
+  RemotePairing,
+  RemotePeer,
   SavedClip,
   SessionOptions,
   WatchStatus,
@@ -95,6 +97,86 @@ export function exportClip(opts: ExportClipOptions): Promise<ExportedClip> {
 /** Opens Instagram's Story composer with the video; 'unavailable' without a Meta App ID or Instagram. */
 export function shareToInstagramStory(videoPath: string, metaAppId: string): Promise<'opened' | 'unavailable'> {
   return ReplayCameraModule.shareToInstagramStory(videoPath, metaAppId);
+}
+
+// ---- Second iPhone as a remote (iOS only). Without the native functions every call does nothing.
+
+/** Whether this phone can pair with another one as camera or as remote. False on Android for now. */
+export function isRemoteSupported(): boolean {
+  return typeof ReplayCameraModule.remoteHostStart === 'function';
+}
+
+/** Camera phone: wait for paired remotes (and for an open pairing) while the setup screen is in front. */
+export function remoteHostStart(): void {
+  if (ReplayCameraModule.remoteHostStart) ReplayCameraModule.remoteHostStart();
+}
+
+export function remoteHostStop(): void {
+  if (ReplayCameraModule.remoteHostStop) ReplayCameraModule.remoteHostStop();
+}
+
+/** Opens a pairing: the QR link, the 6-digit code and when they expire. Null when four remotes are already paired. */
+export function remoteHostBeginPairing(): RemotePairing | null {
+  return ReplayCameraModule.remoteHostBeginPairing ? ReplayCameraModule.remoteHostBeginPairing() : null;
+}
+
+export function remoteHostEndPairing(): void {
+  if (ReplayCameraModule.remoteHostEndPairing) ReplayCameraModule.remoteHostEndPairing();
+}
+
+export function remoteHostPeers(): RemotePeer[] {
+  return ReplayCameraModule.remoteHostPeers ? ReplayCameraModule.remoteHostPeers() : [];
+}
+
+export function remoteHostRemove(id: string): void {
+  if (ReplayCameraModule.remoteHostRemove) ReplayCameraModule.remoteHostRemove(id);
+}
+
+/** Camera phone → remotes: the same state the watch gets. */
+export function remoteSync(state: { recording: boolean; clipCount: number; startedAt?: number }): void {
+  if (ReplayCameraModule.remoteSync) {
+    ReplayCameraModule.remoteSync(state.recording, state.clipCount, state.startedAt === undefined ? null : state.startedAt);
+  }
+}
+
+/** Camera phone → remotes: how the last save ended (they vibrate). */
+export function remoteSignal(saved: boolean): void {
+  if (ReplayCameraModule.remoteSignal) ReplayCameraModule.remoteSignal(saved);
+}
+
+/** Remote phone: look for the paired camera phone and keep the link up. */
+export function remoteControllerStart(): void {
+  if (ReplayCameraModule.remoteControllerStart) ReplayCameraModule.remoteControllerStart();
+}
+
+export function remoteControllerStop(): void {
+  if (ReplayCameraModule.remoteControllerStop) ReplayCameraModule.remoteControllerStop();
+}
+
+/** The camera phone this remote is paired with, if any. */
+export function remoteControllerHost(): RemotePeer | null {
+  return ReplayCameraModule.remoteControllerHost ? ReplayCameraModule.remoteControllerHost() : null;
+}
+
+export function remoteControllerForget(): void {
+  if (ReplayCameraModule.remoteControllerForget) ReplayCameraModule.remoteControllerForget();
+}
+
+/** Pairs with the camera phone named in a scanned `lance://pair` link; the result arrives as `onRemotePairing`. */
+export function remoteControllerPairWithLink(hostId: string, secret: string, hostName: string): void {
+  if (ReplayCameraModule.remoteControllerPairWithLink) {
+    ReplayCameraModule.remoteControllerPairWithLink(hostId, secret, hostName);
+  }
+}
+
+/** Pairs with whichever camera phone shows this 6-digit code; the result arrives as `onRemotePairing`. */
+export function remoteControllerPairWithCode(code: string): void {
+  if (ReplayCameraModule.remoteControllerPairWithCode) ReplayCameraModule.remoteControllerPairWithCode(code);
+}
+
+/** Remote phone: ask the camera phone to save a clip. */
+export function remoteControllerSave(): void {
+  if (ReplayCameraModule.remoteControllerSave) ReplayCameraModule.remoteControllerSave();
 }
 
 export function addReplayListener<E extends keyof ReplayCameraModuleEvents>(

@@ -25,6 +25,8 @@ function fakeDeps() {
     getSpeechPermission: jest.fn((): 'granted' | 'denied' | 'undetermined' => 'granted'),
     watchSync: jest.fn(),
     watchSignal: jest.fn(),
+    remoteSync: jest.fn(),
+    remoteSignal: jest.fn(),
     signalSaveFailed: jest.fn(),
     addReplayListener: jest.fn((event: string, fn: Listener) => {
       listeners.set(event, fn);
@@ -359,4 +361,57 @@ test('a watch tap outside a recording does not use up the 3 s debounce of the fi
   await act(() => view.result.current.start('quadra'));
   await act(async () => view.result.current.trigger('screen')); // same instant
   expect(f.camera.saveClip).toHaveBeenCalledTimes(1);
+});
+
+test('a tap on the remote phone saves a clip with the phone as source', async () => {
+  const { view, camera, emit, finishSave } = await started();
+  await act(async () => emit('onTrigger', { source: 'phone', at: 1 }));
+  await act(async () => finishSave());
+  expect(camera.saveClip).toHaveBeenCalledWith({ source: 'phone', at: 1000 });
+  expect(view.result.current.state.lastSaved?.source).toBe('phone');
+});
+
+test('two phone taps inside the debounce give one save', async () => {
+  const { camera, emit, advance, finishSave } = await started();
+  await act(async () => emit('onTrigger', { source: 'phone', at: 1 }));
+  await act(async () => finishSave());
+  advance(500);
+  await act(async () => emit('onTrigger', { source: 'phone', at: 2 }));
+  expect(camera.saveClip).toHaveBeenCalledTimes(1);
+  expect(camera.remoteSignal).toHaveBeenCalledTimes(1);
+});
+
+test('a phone tap outside a recording is ignored and does not use up the debounce', async () => {
+  const f = fakeDeps();
+  const view = await renderHook(() => useReplaySession(f.deps));
+  await act(async () => f.emit('onTrigger', { source: 'phone', at: 1 }));
+  expect(f.camera.saveClip).not.toHaveBeenCalled();
+  expect(f.camera.remoteSignal).not.toHaveBeenCalled();
+  await act(() => view.result.current.start('quadra'));
+  await act(async () => view.result.current.trigger('screen'));
+  expect(f.camera.saveClip).toHaveBeenCalledTimes(1);
+});
+
+test('the remote phone gets the same state as the watch', async () => {
+  const { view, camera, finishSave } = await started();
+  expect(camera.remoteSync).toHaveBeenLastCalledWith({ recording: true, clipCount: 0, startedAt: 1000 });
+  await act(async () => view.result.current.trigger('screen'));
+  await act(async () => finishSave());
+  expect(camera.remoteSync).toHaveBeenLastCalledWith({ recording: true, clipCount: 1, startedAt: 1000 });
+  await act(async () => {
+    await view.result.current.stop();
+  });
+  expect(camera.remoteSync).toHaveBeenLastCalledWith({ recording: false, clipCount: 0 });
+});
+
+test('the remote phone is told how a save ended', async () => {
+  const ok = await started();
+  await act(async () => ok.view.result.current.trigger('screen'));
+  await act(async () => ok.finishSave());
+  expect(ok.camera.remoteSignal).toHaveBeenCalledWith(true);
+
+  const bad = await started();
+  bad.camera.saveClip.mockRejectedValueOnce(new Error('x'));
+  await act(async () => bad.view.result.current.trigger('screen'));
+  expect(bad.camera.remoteSignal).toHaveBeenCalledWith(false);
 });

@@ -6,4 +6,5 @@ export const SOURCE_LABEL: Record<TriggerSource, string> = {
   remote: 'Controle',
   watch: 'Relógio',
   voice: 'Voz',
+  phone: 'Celular',
 };
