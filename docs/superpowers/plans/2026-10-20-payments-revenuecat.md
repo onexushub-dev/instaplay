@@ -19,7 +19,8 @@
 - O app **não** chama `purchasePackage`; o paywall do RevenueCat faz a compra. Nada é liberado dentro do callback da compra: o snapshot atualizado é que muda o plano.
 - Nenhum paywall, modal de compra ou chamada a `showPaywall` durante `state.phase === 'recording'`.
 - `Purchases.configure` uma única vez por abertura do app. Só chaves públicas no app (`appl_…`, `goog_…`, `test_…`), lidas de `app/.env.local` (fora do git); a chave `test_` só em `__DEV__`.
-- Textos do app em português, UI usa "clipe". Copy fixa: nota do 5º clipe `Último clipe grátis deste jogo.`; nota do bloqueado `Guardado. Libere no fim do jogo.`
+- Moeda e preço vêm sempre da loja (App Store/Google Play via RevenueCat): nenhum símbolo de moeda nem valor fixo no código; o país da conta da loja decide a moeda, o idioma do aparelho decide só o idioma.
+- Textos de interface: as Tarefas 6–8 só começam depois do subprojeto de internacionalização (pt-BR e en-US); os textos novos usam chaves de tradução. Cópias de referência em pt-BR (UI diz "clipe"): nota do 5º clipe `Último clipe grátis deste jogo.`; nota do bloqueado `Guardado. Libere no fim do jogo.`
 - Rodar `npx expo lint` e `npx tsc --noEmit` (em `app/`) antes de concluir cada tarefa. Testes: `npx jest <caminho>` em `app/`.
 - Mensagens de commit terminam com `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`.
 - Fora deste plano: templates de Story (não existem no código ainda), login, backend, tela de Ajustes.

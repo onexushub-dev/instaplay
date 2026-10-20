@@ -12,6 +12,7 @@ Este spec substitui o paywall "no 6º lance, com a gravação por trás" (seçã
 - **Sem backend e sem login na v1.** Usuário anônimo (ID do RevenueCat); nenhuma compra exige conta. Login pode vir depois, como convite opcional após a compra do Pro (`Purchases.logIn()` junta o histórico anônimo).
 - **Ao atingir o limite grátis, a gravação continua.** Do 6º lance em diante os lances são salvos e ficam bloqueados. Nenhum paywall aparece durante a gravação.
 - **O paywall aparece só fora da gravação**: no resumo do jogo, ao abrir um lance bloqueado e no editor (câmera lenta, templates). Pagar libera todos os lances do jogo de uma vez.
+- **Moeda e preço vêm sempre da loja.** O país da conta da Apple/Google decide a moeda (BR: BRL, EUA: USD), independente do idioma do aparelho; o app mostra só o texto de preço devolvido pela loja/RevenueCat e nunca converte nem fixa símbolo. Os valores em R$ citados neste spec são os preços do Brasil; os preços dos outros países são definidos nas lojas. O app será internacionalizado (pt-BR e en-US) em subprojeto próprio antes das telas novas de pagamento.
 - **Paywall do RevenueCat**, hospedado e montado no painel, exibido com `RevenueCatUI.presentPaywall()`. Se o resultado não for bom, troca-se por paywall próprio sem mexer nas regras de plano.
 - **O Passe fica ligado ao jogo (sessão) de onde o paywall foi aberto, para sempre.** Pode ser comprado dias depois, em "Meus jogos".
 - **O Passe é validado no aparelho** (resultado da compra + `nonSubscriptionTransactions`), sem servidor.
