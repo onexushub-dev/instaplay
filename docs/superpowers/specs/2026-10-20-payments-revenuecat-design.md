@@ -30,7 +30,7 @@ Login e contas, backend e webhooks, pagamento web (Stripe), link externo, paywal
 
 - **Plano de um jogo** = `pro` se o entitlement `pro` está ativo; senão `pass` se `session.passTransactionId` existe; senão `free`. Pro vale para todos os jogos; o Passe só para o jogo em que foi comprado.
 - **`Clip.locked`** é gravado no salvamento: `true` quando o plano do jogo é `free` e já existem 5 lances liberados nele. Um lance está *efetivamente bloqueado* quando `clip.locked && plano do jogo === 'free'`. Assim comprar o Passe ou assinar o Pro libera tudo sem atualizar lances um a um, e lances gravados no Pro continuam liberados se a assinatura acabar.
-- Produtos: `lance_pro_monthly` (assinatura, entitlement `pro`) e `lance_game_pass` (consumível; não gera entitlement, por isso o Passe é guardado na `Session`).
+- Produtos: `pro_monthly` (assinatura, entitlement `pro`) e `game_pass` (consumível; não gera entitlement, por isso o Passe é guardado na `Session`).
 
 ## Experiência
 **Durante o jogo (nada bloqueia, nada pausa):**
@@ -97,7 +97,7 @@ Login e contas, backend e webhooks, pagamento web (Stripe), link externo, paywal
 7. `npm test` e `npm run lint` passam.
 
 ## Passos fora do código (Marcus)
-1. App Store Connect e Play Console: contratos de apps pagos, dados bancários e fiscais; produtos `lance_pro_monthly` (assinatura mensal) e `lance_game_pass` (consumível).
+1. App Store Connect e Play Console: contratos de apps pagos, dados bancários e fiscais; produtos `pro_monthly` (assinatura mensal) e `game_pass` (consumível).
 2. RevenueCat: projeto, apps iOS e Android, Test Store, entitlement `pro`, oferta `default` com os dois pacotes, paywall criado no builder e publicado.
 3. Chaves públicas em `app/.env.local`.
 4. Build de desenvolvimento novo (módulos nativos): `react-native-purchases` e `react-native-purchases-ui` não rodam no Expo Go. Alvo atual do iOS: 16.4 (o paywall pede 15+). Confirmar no plano o `minSdkVersion` do Android (o paywall pede 24+).

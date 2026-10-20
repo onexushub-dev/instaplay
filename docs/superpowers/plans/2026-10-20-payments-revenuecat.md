@@ -11,7 +11,7 @@
 **Spec:** `docs/superpowers/specs/2026-10-20-payments-revenuecat-design.md` (e a seção 3.5 revisada de `2026-10-17-lance-design.md`).
 
 ## Global Constraints
-- Produtos: `lance_pro_monthly` (assinatura), `lance_game_pass` (consumível). Entitlement: `pro`. Oferta: `default`.
+- Produtos: `pro_monthly` (assinatura), `game_pass` (consumível). Entitlement: `pro`. Oferta: `default`.
 - 5 clipes liberados por jogo (`FREE_CLIPS = 5`). Do 6º em diante `locked: true`.
 - Plano do jogo: `pro` se entitlement ativo; senão `pass` se `session.passTransactionId`; senão `free`. Pro vence Passe.
 - Bloqueio efetivo = `clip.locked && plano do jogo === 'free'`.
@@ -51,7 +51,7 @@ Spec, seção "Passos fora do código": produtos nas lojas, projeto/apps/entitle
 - Test: `app/src/payments/__tests__/rules.test.ts`
 
 **Interfaces:**
-- Produces (`types.ts`): `type Tier = 'free' | 'pass' | 'pro'`; `type PassTransaction = { id: string; productId: string; purchasedAt: number }`; `type Snapshot = { proActive: boolean; passTransactions: PassTransaction[] }`; `const EMPTY_SNAPSHOT: Snapshot`; constantes `FREE_CLIPS = 5`, `PRO_ENTITLEMENT = 'pro'`, `PASS_PRODUCT_ID = 'lance_game_pass'`.
+- Produces (`types.ts`): `type Tier = 'free' | 'pass' | 'pro'`; `type PassTransaction = { id: string; productId: string; purchasedAt: number }`; `type Snapshot = { proActive: boolean; passTransactions: PassTransaction[] }`; `const EMPTY_SNAPSHOT: Snapshot`; constantes `FREE_CLIPS = 5`, `PRO_ENTITLEMENT = 'pro'`, `PASS_PRODUCT_ID = 'game_pass'`.
 - Produces (`rules.ts`): `tierFor(snapshot: Snapshot, session?: { passTransactionId?: string }): Tier`; `isClipLocked(clip: { locked?: boolean }, tier: Tier): boolean`; `shouldLockOnSave(tier: Tier, unlockedCount: number): boolean`; `detectPurchase(before: Snapshot, after: Snapshot): { pro: boolean; passTransactionId?: string }`.
 
 - [ ] **Step 1: Write the failing tests** em `rules.test.ts`:
