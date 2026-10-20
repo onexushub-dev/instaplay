@@ -21,21 +21,18 @@ export function createPaymentsStore(client: PaymentsClient, repo: Pick<Repo, 'ge
 
   /** Binds every pending purchase that `snapshot` can now explain; keeps the rest. */
   function resolvePendings(snapshot: Snapshot) {
+    // Paywalls run one at a time, so pendings are in purchase order: the oldest
+    // pending takes the oldest new transaction.
     pendings = pendings.filter((p) => {
-      const before: Snapshot = {
-        ...p.before,
-        passTransactions: [
-          ...p.before.passTransactions,
-          ...[...bound].map((id) => ({ id, productId: '', purchasedAt: 0 })),
-        ],
-      };
-      const { pro, passTransactionId } = detectPurchase(before, snapshot);
-      if (passTransactionId) {
-        repo.setSessionPass(p.sessionId, passTransactionId);
-        bound.add(passTransactionId);
+      const known = new Set([...p.before.passTransactions.map((t) => t.id), ...bound]);
+      const fresh = snapshot.passTransactions.filter((t) => !known.has(t.id));
+      if (fresh.length > 0) {
+        const oldest = fresh.reduce((x, y) => (y.purchasedAt < x.purchasedAt ? y : x));
+        repo.setSessionPass(p.sessionId, oldest.id);
+        bound.add(oldest.id);
         return false;
       }
-      return !pro;
+      return !detectPurchase(p.before, snapshot).pro;
     });
   }
 
@@ -108,10 +105,16 @@ export function createPaymentsStore(client: PaymentsClient, repo: Pick<Repo, 'ge
         }
         if (outcome === 'purchased' || outcome === 'restored') {
           // Without a known "before", a restore could re-bind an old pass to the wrong game.
-          if (beforeKnown || outcome === 'purchased') pendings.push({ sessionId, before });
+          const p: Pending = { sessionId, before };
+          if (beforeKnown || outcome === 'purchased') pendings.push(p);
           const after = await read(() => client.getSnapshot());
-          if (after) apply(after);
-          else if (current) {
+          if (after) {
+            apply(after);
+            // The successful read explains this paywall: nothing older may capture a later purchase.
+            if (!pendings.includes(p)) pendings = [];
+            // A restore that shows nothing new leaves no pending; a purchase may just be SDK lag.
+            else if (outcome === 'restored') pendings = pendings.filter((x) => x !== p);
+          } else if (current) {
             // The SDK listener may already have delivered the new data during the paywall.
             resolvePendings(current);
             notify();

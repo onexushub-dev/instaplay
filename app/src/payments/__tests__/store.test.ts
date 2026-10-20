@@ -168,7 +168,10 @@ describe('payments store', () => {
     const calls = repo.setSessionPass.mock.calls;
     expect(calls).toHaveLength(2);
     expect(new Set(calls.map((c) => c[1])).size).toBe(2);
-    expect(calls.map((c) => c[0]).sort()).toEqual(['s1', 's2']);
+    expect(calls).toEqual([
+      ['s1', 'tx-2'],
+      ['s2', 'tx-3'],
+    ]);
   });
 
   it('restored does not bind when the before snapshot is unknown', async () => {
@@ -220,5 +223,32 @@ describe('payments store', () => {
     const { client, store } = await setup();
     client.failRestore = true;
     await expect(store.restore()).resolves.toBe(false);
+  });
+
+  it('restored with an unchanged snapshot does not capture a later purchase for another game', async () => {
+    const { client, repo, store } = await setup(snap({ passTransactions: [tx('tx-1')] }));
+    client.nextOutcome = 'restored';
+    await store.showPaywall('s1');
+    client.nextOutcome = 'purchased';
+    client.snapshot = snap({ passTransactions: [tx('tx-1'), tx('tx-2', 2)] });
+    await store.showPaywall('s2');
+    expect(repo.setSessionPass.mock.calls).toEqual([['s2', 'tx-2']]);
+  });
+
+  it('restored with an unchanged snapshot leaves no pending', async () => {
+    const { client, repo, store } = await setup(snap({ passTransactions: [tx('tx-1')] }));
+    client.nextOutcome = 'restored';
+    await store.showPaywall('s1');
+    client.emit(snap({ passTransactions: [tx('tx-1'), tx('tx-2', 2)] }));
+    expect(repo.setSessionPass).not.toHaveBeenCalled();
+  });
+
+  it('purchased with no new transaction yet (SDK lag) stays pending until one arrives', async () => {
+    const { client, repo, store } = await setup(snap({ passTransactions: [tx('tx-1')] }));
+    client.nextOutcome = 'purchased';
+    await store.showPaywall('s1');
+    expect(repo.setSessionPass).not.toHaveBeenCalled();
+    client.emit(snap({ passTransactions: [tx('tx-1'), tx('tx-2', 2)] }));
+    expect(repo.setSessionPass).toHaveBeenCalledWith('s1', 'tx-2');
   });
 });
