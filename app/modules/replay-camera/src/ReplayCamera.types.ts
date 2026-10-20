@@ -34,6 +34,10 @@ export type ReplayCameraModuleEvents = {
 export type GestureDebug = {
   people: number;
   isX: boolean;
+  /** Both wrists above the head line in at least one person (the cue for sampling faster). iOS only. */
+  raised?: boolean;
+  /** The wave gesture fired in this sample. iOS only. */
+  waved?: boolean;
   orientation: number;
   samples: number;
   missing?: string;
