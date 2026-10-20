@@ -1,31 +1,47 @@
 # Pagamentos com RevenueCat: Passe do Jogo e Pro
 
 ## Objetivo
-Ligar a cobrança do spec principal (seção 6 de `2026-10-17-lance-design.md`) ao app: plano grátis com 5 lances por jogo, **Passe do Jogo** (R$ 4,90, compra avulsa por sessão) e **Pro** (R$ 19,90/mês). Hoje `useEntitlement()` devolve `'pro'` fixo e tudo está liberado.
+Ligar a cobrança do spec principal (`2026-10-17-lance-design.md`, seção 6) ao app: plano grátis com 5 lances por jogo, **Passe do Jogo** (R$ 4,90, compra avulsa por jogo) e **Pro** (R$ 19,90/mês). Hoje `useEntitlement()` devolve `'pro'` fixo e tudo está liberado.
 
-## Decisões (tomadas com o Marcus em 2026-10-20)
+Princípio: **a experiência do usuário vem primeiro. O app nunca para de gravar e nunca perde um lance por causa de pagamento.** Cobra-se pela entrega do lance (ver, exportar), não pela captura.
+
+Este spec substitui o paywall "no 6º lance, com a gravação por trás" (seção 3.5) e a validade de 4h do Passe (seção 6) do spec principal.
+
+## Decisões (Marcus, 2026-10-20)
 - **Só RevenueCat** sobre Apple IAP e Google Play Billing. Sem Stripe e sem arquitetura híbrida por ora.
-- **Sem backend e sem login na v1.** O usuário é anônimo (ID do RevenueCat). Nenhuma compra exige conta. Login pode vir depois, como convite opcional após a compra do Pro (`Purchases.logIn()` junta o histórico anônimo).
-- **Paywall do RevenueCat** (hospedado, montado no painel), exibido com o componente **embutido** `<RevenueCatUI.Paywall />` num painel inferior da tela de gravação. Não usar `presentPaywall()` durante a gravação: no Android ele abre uma Activity separada (`PaywallActivity`) que pode parar a Activity da câmera. Se o resultado não for bom, troca-se por paywall próprio sem mexer nas regras de plano. Meta: nada que prejudique a experiência nem exija muita manutenção.
-- **O Passe fica ligado à sessão para sempre.** Os lances daquela sessão exportam em HD, sem marca d'água, mesmo depois que ela termina. A janela de 4h só limita quanto tempo novos lances saem como ilimitados.
+- **Sem backend e sem login na v1.** Usuário anônimo (ID do RevenueCat); nenhuma compra exige conta. Login pode vir depois, como convite opcional após a compra do Pro (`Purchases.logIn()` junta o histórico anônimo).
+- **Ao atingir o limite grátis, a gravação continua.** Do 6º lance em diante os lances são salvos e ficam bloqueados. Nenhum paywall aparece durante a gravação.
+- **O paywall aparece só fora da gravação**: no resumo do jogo, ao abrir um lance bloqueado e no editor (câmera lenta, templates). Pagar libera todos os lances do jogo de uma vez.
+- **Paywall do RevenueCat**, hospedado e montado no painel, exibido com `RevenueCatUI.presentPaywall()`. Se o resultado não for bom, troca-se por paywall próprio sem mexer nas regras de plano.
+- **O Passe fica ligado ao jogo (sessão) de onde o paywall foi aberto, para sempre.** Pode ser comprado dias depois, em "Meus jogos".
 - **O Passe é validado no aparelho** (resultado da compra + `nonSubscriptionTransactions`), sem servidor.
 
 ## Fora do escopo
-Login e contas, backend e webhooks, pagamento web (Stripe), link externo para pagar, paywall próprio, Customer Center, testes A/B, promoções e cupons.
+Login e contas, backend e webhooks, pagamento web (Stripe), link externo, paywall próprio, Customer Center, testes A/B, promoções e cupons, limite máximo de lances bloqueados por jogo (a trava de espaço existente já protege o aparelho).
 
 ## Regras de plano
 
-| | Grátis | Passe (esta sessão) | Pro |
+| | Grátis | Passe (este jogo) | Pro |
 |---|---|---|---|
-| Lances por jogo | 5; do 6º em diante ficam salvos e bloqueados | ilimitado por 4h após a compra | ilimitado |
+| Lances salvos por jogo | sem limite de captura; 5 liberados, do 6º em diante bloqueados | todos liberados | todos liberados |
 | Exportação | 720p, com marca | 1080p 60fps, sem marca | 1080p 60fps, sem marca |
 | Câmera lenta | não | sim | sim |
 | Templates de Story | 1 | todos | todos |
 
-- **Bloqueio é derivado.** `Clip.locked` é gravado no salvamento (`true` quando o plano da sessão é grátis e já existem 5 lances). Um lance está *efetivamente bloqueado* quando `clip.locked && plano da sessão do lance === 'free'`. Assim comprar o Passe ou assinar o Pro libera tudo sem atualizar lances um a um, e lances gravados no Pro continuam liberados se a assinatura acabar.
-- **Plano de uma sessão** = `pro` se o entitlement `pro` está ativo; senão `pass` se `session.passTransactionId` existe; senão `free`.
-- **Novos lances como ilimitados com o Passe:** só enquanto `agora - session.passPurchasedAt <= 4h` e a sessão não foi encerrada. Depois disso, novos lances da sessão contam como grátis (a regra dos 5 lances volta a valer só para eles; os já pagos seguem em HD).
-- Produtos: `lance_pro_monthly` (assinatura, entitlement `pro`) e `lance_game_pass` (consumível). Entitlement não é concedido ao consumível; por isso o Passe é guardado na `Session`.
+- **Plano de um jogo** = `pro` se o entitlement `pro` está ativo; senão `pass` se `session.passTransactionId` existe; senão `free`. Pro vale para todos os jogos; o Passe só para o jogo em que foi comprado.
+- **`Clip.locked`** é gravado no salvamento: `true` quando o plano do jogo é `free` e já existem 5 lances liberados nele. Um lance está *efetivamente bloqueado* quando `clip.locked && plano do jogo === 'free'`. Assim comprar o Passe ou assinar o Pro libera tudo sem atualizar lances um a um, e lances gravados no Pro continuam liberados se a assinatura acabar.
+- Produtos: `lance_pro_monthly` (assinatura, entitlement `pro`) e `lance_game_pass` (consumível; não gera entitlement, por isso o Passe é guardado na `Session`).
+
+## Experiência
+**Durante o jogo (nada bloqueia, nada pausa):**
+- Lance #5: "Lance #5 salvo · último grátis".
+- Lance #6 em diante: "Lance #6 salvo · libere no fim do jogo". A vibração do relógio é a mesma de sempre.
+
+**Depois do jogo:**
+- Resumo: cartão "7 lances guardados · 2 bloqueados" com as miniaturas e o botão "Liberar", que abre o paywall.
+- "Meus jogos": jogos com lances bloqueados mostram o aviso; tocar em um lance bloqueado abre o paywall.
+- Editor: tocar em câmera lenta ou em template pago abre o paywall (o Passe do jogo ou o Pro libera).
+- "Agora não" fecha o paywall sem perda. Pode-se liberar a qualquer momento.
 
 ## Arquitetura (`app/src/payments/`)
 
@@ -35,56 +51,49 @@ Login e contas, backend e webhooks, pagamento web (Stripe), link externo para pa
 | `revenuecatClient.ts` | Implementação real com `react-native-purchases` e `react-native-purchases-ui`. Único arquivo que importa o SDK. |
 | `fakeClient.ts` | Cliente falso para Jest e para desenvolvimento sem loja. |
 | `snapshot.ts` | Converte `customerInfo` em `Snapshot { proActive, passTransactions[{id, productId, purchasedAt}] }`. |
-| `rules.ts` | Funções puras: `tierFor(snapshot, session)`, `isClipLocked(clip, tier)`, `canSaveUnlimited(session, tier, now)`, `detectPurchase(before, after)`. |
+| `rules.ts` | Funções puras: `tierFor(snapshot, session)`, `isClipLocked(clip, tier)`, `shouldLockOnSave(tier, unlockedCount)`, `detectPurchase(before, after)`. |
 | `PaymentsProvider.tsx` | Configura o SDK uma vez, assina o listener, guarda o snapshot e expõe o cliente. |
 
 - `useEntitlement(sessionId?)` (continua em `src/share/entitlement.ts`) devolve `{ tier }` com `Tier = 'free' | 'pass' | 'pro'`. Sem `sessionId` só reconhece `pro`.
-- `exportOptions(tier, …)`: resolução 1080x1920 e `watermark: false` quando `tier !== 'free'` (hoje a marca é sempre `true` e a resolução só depende de `'pro'`).
+- `exportOptions(tier, …)`: 1080x1920 e `watermark: false` quando `tier !== 'free'` (hoje a marca é sempre `true` e a resolução só depende de `'pro'`).
 - Chaves públicas por variável de ambiente (`.env.local`, fora do git), lidas em `app.config.js` para `extra`: `appl_…` (iOS), `goog_…` (Android) e `test_…` (Test Store, só em builds de debug). Nunca chave secreta no app.
 
 ## Dados
-- `Session` ganha `passTransactionId?: string` e `passPurchasedAt?: number`.
+- `Session` ganha `passTransactionId?: string`.
 - `Clip` ganha `locked?: boolean`.
 - Sem migração destrutiva: campos opcionais; lances antigos valem como não bloqueados.
 
-## Fluxo
-1. Ao salvar um lance, se o plano da sessão é `free` e já há 5 lances, o lance é salvo com `locked: true` e o app chama `showPaywall()`.
+## Fluxo de compra
+1. O usuário toca em "Liberar" (ou em um lance bloqueado, ou em um recurso pago) num jogo `S`. O app chama `showPaywall(S)`.
 2. O paywall (oferta `default`: Passe pré-selecionado + Pro; "Agora não" fecha) faz a compra sozinho. O app não chama `purchasePackage`.
-3. Em `purchased`/`restored`, `detectPurchase(antes, depois)` compara os snapshots: `proActive` novo → Pro; transação nova em `passTransactions` → grava `passTransactionId` e `passPurchasedAt` na sessão em andamento.
+3. Em `purchased`/`restored`, `detectPurchase(antes, depois)` compara os snapshots: `proActive` novo → Pro; transação nova em `passTransactions` → grava `passTransactionId` em `S`.
 4. O listener `onCustomerInfo` atualiza o snapshot; `tierFor` recalcula e a interface muda. Nada é liberado dentro do callback da compra.
-5. "Agora não": o lance fica salvo e bloqueado. `showPaywall()` abre de novo a partir de "Meus jogos" ou do editor. Esses são os mesmos pontos que exigem plano para câmera lenta e templates.
-6. "Restaurar compras": no paywall e em Ajustes (obrigatório no iOS). Restaura o Pro; um Passe restaurado em outro aparelho não religa a uma sessão, pois o Passe é por sessão local.
+5. "Restaurar compras": no paywall e em Ajustes (obrigatório no iOS). Restaura o Pro. O Passe é por jogo local e já fica gravado no aparelho; não é restaurado em outro aparelho.
 
 ## Erros e situações-limite
 
 | Situação | Comportamento |
 |---|---|
 | Usuário cancela a compra | Volta ao app sem alerta. |
-| Compra falha (pagamento recusado, sem rede, loja indisponível) | Mensagem curta e novo `showPaywall()` possível. Nenhuma liberação. |
-| Sem rede ao abrir | Usa o último `customerInfo` guardado pelo SDK. Sem nenhum snapshot, o plano é grátis, exceto sessão com `passTransactionId` (vale o que está gravado). |
-| Duas compras seguidas | O paywall bloqueia o segundo toque durante a compra. |
-| App reinicia no meio da sessão | `passTransactionId` na `Session` (MMKV) mantém o Passe. |
-| Paywall sem oferta/preço | O RevenueCat mostra o layout padrão. A verificação de aceite exige o paywall do painel. |
-| **Gravação durante a compra** | Abrir o paywall e a folha da loja **não pode pausar a gravação nem apagar o buffer**. A captura só reage a interrupção da sessão de câmera (`AVCaptureSession.wasInterrupted` no iOS, parada do pipeline em `ReplayEngine.kt` no Android), não a `AppState inactive`. Por isso o paywall é embutido na tela de gravação (sem trocar de Activity/ViewController). Barreira de validação em aparelho abaixo. |
+| Compra falha (recusada, sem rede, loja indisponível) | Mensagem curta e novo paywall possível. Nenhuma liberação. |
+| Sem rede ao abrir | Usa o último `customerInfo` guardado pelo SDK. Sem nenhum snapshot, o plano é grátis, exceto jogo com `passTransactionId` (vale o que está gravado). |
+| Duplo toque em comprar | O paywall bloqueia o segundo toque durante a compra. |
+| App reinicia | `passTransactionId` na `Session` (MMKV) mantém o Passe. |
+| Paywall sem oferta/preço | O RevenueCat mostra o layout padrão. O aceite exige o paywall do painel. |
+| Muito espaço usado por lances bloqueados | A trava de espaço do spec principal (bloqueia "Começar jogo" abaixo de ~500 MB e avisa durante o jogo) continua valendo. |
 
 ## Testes
-- **Jest (unitários):** `tierFor` (grátis, Passe, Pro, Pro vence Passe), `isClipLocked`, `canSaveUnlimited` (limite de 4h e sessão encerrada), `detectPurchase` (Pro, Passe, nada novo, restauração), `snapshot` com `customerInfo` simulado, regra dos 5 lances ao salvar, `exportOptions` por plano. Tudo com `fakeClient`.
+- **Jest (unitários):** `tierFor` (grátis, Passe, Pro; Pro vence Passe), `isClipLocked`, `shouldLockOnSave` (5 liberados, 6º bloqueado, Pro e Passe nunca bloqueiam), `detectPurchase` (Pro, Passe, nada novo, restauração), `snapshot` com `customerInfo` simulado, `exportOptions` por plano. Tudo com `fakeClient`.
 - **Desenvolvimento:** Test Store do RevenueCat (chave `test_`), com compra bem-sucedida, falha e cancelamento.
 - **Aparelho:** sandbox da Apple e license tester do Google, no iOS e no Android. Conferir no painel do RevenueCat (visão Sandbox) que a transação aparece para o `appUserID` certo.
 
-## Barreira de validação: gravação durante a compra (primeira etapa do plano)
-Antes de construir o resto, um teste curto em aparelho real (iOS e Android, Test Store e depois sandbox): iniciar uma gravação, abrir o paywall embutido, concluir e cancelar uma compra, e conferir que `onInterrupted` não é emitido, que o buffer segue contínuo e que um lance salvo logo depois contém o trecho anterior à compra.
-- **Passou:** segue o plano.
-- **Falhou por causa do paywall embutido:** trocar por paywall próprio (a folha da loja continua sendo a do sistema).
-- **Falhou por causa da folha da loja (vale para qualquer paywall):** mostrar o paywall só no fim do jogo, na tela de resumo. Os lances bloqueados esperam até lá.
-
 ## Critérios de aceite
-1. O 6º lance fica salvo e bloqueado e abre o paywall com o layout do painel (não o padrão).
-2. Comprar o Passe libera todos os lances da sessão em 1080p sem marca, inclusive depois de encerrar o jogo e reiniciar o app.
-3. Assinar o Pro libera tudo; cancelar a assinatura volta ao plano grátis para novas sessões e mantém liberados os lances gravados no Pro.
-4. Cancelar a compra não mostra erro e não trava a tela.
-5. "Restaurar compras" em instalação limpa devolve o Pro.
-6. Abrir o paywall e concluir uma compra não interrompe a gravação em andamento.
+1. O 6º lance e os seguintes são salvos e ficam bloqueados; a gravação não para e nada de pagamento aparece durante o jogo.
+2. O resumo mostra os lances bloqueados e o botão "Liberar" abre o paywall com o layout do painel (não o padrão).
+3. Comprar o Passe libera todos os lances daquele jogo em 1080p sem marca, inclusive depois de reiniciar o app e dias depois, sem afetar outros jogos.
+4. Assinar o Pro libera tudo; cancelar a assinatura volta ao plano grátis para novos lances e mantém liberados os lances gravados no Pro.
+5. Cancelar a compra não mostra erro e não trava a tela.
+6. "Restaurar compras" em instalação limpa devolve o Pro.
 7. `npm test` e `npm run lint` passam.
 
 ## Passos fora do código (Marcus)
@@ -94,7 +103,8 @@ Antes de construir o resto, um teste curto em aparelho real (iOS e Android, Test
 4. Build de desenvolvimento novo (módulos nativos): `react-native-purchases` e `react-native-purchases-ui` não rodam no Expo Go. Alvo atual do iOS: 16.4 (o paywall pede 15+). Confirmar no plano o `minSdkVersion` do Android (o paywall pede 24+).
 
 ## Riscos
-- O texto "O lance #N já está guardado" vira título fixo no paywall hospedado, que não aceita o número do lance.
-- O conteúdo do paywall (layout, textos) é o que o builder do RevenueCat permite. O painel inferior com a gravação ao fundo é nosso (contêiner), mas o interior é deles.
+- O paywall hospedado não mostra o número do lance, e seu layout é o que o builder do RevenueCat permite.
+- Perde-se a compra por impulso no instante do 6º lance; a aposta é converter no resumo, com as miniaturas dos lances bloqueados à vista. Medir a conversão do paywall do fim do jogo e rever se ficar abaixo da meta.
 - Passe validado no aparelho: um aparelho adulterado pode burlar o limite de um jogo de R$ 4,90. Aceito na v1.
+- Lances bloqueados ocupam espaço no aparelho até o usuário pagar ou apagar o jogo.
 - Comissão das lojas (~15%) e RevenueCat (1% acima de ~US$ 2.500 de receita mensal, a confirmar no site deles) reduzem a margem; não afetam o design.

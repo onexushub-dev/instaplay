@@ -55,12 +55,12 @@ Fluxo: **Boas-vindas → Posicionar câmera → Gravando → Lance salvo (repete
 - Contador de lances grátis (ex.: 4 de 5).
 - Botão "Desfazer".
 
-### 3.5 Paywall (no 6º lance do plano grátis)
-- Painel inferior, com a gravação seguindo por trás.
-- "O lance #6 já está guardado."
-- Opções: Passe do Jogo R$4,90 (selecionado por padrão) ou Pro R$19,90/mês.
-- "Agora não": o lance fica salvo, mas bloqueado. Dá para liberar a qualquer momento com o Passe deste jogo.
-- Pagamento pela App Store / Google Play.
+### 3.5 Limite grátis e paywall (revisado em 2026-10-20)
+- A gravação nunca para por causa do plano. Do 6º lance em diante os lances são salvos e ficam bloqueados.
+- Durante o jogo: aviso discreto ("Lance #5 salvo · último grátis"; "Lance #6 salvo · libere no fim do jogo"). Nenhum paywall aparece durante a gravação.
+- Depois do jogo: o resumo mostra "N lances guardados · M bloqueados" com as miniaturas e o botão "Liberar", que abre o paywall (Passe do Jogo R$4,90 pré-selecionado ou Pro R$19,90/mês). Tocar em um lance bloqueado ou em um recurso pago também abre o paywall.
+- "Agora não": nada se perde; dá para liberar a qualquer momento com o Passe do jogo.
+- Pagamento pela App Store / Google Play. Detalhes em `2026-10-20-payments-revenuecat-design.md`.
 
 ### 3.6 Relógio (watchOS e Wear OS)
 - Uma tela só: tempo + número de lances e um botão grande "Salvar lance".
@@ -166,14 +166,14 @@ Preferências   { lente, duraçãoPadrão: 30, gestoAtivo, relógioPareado }
 
 | Regra | Grátis | Passe do Jogo (R$4,90) | Pro (R$19,90/mês) |
 |---|---|---|---|
-| Lances por jogo | 5 | Ilimitado | Ilimitado |
+| Lances liberados por jogo | 5 (os seguintes ficam salvos e bloqueados) | Todos | Todos |
 | Exportação | 720p | 1080p 60fps | 1080p 60fps |
 | Selo/marca d'água | Sim | Não | Não |
 | Câmera lenta | Não | Sim | Sim |
 | Templates de Story | 1 | Todos | Todos |
-| Validade | — | A sessão atual, até ser encerrada (no máximo 4h) | Mensal |
+| Validade | — | O jogo em que foi comprado, para sempre | Mensal |
 
-- O Passe é uma compra avulsa pela loja, vinculada ao `sessãoId`. Ele continua valendo se o app reiniciar no meio da sessão.
+- O Passe é uma compra avulsa pela loja, vinculada ao `sessãoId`. Ele continua valendo se o app reiniciar e pode ser comprado depois do jogo.
 - Comprar o Passe libera em HD todos os lances da sessão, inclusive os bloqueados.
 - Conteúdo digital é vendido só pelas compras da loja (Apple/Google). O kit físico é vendido fora do app (link externo, Pix).
 - Hipótese a verificar: decisões regulatórias no Brasil (CADE vs. Apple) que permitam pagamento externo.
@@ -231,7 +231,7 @@ Decisão do Marcus: entregar todas as funcionalidades antes de cobrar.
 | % de jogos com ≥1 lance salvo | > 70% |
 | Lances postados / salvos | > 30% |
 | Uso por gatilho | descobrir |
-| Conversão do paywall do 6º lance | > 5% |
+| Conversão do paywall do fim de jogo | > 5% |
 | Volta em 30 dias | > 25% |
 
 ## 11. Lançamento
