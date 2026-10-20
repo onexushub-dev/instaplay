@@ -11,14 +11,15 @@
       "icon": "./assets/expo.icon",
       "bundleIdentifier": "app.lance.mobile",
       "infoPlist": {
-        "NSCameraUsageDescription": "O LANCE usa a câmera para gravar seus clipes.",
-        "NSMicrophoneUsageDescription": "O LANCE grava o som dos seus clipes.",
-        "NSSpeechRecognitionUsageDescription": "O LANCE escuta você dizer \"salvar\" ou \"gravar\" para salvar o clipe sem tocar no celular.",
+        "NSCameraUsageDescription": "LANCE uses the camera to record your clips.",
+        "NSMicrophoneUsageDescription": "LANCE records the sound of your clips.",
+        "NSSpeechRecognitionUsageDescription": "LANCE listens for you to say \"save\" or \"record\" so you can save a clip without touching your phone.",
         "LSApplicationQueriesSchemes": [
           "instagram-stories"
         ],
-        "NSPhotoLibraryAddUsageDescription": "O LANCE salva os clipes que você exportar na sua galeria.",
-        "NSLocalNetworkUsageDescription": "O LANCE usa a rede local para conversar com o outro celular que serve de controle.",
+        "NSPhotoLibraryAddUsageDescription": "LANCE saves the clips you export to your photo library.",
+        "NSLocalNetworkUsageDescription": "LANCE uses your local network to talk to the other phone you use as a remote.",
+        "CFBundleAllowMixedLocalizations": true,
         "NSBonjourServices": [
           "_lance-remote._tcp",
           "_lance-remote._udp"
@@ -59,8 +60,22 @@
       "expo-sharing",
       "@bacons/apple-targets",
       "./plugins/withPodsDeploymentTarget",
-      "expo-image"
+      "expo-image",
+      [
+        "expo-localization",
+        {
+          "supportedLocales": {
+            "ios": ["en", "pt-BR"],
+            "android": ["en", "pt-BR"]
+          },
+          "allowDynamicLocaleChangesAndroid": true
+        }
+      ]
     ],
+    "locales": {
+      "en": "./locales/en.json",
+      "pt-BR": "./locales/pt-BR.json"
+    },
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
