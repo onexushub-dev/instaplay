@@ -35,28 +35,27 @@ afterEach(() => jest.useRealTimers());
 
 test('tells the player to read the code with the Camera app of the remote phone, above the code', async () => {
   await render(<Pairing />);
-  expect(screen.getByText('Parear um celular como controle')).toBeTruthy();
+  expect(screen.getByText('Conectar um celular de controle')).toBeTruthy();
   expect(screen.getByText('ESTE IPHONE É A CÂMERA')).toBeTruthy();
-  expect(screen.getByText('No outro iPhone, abra o app Câmera (o da câmera normal).')).toBeTruthy();
-  expect(screen.getByText('Aponte para este código.')).toBeTruthy();
-  expect(screen.getByText("Toque em 'Abrir no LANCE'.")).toBeTruthy();
+  expect(screen.getByText('No outro celular, abra o LANCE e toque em “Usar este celular como controle”.')).toBeTruthy();
+  expect(screen.getByText('Aponte a câmera dele para este código QR.')).toBeTruthy();
   expect(screen.getByText('042517')).toBeTruthy();
   expect(
-    screen.getByText("Não leu? Abra o LANCE no controle, toque em 'Usar este celular como controle' e digite o código:"),
+    screen.getByText("Prefere digitar? No outro celular, digite este código:"),
   ).toBeTruthy();
-  expect(screen.getByText('O LANCE precisa estar instalado no celular controle.')).toBeTruthy();
+  expect(screen.getByText('O LANCE precisa estar instalado no outro celular.')).toBeTruthy();
   expect(screen.getByLabelText('Código QR para parear')).toBeTruthy();
 });
 
 test('the instruction is there even when no code could be made', async () => {
   camera().remoteHostBeginPairing.mockReturnValue(null);
   await render(<Pairing />);
-  expect(screen.getByText('No outro iPhone, abra o app Câmera (o da câmera normal).')).toBeTruthy();
+  expect(screen.getByText('No outro celular, abra o LANCE e toque em “Usar este celular como controle”.')).toBeTruthy();
 });
 
 test('while the code is good it shows that the camera phone is waiting for the remote', async () => {
   await render(<Pairing />);
-  expect(screen.getByText('Aguardando o controle…')).toBeTruthy();
+  expect(screen.getByText('Aguardando o outro celular…')).toBeTruthy();
 });
 
 test('counts down the two minutes, and says when the code is no longer good', async () => {
@@ -70,7 +69,7 @@ test('counts down the two minutes, and says when the code is no longer good', as
     jest.advanceTimersByTime(60_000);
   });
   expect(screen.getByText('Código vencido. Gere um novo.')).toBeTruthy();
-  expect(screen.queryByText('Aguardando o controle…')).toBeNull();
+  expect(screen.queryByText('Aguardando o outro celular…')).toBeNull();
 });
 
 test('never shows more than the two minutes a code is good for, even if making the QR took a moment', async () => {
@@ -93,7 +92,7 @@ test('lists the paired remotes and removes one', async () => {
     { id: 'b', name: 'iPhone do Beto' },
   ]);
   await render(<Pairing />);
-  expect(screen.getByText('Controles pareados')).toBeTruthy();
+  expect(screen.getByText('Celulares de controle')).toBeTruthy();
   camera().remoteHostPeers.mockReturnValue([{ id: 'b', name: 'iPhone do Beto' }]);
   await fireEvent.press(screen.getByRole('button', { name: 'Remover iPhone da Ana' }));
   expect(camera().remoteHostRemove).toHaveBeenCalledWith('a');
@@ -105,7 +104,7 @@ test('with four remotes paired there is no new code, only the way out', async ()
   camera().remoteHostBeginPairing.mockReturnValue(null);
   camera().remoteHostPeers.mockReturnValue(['a', 'b', 'c', 'd'].map((id) => ({ id, name: `iPhone ${id}` })));
   await render(<Pairing />);
-  expect(screen.getByText('Limite de 4 controles. Remova um para parear outro.')).toBeTruthy();
+  expect(screen.getByText('Você já tem 4 celulares de controle. Remova um para conectar outro.')).toBeTruthy();
   expect(screen.queryByText('042517')).toBeNull();
   expect(screen.queryByRole('button', { name: 'Gerar novo código' })).toBeNull();
 });
@@ -116,7 +115,7 @@ test('shows that a remote paired as soon as the camera phone says so', async () 
   const listener = camera().addReplayListener.mock.calls.find((c: any[]) => c[0] === 'onRemoteStatus')[1];
   await act(async () => listener({ link: 'connected', controllers: 1 }));
   expect(screen.getByText('Pronto! iPhone da Ana agora é um controle.')).toBeTruthy();
-  expect(screen.queryByText('Aguardando o controle…')).toBeNull();
+  expect(screen.queryByText('Aguardando o outro celular…')).toBeNull();
 });
 
 test('pairing a remote that was already in the list still counts as paired', async () => {

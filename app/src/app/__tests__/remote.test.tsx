@@ -7,9 +7,13 @@ jest.mock('../../../modules/replay-camera', () => ({
   remoteControllerStart: jest.fn(),
   remoteControllerStop: jest.fn(),
   remoteControllerHost: jest.fn(() => null),
+  remoteControllerForget: jest.fn(),
   remoteControllerPairWithCode: jest.fn(),
   remoteControllerSave: jest.fn(),
   remoteControllerEndRecording: jest.fn(),
+  remoteControllerPairWithLink: jest.fn(),
+  remoteControllerStartRecording: jest.fn(),
+  remoteControllerPreview: jest.fn(),
   remoteDeviceName: jest.fn(() => 'iPhone XR#1234'),
   remoteSetDeviceName: jest.fn(),
   addReplayListener: jest.fn(() => ({ remove: jest.fn() })),
@@ -17,6 +21,16 @@ jest.mock('../../../modules/replay-camera', () => ({
 jest.mock('expo-router', () => ({
   router: { back: jest.fn(), push: jest.fn(), replace: jest.fn(), canGoBack: jest.fn(() => true) },
 }));
+jest.mock('expo-camera', () => {
+  const { View } = jest.requireActual('react-native');
+  return {
+    CameraView: (props: any) => {
+      mockScanner.onBarcodeScanned = props.onBarcodeScanned;
+      return jest.requireActual('react').createElement(View, { testID: 'qr-camera' });
+    },
+    useCameraPermissions: () => [{ granted: true, canAskAgain: true }, jest.fn()],
+  };
+});
 jest.mock('expo-keep-awake', () => ({
   activateKeepAwakeAsync: jest.fn(() => Promise.resolve()),
   deactivateKeepAwake: jest.fn(),
@@ -28,6 +42,7 @@ jest.mock('expo-haptics', () => ({
   NotificationFeedbackType: { Success: 'success', Error: 'error' },
 }));
 
+const mockScanner: { onBarcodeScanned?: (e: { data: string }) => void } = {};
 const camera = () => jest.requireMock('../../../modules/replay-camera');
 const haptics = () => jest.requireMock('expo-haptics');
 const NOW = 1_000_000_000;
@@ -62,14 +77,15 @@ test('looks for the camera phone while open, and lets go on leaving', async () =
 test('without a pair it says which iPhone is which and explains the steps', async () => {
   await render(<Remote />);
   expect(screen.getByText('ESTE IPHONE É O CONTROLE')).toBeTruthy();
-  expect(screen.getByText("No celular da câmera, toque no tile 'Celular'.")).toBeTruthy();
-  expect(screen.getByText('Neste iPhone, abra o app Câmera e aponte para o código que aparecer lá.')).toBeTruthy();
-  expect(screen.getByText('Ou digite o código de 6 dígitos:')).toBeTruthy();
+  expect(screen.getByText('No celular que vai filmar, abra o LANCE e toque em “Celular” para começar o pareamento.')).toBeTruthy();
+  expect(screen.getByText('Aponte a câmera deste celular para o código QR que aparece lá.')).toBeTruthy();
+  expect(screen.getByText('Não consegue ler o QR? Digite aqui o código de 6 números:')).toBeTruthy();
+  expect(screen.queryByText(/tile/i)).toBeNull();
 });
 
 test('an incomplete code is not sent, and Conectar says what is missing', async () => {
   await render(<Remote />);
-  await fireEvent.changeText(screen.getByLabelText('Código de 6 dígitos'), '042 51');
+  await fireEvent.changeText(screen.getByLabelText('Código de 6 números'), '042 51');
   expect(camera().remoteControllerPairWithCode).not.toHaveBeenCalled();
   await fireEvent.press(screen.getByRole('button', { name: 'Conectar' }));
   expect(camera().remoteControllerPairWithCode).not.toHaveBeenCalled();
@@ -78,7 +94,7 @@ test('an incomplete code is not sent, and Conectar says what is missing', async 
 
 test('the sixth digit connects by itself, and the button shows it is working', async () => {
   await render(<Remote />);
-  await fireEvent.changeText(screen.getByLabelText('Código de 6 dígitos'), '042 517');
+  await fireEvent.changeText(screen.getByLabelText('Código de 6 números'), '042 517');
   expect(camera().remoteControllerPairWithCode).toHaveBeenCalledWith('042517');
   expect(camera().remoteControllerPairWithCode).toHaveBeenCalledTimes(1);
   const busy = screen.getByRole('button', { name: 'Conectando…' });
@@ -89,7 +105,7 @@ test('the sixth digit connects by itself, and the button shows it is working', a
 
 test('a code that never gets an answer stops spinning and says the camera was not found', async () => {
   await render(<Remote />);
-  await fireEvent.changeText(screen.getByLabelText('Código de 6 dígitos'), '042517');
+  await fireEvent.changeText(screen.getByLabelText('Código de 6 números'), '042517');
   await act(async () => {
     jest.advanceTimersByTime(12_000);
   });
@@ -101,7 +117,7 @@ test('a code that never gets an answer stops spinning and says the camera was no
 
 test('when the camera was not found, one tap tries the same code again', async () => {
   await render(<Remote />);
-  await fireEvent.changeText(screen.getByLabelText('Código de 6 dígitos'), '042517');
+  await fireEvent.changeText(screen.getByLabelText('Código de 6 números'), '042517');
   await emit('onRemotePairing', { phase: 'failed', reason: 'notFound' });
   await fireEvent.press(screen.getByRole('button', { name: 'Tentar de novo' }));
   expect(camera().remoteControllerPairWithCode).toHaveBeenCalledTimes(2);
@@ -110,24 +126,9 @@ test('when the camera was not found, one tap tries the same code again', async (
 
 test('an expired code offers no retry, only a new code', async () => {
   await render(<Remote />);
-  await fireEvent.changeText(screen.getByLabelText('Código de 6 dígitos'), '042517');
+  await fireEvent.changeText(screen.getByLabelText('Código de 6 números'), '042517');
   await emit('onRemotePairing', { phase: 'failed', reason: 'expired' });
   expect(screen.queryByRole('button', { name: 'Tentar de novo' })).toBeNull();
-});
-
-test('a shortcut opens the iPhone Camera app', async () => {
-  const open = jest.spyOn(Linking, 'openURL').mockResolvedValue(undefined);
-  await render(<Remote />);
-  await fireEvent.press(screen.getByRole('button', { name: 'Abrir app Câmera' }));
-  expect(open).toHaveBeenCalledWith('camera://');
-});
-
-test('if the Camera app cannot be opened, it says to open it by hand', async () => {
-  jest.spyOn(Linking, 'openURL').mockRejectedValue(new Error('no'));
-  await render(<Remote />);
-  await fireEvent.press(screen.getByRole('button', { name: 'Abrir app Câmera' }));
-  await act(async () => {});
-  expect(screen.getByText('Não consegui abrir. Abra o app Câmera do iPhone pela tela inicial.')).toBeTruthy();
 });
 
 test('a failed pairing by code says why', async () => {
@@ -155,7 +156,7 @@ test('connected and waiting for the game', async () => {
   expect(screen.getByText('Procurando Quadra 1…')).toBeTruthy();
   await emit('onRemoteStatus', { link: 'connected', peerName: 'Quadra 1' });
   await emit('onRemoteState', { recording: false, clipCount: 0 });
-  expect(screen.getByText('Conectado a Quadra 1. Inicie a gravação no outro dispositivo.')).toBeTruthy();
+  expect(screen.getByText('Conectado. Pronto para começar a partida.')).toBeTruthy();
 });
 
 test('while recording it shows the clock and clips, and Salvar asks the camera phone', async () => {
@@ -270,7 +271,7 @@ test('when the camera phone forgot this remote, it says so and offers to pair ag
   camera().remoteControllerHost.mockReturnValue(null);
   await emit('onRemotePairing', { phase: 'failed', reason: 'denied' });
   expect(screen.getByText('Este controle não está mais pareado')).toBeTruthy();
-  expect(screen.getByLabelText('Código de 6 dígitos')).toBeTruthy();
+  expect(screen.getByLabelText('Código de 6 números')).toBeTruthy();
 });
 
 test('Fechar goes back', async () => {
@@ -297,7 +298,7 @@ test('connected before any state arrives it already says connected, not searchin
   paired();
   await render(<Remote />);
   await emit('onRemoteStatus', { link: 'connected', peerName: 'Quadra 1' });
-  expect(screen.getByText('Conectado a Quadra 1. Inicie a gravação no outro dispositivo.')).toBeTruthy();
+  expect(screen.getByText('Conectado. Pronto para começar a partida.')).toBeTruthy();
   expect(screen.queryByText('Procurando Quadra 1…')).toBeNull();
 });
 
@@ -375,4 +376,75 @@ test('"Tentar agora" starts the search over', async () => {
   await fireEvent.press(screen.getByRole('button', { name: 'Tentar agora' }));
   expect(camera().remoteControllerStop).toHaveBeenCalledTimes(1);
   expect(camera().remoteControllerStart).toHaveBeenCalledTimes(1);
+});
+
+test('"Usar outra câmera" asks first, then forgets the camera phone and goes back to asking for a code', async () => {
+  paired();
+  const alert = jest.spyOn(require('react-native').Alert, 'alert').mockImplementation(() => {});
+  await render(<Remote />);
+  await fireEvent.press(screen.getByRole('button', { name: 'Usar outra câmera' }));
+  expect(alert).toHaveBeenCalledTimes(1);
+  expect(camera().remoteControllerForget).not.toHaveBeenCalled();
+  const buttons = alert.mock.calls[0][2] as { text: string; onPress?: () => void }[];
+  await act(async () => buttons.find((b) => b.text === 'Esquecer')!.onPress!());
+  expect(camera().remoteControllerForget).toHaveBeenCalledTimes(1);
+  expect(screen.getByText('Conectar à câmera')).toBeTruthy();
+  alert.mockRestore();
+});
+
+const LINK = 'lance://pair?h=host1&s=AAAAAAAAAAAAAAAAAAAAAA&n=Quadra%201';
+
+test('the QR code is read right here and pairs with that camera phone', async () => {
+  await render(<Remote />);
+  await act(async () => mockScanner.onBarcodeScanned!({ data: LINK }));
+  expect(camera().remoteControllerPairWithLink).toHaveBeenCalledWith('host1', 'AAAAAAAAAAAAAAAAAAAAAA', 'Quadra 1');
+  expect(screen.getByRole('button', { name: 'Conectando…' })).toBeTruthy();
+});
+
+test('a QR code that is not from LANCE is ignored', async () => {
+  await render(<Remote />);
+  await act(async () => mockScanner.onBarcodeScanned!({ data: 'https://example.com' }));
+  expect(camera().remoteControllerPairWithLink).not.toHaveBeenCalled();
+});
+
+test('"Iniciar gravação" asks the camera phone to start and shows it is working', async () => {
+  paired();
+  await render(<Remote />);
+  await emit('onRemoteStatus', { link: 'connected', peerName: 'Quadra 1' });
+  await emit('onRemoteState', { recording: false, clipCount: 0 });
+  await fireEvent.press(screen.getByRole('button', { name: 'INICIAR GRAVAÇÃO' }));
+  expect(camera().remoteControllerStartRecording).toHaveBeenCalledTimes(1);
+  expect(screen.getByRole('button', { name: 'Iniciando…' })).toBeTruthy();
+  await emit('onRemoteState', { recording: true, clipCount: 0, startedAt: NOW });
+  expect(screen.getByRole('button', { name: 'SALVAR' })).toBeTruthy();
+});
+
+test('if the camera phone does not start, it says so', async () => {
+  paired();
+  await render(<Remote />);
+  await emit('onRemoteStatus', { link: 'connected', peerName: 'Quadra 1' });
+  await emit('onRemoteState', { recording: false, clipCount: 0 });
+  await fireEvent.press(screen.getByRole('button', { name: 'INICIAR GRAVAÇÃO' }));
+  await act(async () => {
+    jest.advanceTimersByTime(9000);
+    await emit('onRemoteState', { recording: false, clipCount: 0 });
+  });
+  expect(screen.getByText(/A gravação não começou/)).toBeTruthy();
+});
+
+test('"Ver câmera" opens the picture, keeps asking for it, and stops asking when closed', async () => {
+  paired();
+  await render(<Remote />);
+  await emit('onRemoteStatus', { link: 'connected', peerName: 'Quadra 1' });
+  await emit('onRemoteState', { recording: true, clipCount: 1, startedAt: NOW });
+  await fireEvent.press(screen.getByRole('button', { name: 'Ver câmera' }));
+  expect(camera().remoteControllerPreview).toHaveBeenLastCalledWith(true);
+  await act(async () => {
+    jest.advanceTimersByTime(2100);
+  });
+  expect(camera().remoteControllerPreview.mock.calls.filter((c: any[]) => c[0] === true).length).toBeGreaterThanOrEqual(3);
+  await emit('onRemoteFrame', { jpeg: '/9j/AAAA' });
+  expect(screen.getByLabelText('O que a câmera está vendo')).toBeTruthy();
+  await fireEvent.press(screen.getByRole('button', { name: 'Voltar' }));
+  expect(camera().remoteControllerPreview).toHaveBeenLastCalledWith(false);
 });

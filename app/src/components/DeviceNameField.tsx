@@ -28,7 +28,7 @@ export function DeviceNameField() {
         style={styles.input}
         value={name}
       />
-      <Text style={styles.hint}>Aparece no outro celular. Vale a partir do próximo pareamento.</Text>
+      <Text style={styles.hint}>O outro celular mostra este nome. A mudança vale na próxima conexão.</Text>
     </View>
   );
 }

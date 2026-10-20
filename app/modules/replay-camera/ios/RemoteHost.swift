@@ -32,6 +32,8 @@ final class RemoteHost: NSObject {
   private var authenticated: [MCPeerID: String] = [:]
   private var lastState: RemoteMessage = .state(recording: false, clipCount: 0, startedAt: nil)
   private var heartbeat: DispatchSourceTimer?
+  /// A remote asked for (or stopped) the pictures of the camera view; wired to the capture in the module.
+  var onPreview: ((Bool) -> Void)?
   /// Pending shutdown of the session; see `scheduleTeardown`.
   private var teardown: DispatchWorkItem?
   /// How long the host stays up after nothing wants it any more.
@@ -62,6 +64,14 @@ final class RemoteHost: NSObject {
   }
 
   func stop() { onMain { wanted = false; refresh() } }
+
+  /// One picture of the camera view for the connected remotes. Dropped quietly when there is none.
+  func sendFrame(_ jpeg: Data) {
+    DispatchQueue.main.async {
+      guard let session = self.session, !self.authenticated.isEmpty else { return }
+      try? session.send(jpeg, toPeers: Array(self.authenticated.keys), with: .reliable)
+    }
+  }
 
   var peers: [TrustedPeer] { onMain { trusted.all } }
 
@@ -286,6 +296,7 @@ extension RemoteHost: MCSessionDelegate {
       case .notConnected:
         self.pending.removeValue(forKey: peerID)
         self.authenticated.removeValue(forKey: peerID)
+        if self.authenticated.isEmpty { self.onPreview?(false) }
         self.emitStatus()
       default:
         break
@@ -293,7 +304,7 @@ extension RemoteHost: MCSessionDelegate {
     }
   }
 
-  /// Only `save` and `stop` from a remote that proved who it is count; anything else is dropped. JS decides whether the
+  /// Only `save`, `stop` and `forget` from a remote that proved who it is count; anything else is dropped. JS decides whether the
   /// game is in a state where each one makes sense (a `save` outside a recording must not use up the debounce).
   func session(_ session: MCSession, didReceive data: Data, fromPeer peerID: MCPeerID) {
     DispatchQueue.main.async {
@@ -301,6 +312,16 @@ extension RemoteHost: MCSessionDelegate {
       switch message {
       case .save: self.emit?("onTrigger", ["source": "phone", "at": self.nowMs])
       case .stop: self.emit?("onRemoteStop", [:])
+      case .start: self.emit?("onRemoteStart", [:])
+      case let .preview(on): self.onPreview?(on)
+      case .forget:
+        // The remote was unpaired on its own side: drop it here too, so the two lists agree.
+        if let remoteId = self.authenticated[peerID] {
+          self.trusted.remove(id: remoteId)
+          self.authenticated.removeValue(forKey: peerID)
+          self.disconnectSoon(peerID)
+          self.refresh()
+        }
       default: break
       }
     }

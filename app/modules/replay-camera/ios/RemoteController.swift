@@ -50,10 +50,15 @@ final class RemoteController: NSObject {
 
   var host: TrustedPeer? { onMain { hosts.all.first } }
 
+  /// Unpairs from this side. When the camera phone is in reach it is told first, so it drops this remote too.
   func forget() {
     onMain {
       for item in hosts.all { hosts.remove(id: item.id) }
-      if let peer = connectedHost { session?.cancelConnectPeer(peer) }
+      if let peer = connectedHost {
+        if let session { try? session.send(RemoteMessage.forget.data, toPeers: [peer], with: .reliable) }
+        // Give the message a moment to leave before the link is cut.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in self?.session?.cancelConnectPeer(peer) }
+      }
       connectedHost = nil
       emitStatus()
     }
@@ -73,6 +78,12 @@ final class RemoteController: NSObject {
 
   /// Asks the camera phone to end the recording.
   func endRecording() { send(.stop) }
+
+  /// Asks the camera phone to start a new recording.
+  func startRecording() { send(.start) }
+
+  /// The camera view is open (`true`, said again every second) or closed.
+  func preview(_ on: Bool) { send(.preview(on: on)) }
 
   private func send(_ message: RemoteMessage) {
     onMain {
@@ -241,7 +252,7 @@ final class RemoteController: NSObject {
       emit?("onRemoteState", body)
     case let .result(saved):
       emit?("onRemoteResult", ["saved": saved])
-    case .save, .stop:
+    case .save, .stop, .forget, .start, .preview:
       break
     }
   }
@@ -300,6 +311,11 @@ extension RemoteController: MCSessionDelegate {
 
   func session(_ session: MCSession, didReceive data: Data, fromPeer peerID: MCPeerID) {
     DispatchQueue.main.async {
+      // A JPEG (a picture of the camera view) starts with FF D8; every other message is JSON.
+      if data.count > 2, data[data.startIndex] == 0xFF, data[data.startIndex + 1] == 0xD8 {
+        self.emit?("onRemoteFrame", ["jpeg": data.base64EncodedString()])
+        return
+      }
       guard let message = RemoteMessage.decode(data: data) else { return }
       self.received(message, from: peerID)
     }

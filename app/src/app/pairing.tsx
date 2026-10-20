@@ -109,7 +109,7 @@ export default function Pairing() {
     <SafeAreaView style={styles.root}>
       <ScrollView automaticallyAdjustKeyboardInsets contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
         <Text style={styles.role}>ESTE IPHONE É A CÂMERA</Text>
-        <Text style={styles.title}>Parear um celular como controle</Text>
+        <Text style={styles.title}>Conectar um celular de controle</Text>
 
         {paired !== null ? (
           <View style={styles.done}>
@@ -119,13 +119,12 @@ export default function Pairing() {
             <Text style={styles.success}>{`Pronto! ${paired} agora é um controle.`}</Text>
           </View>
         ) : full ? (
-          <Text style={styles.warning}>Limite de 4 controles. Remova um para parear outro.</Text>
+          <Text style={styles.warning}>Você já tem 4 celulares de controle. Remova um para conectar outro.</Text>
         ) : (
           <>
             <View style={styles.steps}>
-              <Step n={1} text="No outro iPhone, abra o app Câmera (o da câmera normal)." />
-              <Step n={2} text="Aponte para este código." />
-              <Step n={3} text="Toque em 'Abrir no LANCE'." />
+              <Step n={1} text="No outro celular, abra o LANCE e toque em “Usar este celular como controle”." />
+              <Step n={2} text="Aponte a câmera dele para este código QR." />
             </View>
             {offer !== null ? (
               <>
@@ -137,19 +136,19 @@ export default function Pairing() {
                   />
                 </View>
                 <Text style={styles.fallback}>
-                  {"Não leu? Abra o LANCE no controle, toque em 'Usar este celular como controle' e digite o código:"}
+                  {'Prefere digitar? No outro celular, digite este código:'}
                 </Text>
                 <Text style={[styles.code, expired && styles.dim]}>{offer.code}</Text>
                 {expired ? null : (
                   <View style={styles.waiting}>
                     <PulseRing color={colors.accent} size={28} />
-                    <Text style={styles.waitingText}>Aguardando o controle…</Text>
+                    <Text style={styles.waitingText}>Aguardando o outro celular…</Text>
                   </View>
                 )}
                 <Text style={expired ? styles.warning : styles.countdown}>
                   {expired ? 'Código vencido. Gere um novo.' : `Válido por ${clock(secondsLeft)}`}
                 </Text>
-                <Text style={styles.note}>O LANCE precisa estar instalado no celular controle.</Text>
+                <Text style={styles.note}>O LANCE precisa estar instalado no outro celular.</Text>
               </>
             ) : (
               <Text style={styles.warning}>Não foi possível gerar o código. Tente de novo.</Text>
@@ -160,7 +159,7 @@ export default function Pairing() {
 
         {peers.length > 0 ? (
           <View style={styles.list}>
-            <Text style={styles.section}>Controles pareados</Text>
+            <Text style={styles.section}>Celulares de controle</Text>
             {peers.map((peer) => (
               <View key={peer.id} style={styles.peer}>
                 <Text style={styles.peerName}>{peer.name}</Text>

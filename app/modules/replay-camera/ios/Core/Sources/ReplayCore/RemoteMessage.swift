@@ -10,6 +10,12 @@ public enum RemoteMessage: Equatable {
   case save
   /// Remote → camera: end the recording (the remote asks for it by holding a button, like the camera phone's own).
   case stop
+  /// Remote → camera: start a new recording (only does something when the camera phone is not recording).
+  case start
+  /// Remote → camera: send pictures of the camera view (`true`, repeated every second while the view is open) or stop.
+  case preview(on: Bool)
+  /// Remote → camera: this remote is being unpaired from its side; drop it from the trusted list.
+  case forget
   /// Camera → remote: the recording as it is; `startedAt` is ms since 1970, nil when idle.
   case state(recording: Bool, clipCount: Int, startedAt: Double?)
   /// Camera → remote: how the last save ended.
@@ -27,6 +33,12 @@ public enum RemoteMessage: Equatable {
       return ["cmd": "save"]
     case .stop:
       return ["cmd": "stop"]
+    case .forget:
+      return ["cmd": "forget"]
+    case .start:
+      return ["cmd": "start"]
+    case let .preview(on):
+      return ["cmd": "preview", "on": on]
     case let .state(recording, clipCount, startedAt):
       var out: [String: Any] = ["recording": recording, "clipCount": clipCount]
       if let startedAt { out["startedAt"] = startedAt }
@@ -50,6 +62,11 @@ public enum RemoteMessage: Equatable {
       switch cmd {
       case "save": return .save
       case "stop": return .stop
+      case "forget": return .forget
+      case "start": return .start
+      case "preview":
+        guard let on = payload["on"] as? Bool else { return nil }
+        return .preview(on: on)
       default: return nil
       }
     }

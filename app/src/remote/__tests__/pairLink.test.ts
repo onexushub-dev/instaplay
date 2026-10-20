@@ -1,4 +1,4 @@
-import { parseCode, parsePairLink } from '../pairLink';
+import { parseCode, parsePairLink, parsePairUrl } from '../pairLink';
 
 // The camera phone builds this exact link (Swift test `testQrURLIsPinned`):
 // lance://pair?h=h1&s=AAECAwQFBgcICQoLDA0ODw&n=Quadra%201
@@ -42,4 +42,18 @@ test('anything else is not a code', () => {
   expect(parseCode('abcdef')).toBeNull();
   expect(parseCode('12 34 5a')).toBeNull();
   expect(parseCode('')).toBeNull();
+});
+
+test('reads the link in the QR code, with the name encoded', () => {
+  expect(parsePairUrl('lance://pair?h=host1&s=AAAAAAAAAAAAAAAAAAAAAA&n=Quadra%201')).toEqual({
+    hostId: 'host1',
+    secret: 'AAAAAAAAAAAAAAAAAAAAAA',
+    hostName: 'Quadra 1',
+  });
+});
+
+test('anything else read by the scanner is not a pairing link', () => {
+  expect(parsePairUrl('https://example.com')).toBeNull();
+  expect(parsePairUrl('lance://pair?h=host1')).toBeNull();
+  expect(parsePairUrl('lance://pair?h=host1&s=curto')).toBeNull();
 });

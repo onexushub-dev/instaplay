@@ -48,6 +48,8 @@ declare class ReplayCameraModule extends NativeModule<ReplayCameraModuleEvents> 
   remoteControllerPairWithCode?(code: string): void;
   remoteControllerSave?(): void;
   remoteControllerEndRecording?(): void;
+  remoteControllerStartRecording?(): void;
+  remoteControllerPreview?(on: boolean): void;
   remoteDeviceName?(): string;
   remoteSetDeviceName?(name: string): void;
   shareToInstagramStory(videoPath: string, metaAppId: string): Promise<'opened' | 'unavailable'>;

@@ -35,5 +35,5 @@ test('an empty name goes back to the default one', async () => {
 
 test('says that the name appears on the other phone and when it takes effect', async () => {
   await render(<DeviceNameField />);
-  expect(screen.getByText('Aparece no outro celular. Vale a partir do próximo pareamento.')).toBeTruthy();
+  expect(screen.getByText('O outro celular mostra este nome. A mudança vale na próxima conexão.')).toBeTruthy();
 });

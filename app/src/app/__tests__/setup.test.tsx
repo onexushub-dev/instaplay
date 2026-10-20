@@ -12,6 +12,7 @@ jest.mock('../../../modules/replay-camera', () => {
     getSpeechPermission: jest.fn(() => 'granted'),
     getWatchStatus: jest.fn(() => 'unsupported'),
     isRemoteSupported: jest.fn(() => false),
+    remoteControllerHost: jest.fn(() => null),
     remoteHostStart: jest.fn(),
     remoteHostStop: jest.fn(),
     remoteHostControllers: jest.fn(() => 0),
@@ -28,7 +29,7 @@ jest.mock('../../../modules/replay-camera', () => {
 });
 jest.mock('../../triggers/useVolumeRemote', () => ({ useVolumeRemote: jest.fn() }));
 jest.mock('expo-router', () => ({
-  router: { replace: jest.fn(), back: jest.fn(), push: jest.fn() },
+  router: { replace: jest.fn(), back: jest.fn(), push: jest.fn(), navigate: jest.fn() },
   useIsFocused: jest.fn(() => true),
 }));
 jest.mock('expo-keep-awake', () => ({
@@ -93,6 +94,7 @@ beforeEach(() => {
   const module = jest.requireMock('../../../modules/replay-camera');
   module.isRemoteSupported.mockReturnValue(false);
   module.remoteHostPeers.mockReturnValue([]);
+  module.remoteControllerHost.mockReturnValue(null);
 });
 
 test('keeps the screen awake while the phone is being positioned', async () => {
@@ -418,7 +420,7 @@ test('the Celular tile says that no remote is paired, and opens the pairing shee
   session({});
   await render(<Setup />);
   await openSettings();
-  await fireEvent.press(screen.getByRole('button', { name: 'Celular, Nenhum controle pareado' }));
+  await fireEvent.press(screen.getByRole('button', { name: 'Celular, Toque para conectar um controle' }));
   expect(router.push).toHaveBeenCalledWith('/pairing');
 });
 
@@ -476,4 +478,31 @@ test('"Usar este celular como controle" opens the remote screen', async () => {
   await openSettings();
   await fireEvent.press(screen.getByRole('button', { name: 'Usar este celular como controle' }));
   expect(router.push).toHaveBeenCalledWith('/remote');
+});
+
+test('a phone already paired as a remote shows which camera phone it will connect to', async () => {
+  session({});
+  camera().isRemoteSupported.mockReturnValue(true);
+  camera().remoteControllerHost.mockReturnValue({ id: 'h1', name: 'iPhone XR#1234' });
+  await render(<Setup />);
+  await openSettings();
+  expect(screen.getByText('Controle de iPhone XR#1234')).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Conectar ao controle de iPhone XR#1234' })).toBeTruthy();
+});
+
+test('a remote phone asking to start a game starts it when none is running', async () => {
+  const s = session({});
+  await render(<Setup />);
+  const listener = camera().addReplayListener.mock.calls.find((c: any[]) => c[0] === 'onRemoteStart')[1];
+  await act(async () => listener());
+  expect(s.start).toHaveBeenCalledTimes(1);
+  expect(jest.requireMock('expo-router').router.navigate).toHaveBeenCalledWith('/setup');
+});
+
+test('a remote phone asking to start is ignored while a game is running', async () => {
+  const s = session({ phase: 'recording', sessionId: 'g1', startedAt: 1, clipCount: 0 });
+  await render(<Setup />);
+  const listener = camera().addReplayListener.mock.calls.find((c: any[]) => c[0] === 'onRemoteStart')[1];
+  await act(async () => listener());
+  expect(s.start).not.toHaveBeenCalled();
 });

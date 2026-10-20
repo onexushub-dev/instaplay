@@ -2,13 +2,16 @@ import * as Haptics from 'expo-haptics';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
   addReplayListener,
+  remoteControllerForget,
   remoteControllerHost,
   remoteControllerPairWithCode,
+  remoteControllerPairWithLink,
+  remoteControllerStartRecording,
   remoteControllerEndRecording,
   remoteControllerSave,
   remoteControllerStart,
@@ -17,11 +20,14 @@ import {
 import type { RemoteLink, RemotePairFailure, RemotePeer } from '../../modules/replay-camera/src/ReplayCamera.types';
 import { Button } from '../components/Button';
 import { ConnectionBar } from '../components/ConnectionBar';
+import { QrScanner } from '../components/QrScanner';
+import { RemotePreview } from '../components/RemotePreview';
 import { DeviceNameField } from '../components/DeviceNameField';
 import { HoldButton } from '../components/HoldButton';
+import { CameraIcon } from '../components/icons';
 import { PulseRing } from '../components/PulseRing';
 import { ResultFlash } from '../components/ResultFlash';
-import { parseCode } from '../remote/pairLink';
+import { parseCode, parsePairUrl } from '../remote/pairLink';
 import { canSave, connectionTone, remoteScreen } from '../remote/remoteScreen';
 import { cooldownLeft, IDLE, onResult, onTap, tick, type SaveFeedback } from '../remote/saveFeedback';
 import { colors, fonts, radius } from '../theme/tokens';
@@ -29,7 +35,8 @@ import { colors, fonts, radius } from '../theme/tokens';
 const KEEP_AWAKE_TAG = 'remote';
 const TICK_MS = 250;
 const CONNECT_TIMEOUT_MS = 12_000;
-const CAMERA_APP_URL = 'camera://';
+/** The camera phone has this long to show it is recording before the remote says it did not start. */
+const START_WAIT_MS = 8000;
 
 type Received = { recording: boolean; clipCount: number; startedAt: number | null; receivedAt: number };
 
@@ -49,7 +56,7 @@ function failureText(reason: RemotePairFailure): string {
     case 'denied':
       return 'Este controle não está mais pareado';
     case 'full':
-      return 'O celular da câmera já tem 4 controles. Remova um para parear outro.';
+      return 'O celular da câmera já tem 4 controles. Remova um lá para conectar este.';
     default:
       return 'Código incorreto. Confira os números e tente de novo.';
   }
@@ -81,6 +88,8 @@ export default function Remote() {
   const [code, setCode] = useState('');
   const lastSaveRef = useRef<number | null>(null);
   const [lastCode, setLastCode] = useState<string | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [startAskedAt, setStartAskedAt] = useState<number | null>(null);
   const connectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const stopConnectTimer = () => {
@@ -120,6 +129,7 @@ export default function Remote() {
     const state = addReplayListener('onRemoteState', (e) => {
       const at = Date.now();
       setNow(at);
+      if (e.recording) setStartAskedAt(null);
       setReceived({
         recording: e.recording,
         clipCount: e.clipCount,
@@ -158,8 +168,7 @@ export default function Remote() {
     };
   }, []);
 
-  const submit = (digits: string) => {
-    setLastCode(digits);
+  const beginConnecting = () => {
     setNotice(null);
     setFailure(null);
     setConnecting(true);
@@ -171,7 +180,29 @@ export default function Remote() {
       setFailure('notFound');
       setNotice(failureText('notFound'));
     }, CONNECT_TIMEOUT_MS);
+  };
+
+  const submit = (digits: string) => {
+    setLastCode(digits);
+    beginConnecting();
     remoteControllerPairWithCode(digits);
+  };
+
+  // The QR code shown on the camera phone, read right here.
+  const onQr = (text: string) => {
+    if (connecting) return;
+    const link = parsePairUrl(text);
+    if (link === null) return;
+    setLastCode(null);
+    beginConnecting();
+    remoteControllerPairWithLink(link.hostId, link.secret, link.hostName);
+  };
+
+  const startRecording = () => {
+    setStartAskedAt(Date.now());
+    setNotice(null);
+    remoteControllerStartRecording();
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
   };
 
   const typeCode = (text: string) => {
@@ -193,13 +224,6 @@ export default function Remote() {
     if (lastCode !== null) submit(lastCode);
   };
 
-  const openCameraApp = () => {
-    setNotice(null);
-    Linking.openURL(CAMERA_APP_URL).catch(() => {
-      setNotice('Não consegui abrir. Abra o app Câmera do iPhone pela tela inicial.');
-    });
-  };
-
   // Opened straight from the QR code there is no screen behind this one: go to the start instead of doing nothing.
   const leave = () => {
     if (router.canGoBack()) router.back();
@@ -210,6 +234,25 @@ export default function Remote() {
   const retryNow = () => {
     remoteControllerStop();
     remoteControllerStart();
+  };
+
+  // Unpair from this side (the camera phone is told too, when it is in reach) and go back to asking for a code.
+  const useOtherCamera = () => {
+    const name = host === null ? '' : host.name;
+    Alert.alert(`Esquecer ${name}?`, 'Este celular deixa de ser o controle dessa câmera. Para usar de novo, é preciso parear outra vez.', [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Esquecer',
+        style: 'destructive',
+        onPress: () => {
+          remoteControllerForget();
+          setHost(null);
+          setReceived(null);
+          setFailure(null);
+          setNotice(null);
+        },
+      },
+    ]);
   };
 
   const save = () => {
@@ -232,14 +275,23 @@ export default function Remote() {
       <SafeAreaView style={styles.root}>
         <ScrollView automaticallyAdjustKeyboardInsets contentContainerStyle={styles.scrollBody} keyboardShouldPersistTaps="handled">
           <Text style={styles.role}>ESTE IPHONE É O CONTROLE</Text>
-          <Text style={styles.title}>Parear com a câmera</Text>
+          <Text style={styles.title}>Conectar à câmera</Text>
           {notice !== null ? <Text style={styles.warning}>{notice}</Text> : null}
-          <Step n={1} text="No celular da câmera, toque no tile 'Celular'." />
-          <Step n={2} text="Neste iPhone, abra o app Câmera e aponte para o código que aparecer lá." />
-          <Button label="Abrir app Câmera" variant="secondary" onPress={openCameraApp} />
-          <Text style={styles.text}>Ou digite o código de 6 dígitos:</Text>
+          <Step n={1} text="No celular que vai filmar, abra o LANCE e toque em “Celular” para começar o pareamento." />
+          <Step n={2} text="Aponte a câmera deste celular para o código QR que aparece lá." />
+          <QrScanner active={!connecting} onCode={onQr} />
+          {connecting ? (
+            <View style={styles.connecting}>
+              <ActivityIndicator color={colors.text} />
+              <Text style={styles.text}>Conectando…</Text>
+            </View>
+          ) : null}
+          {failure === 'notFound' && !connecting && lastCode !== null ? (
+            <Button label="Tentar de novo" variant="secondary" onPress={retry} />
+          ) : null}
+          <Text style={styles.text}>Não consegue ler o QR? Digite aqui o código de 6 números:</Text>
           <TextInput
-            accessibilityLabel="Código de 6 dígitos"
+            accessibilityLabel="Código de 6 números"
             editable={!connecting}
             keyboardType="number-pad"
             maxLength={7}
@@ -250,9 +302,6 @@ export default function Remote() {
             value={code}
           />
           <Button label={connecting ? 'Conectando…' : 'Conectar'} loading={connecting} onPress={connect} />
-          {failure === 'notFound' && !connecting && lastCode !== null ? (
-            <Button label="Tentar de novo" variant="secondary" onPress={retry} />
-          ) : null}
           <DeviceNameField />
           <Button label="Fechar" variant="secondary" onPress={leave} />
         </ScrollView>
@@ -278,6 +327,9 @@ export default function Remote() {
     screenModel.kind === 'recording'
       ? `${screenModel.startedAt === null ? '0:00' : clock((now - screenModel.startedAt) / 1000)} · ${screenModel.clipCount} ${screenModel.clipCount === 1 ? 'lance' : 'lances'}`
       : undefined;
+  const startWaiting = startAskedAt !== null && !(received !== null && received.recording);
+  const startPending = startWaiting && now - startAskedAt < START_WAIT_MS;
+  const startFailed = startWaiting && now - startAskedAt >= START_WAIT_MS;
   const sending = feedback.phase === 'sending';
   const left = cooldownLeft(lastSave, now);
   const flash = feedback.phase === 'saved' || feedback.phase === 'failed' || feedback.phase === 'timeout';
@@ -300,13 +352,25 @@ export default function Remote() {
           <View style={styles.center}>
             <PulseRing color={colors.warning} />
             <Text style={styles.status}>{`Procurando ${screenModel.hostName === null ? hostLabel : screenModel.hostName}…`}</Text>
+            <Button label="Usar outra câmera" variant="secondary" onPress={useOtherCamera} />
           </View>
         ) : null}
 
         {screenModel.kind === 'waiting' ? (
           <View style={styles.center}>
             <PulseRing color={colors.accent} />
-            <Text style={styles.status}>{`Conectado a ${screenModel.hostName}. Inicie a gravação no outro dispositivo.`}</Text>
+            <Text style={styles.status}>Conectado. Pronto para começar a partida.</Text>
+            <Button
+              label={startPending ? 'Iniciando…' : 'INICIAR GRAVAÇÃO'}
+              loading={startPending}
+              onPress={startRecording}
+            />
+            {startFailed ? (
+              <Text style={styles.warning}>A gravação não começou. Confira se o LANCE está aberto no celular da câmera.</Text>
+            ) : (
+              <Text style={styles.hint}>Ou comece pelo próprio celular da câmera.</Text>
+            )}
+            <Button label="Usar outra câmera" variant="secondary" onPress={useOtherCamera} />
           </View>
         ) : null}
 
@@ -317,6 +381,7 @@ export default function Remote() {
               <Text style={styles.status}>{`Sem conexão com ${screenModel.hostName}`}</Text>
               <Text style={styles.sub}>Reconectando…</Text>
               <Button label="Tentar agora" variant="secondary" onPress={retryNow} />
+              <Button label="Usar outra câmera" variant="secondary" onPress={useOtherCamera} />
             </View>
             <Pressable
               accessibilityRole="button"
@@ -356,8 +421,23 @@ export default function Remote() {
           />
         ) : null}
 
-        <Button label="Fechar" variant="secondary" onPress={leave} />
+        <View style={styles.footer}>
+          {screenModel.kind === 'recording' || screenModel.kind === 'waiting' ? (
+            <View style={styles.footerItem}>
+              <Button
+                label="Ver câmera"
+                variant="secondary"
+                icon={<CameraIcon />}
+                onPress={() => setPreviewOpen(true)}
+              />
+            </View>
+          ) : null}
+          <View style={styles.footerItem}>
+            <Button label="Fechar" variant="secondary" onPress={leave} />
+          </View>
+        </View>
       </View>
+      <RemotePreview visible={previewOpen} onClose={() => setPreviewOpen(false)} />
       {flash ? <ResultFlash kind={feedback.phase as 'saved' | 'failed' | 'timeout'} /> : null}
     </SafeAreaView>
   );
@@ -373,6 +453,10 @@ const styles = StyleSheet.create({
   text: { fontFamily: fonts.bodySemi, fontSize: 16, lineHeight: 23, color: colors.text },
   status: { fontFamily: fonts.bodySemi, fontSize: 22, lineHeight: 30, color: colors.text, textAlign: 'center' },
   sub: { fontFamily: fonts.bodySemi, fontSize: 16, color: colors.warning, textAlign: 'center' },
+  hint: { fontFamily: fonts.body, fontSize: 15, color: colors.muted, textAlign: 'center' },
+  connecting: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 },
+  footer: { flexDirection: 'row', gap: 12 },
+  footerItem: { flex: 1 },
   warning: { fontFamily: fonts.bodySemi, fontSize: 15, lineHeight: 21, color: colors.warning },
   step: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   stepNumber: {

@@ -24,3 +24,23 @@ export function parseCode(input: string): string | null {
   const digits = input.replace(/\s+/g, '');
   return CODE.test(digits) ? digits : null;
 }
+
+/** The text read from the QR code (`lance://pair?h=...&s=...&n=...`), or null when it is anything else. */
+export function parsePairUrl(text: string): PairLink | null {
+  const match = /^lance:\/\/pair\?(.*)$/.exec(text.trim());
+  if (match === null) return null;
+  const params: { h?: string; s?: string; n?: string } = {};
+  for (const pair of match[1].split('&')) {
+    const at = pair.indexOf('=');
+    if (at < 0) continue;
+    let value = pair.slice(at + 1);
+    try {
+      value = decodeURIComponent(value.replace(/\+/g, ' '));
+    } catch {
+      return null;
+    }
+    const key = pair.slice(0, at);
+    if (key === 'h' || key === 's' || key === 'n') params[key] = value;
+  }
+  return parsePairLink(params);
+}

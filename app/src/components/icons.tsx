@@ -156,3 +156,13 @@ export function CheckIcon({ color = colors.onAccent, size = 72 }: IconProps) {
     </Svg>
   );
 }
+
+/** A camera: opens the picture of what the camera phone sees. */
+export function CameraIcon({ color = colors.text, size = 22 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" accessibilityElementsHidden>
+      <Path d="M4 8h3l1.5-2h7L17 8h3v11H4z" {...stroke(color)} />
+      <Circle cx={12} cy={13.5} r={3.5} {...stroke(color)} />
+    </Svg>
+  );
+}

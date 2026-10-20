@@ -189,6 +189,16 @@ export function remoteControllerEndRecording(): void {
   if (ReplayCameraModule.remoteControllerEndRecording) ReplayCameraModule.remoteControllerEndRecording();
 }
 
+/** Remote phone: ask the camera phone to start a new recording. */
+export function remoteControllerStartRecording(): void {
+  if (ReplayCameraModule.remoteControllerStartRecording) ReplayCameraModule.remoteControllerStartRecording();
+}
+
+/** Remote phone: ask for pictures of the camera view (say it again every second while open) or stop them. */
+export function remoteControllerPreview(on: boolean): void {
+  if (ReplayCameraModule.remoteControllerPreview) ReplayCameraModule.remoteControllerPreview(on);
+}
+
 /** The name this phone shows to the other one while pairing ("iPhone XR#1234" unless the person renamed it). */
 export function remoteDeviceName(): string {
   return ReplayCameraModule.remoteDeviceName ? ReplayCameraModule.remoteDeviceName() : '';

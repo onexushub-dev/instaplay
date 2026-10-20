@@ -36,7 +36,7 @@ function failureText(reason: RemotePairFailure): string {
     case 'denied':
       return 'Libere a rede local nos Ajustes para usar o controle.';
     case 'full':
-      return 'O celular da câmera já tem 4 controles. Remova um para parear outro.';
+      return 'O celular da câmera já tem 4 controles. Remova um lá para conectar este.';
     default:
       return 'Código incorreto. Peça um novo no celular da câmera.';
   }

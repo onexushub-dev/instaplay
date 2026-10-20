@@ -10,6 +10,7 @@ import {
   getWatchStatus,
   isRemoteSupported,
   isVoiceSupported,
+  remoteControllerHost,
   remoteHostPeers,
   remoteHostControllers,
   ReplayCameraView,
@@ -75,6 +76,7 @@ export default function Setup() {
   // as long as the app is open (see the root layout); pairing happens on its own sheet (/pairing).
   const [remoteSupported] = useState(() => isRemoteSupported());
   const [remotePeers, setRemotePeers] = useState<RemotePeer[]>(() => (isRemoteSupported() ? remoteHostPeers() : []));
+  const [controlHost, setControlHost] = useState<RemotePeer | null>(() => (isRemoteSupported() ? remoteControllerHost() : null));
   const [remoteLinked, setRemoteLinked] = useState(() => remoteHostControllers());
   useEffect(() => {
     if (!remoteSupported) return;
@@ -84,11 +86,12 @@ export default function Setup() {
   useEffect(() => {
     if (!remoteSupported || !focused) return;
     setRemotePeers(remoteHostPeers()); // the list may have changed on the pairing sheet
+    setControlHost(remoteControllerHost()); // it may have been paired or forgotten on the remote screen
     setRemoteLinked(remoteHostControllers()); // the status events of a remote that connected meanwhile were not heard
   }, [remoteSupported, focused]);
   const remoteStatus =
     remotePeers.length === 0
-      ? 'Nenhum controle pareado'
+      ? 'Toque para conectar um controle'
       : remoteLinked > 0
         ? remotePeers.length === 1
           ? `Conectado: ${remotePeers[0].name}`
@@ -150,6 +153,18 @@ export default function Setup() {
   const errorText = error ? (START_ERRORS[error] ?? 'Não foi possível abrir a câmera. Tente de novo.') : null;
 
   const inGame = phase === 'recording' || phase === 'stopping' || (phase === 'ended' && error !== undefined);
+
+  // The remote phone's "Iniciar gravação": starts a game from whatever screen is in front (the summary of the last game,
+  // say), as long as no game is running.
+  useEffect(() => {
+    const sub = addReplayListener('onRemoteStart', () => {
+      if (starting) return;
+      if (phase !== 'idle' && !(phase === 'ended' && error === undefined)) return;
+      router.navigate('/setup');
+      void session.start(modeId);
+    });
+    return () => sub.remove();
+  });
 
   // One camera view for the whole game: setup and recording only swap the controls drawn over it.
   return (
@@ -324,11 +339,18 @@ export default function Setup() {
         {remoteSupported ? (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Usar este celular como controle"
+            accessibilityLabel={controlHost === null ? 'Usar este celular como controle' : `Conectar ao controle de ${controlHost.name}`}
             hitSlop={8}
             onPress={() => router.push('/remote')}
             style={styles.remoteEntry}>
-            <Text style={styles.remoteEntryText}>Usar este celular como controle</Text>
+            {controlHost === null ? (
+              <Text style={styles.remoteEntryText}>Usar este celular como controle</Text>
+            ) : (
+              <>
+                <Text style={styles.remoteEntryName}>{`Controle de ${controlHost.name}`}</Text>
+                <Text style={styles.remoteEntryText}>Toque para conectar</Text>
+              </>
+            )}
           </Pressable>
         ) : null}
       </>
@@ -407,6 +429,7 @@ const styles = StyleSheet.create({
   },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   remoteEntry: { minHeight: 44, justifyContent: 'center', alignItems: 'center' },
+  remoteEntryName: { fontFamily: fonts.bodyBold, fontSize: 16, color: colors.text },
   remoteEntryText: { fontFamily: fonts.bodySemi, fontSize: 14, color: colors.soft, textDecorationLine: 'underline' },
   grid: { gap: 8 },
   gridRow: { flexDirection: 'row', gap: 8 },

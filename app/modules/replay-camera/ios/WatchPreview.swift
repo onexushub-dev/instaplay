@@ -18,6 +18,17 @@ final class WatchPreview {
   private var lastFrame = -Double.infinity
   private var busy = false
 
+  private let longSide: Int
+  private let interval: Double
+  private let quality: Double
+
+  /// The defaults are the watch's (small, 3 a second); the remote phone's view is bigger and quicker.
+  init(longSide: Int = 360, interval: Double = WatchPreviewGate.frameInterval, quality: Double = 0.6) {
+    self.longSide = longSide
+    self.interval = interval
+    self.quality = quality
+  }
+
   private static var now: Double { ProcessInfo.processInfo.systemUptime }
 
   /// The watch asked (again) for pictures; `false` ends it right away.
@@ -29,7 +40,7 @@ final class WatchPreview {
   func offer(_ buffer: CMSampleBuffer, orientation: () -> CGImagePropertyOrientation) {
     let now = Self.now
     let take = lock.withLock { () -> Bool in
-      guard WatchPreviewGate.shouldEncode(now: now, lastFrame: lastFrame, lastAsk: lastAsk, busy: busy) else { return false }
+      guard WatchPreviewGate.shouldEncode(now: now, lastFrame: lastFrame, lastAsk: lastAsk, busy: busy, interval: interval) else { return false }
       busy = true
       lastFrame = now
       return true
@@ -39,12 +50,12 @@ final class WatchPreview {
     let image = CIImage(cvPixelBuffer: pixels).oriented(orientation())
     queue.async {
       defer { self.lock.withLock { self.busy = false } }
-      let size = WatchPreviewGate.targetSize(width: Int(image.extent.width), height: Int(image.extent.height))
+      let size = WatchPreviewGate.targetSize(width: Int(image.extent.width), height: Int(image.extent.height), longSide: self.longSide)
       let scale = CGFloat(size.width) / image.extent.width
       let small = image.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
       guard let space = CGColorSpace(name: CGColorSpace.sRGB),
             let jpeg = self.context.jpegRepresentation(
-              of: small, colorSpace: space, options: [kCGImageDestinationLossyCompressionQuality as CIImageRepresentationOption: 0.6])
+              of: small, colorSpace: space, options: [kCGImageDestinationLossyCompressionQuality as CIImageRepresentationOption: self.quality])
       else { return }
       self.onFrame?(jpeg)
     }

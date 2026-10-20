@@ -64,7 +64,8 @@ public class ReplayCameraModule: Module {
     Name("ReplayCamera")
 
     Events("onTrigger", "onThermalChange", "onInterrupted", "onResumed", "onError", "onGestureDebug", "onWatchStatus",
-           "onRemoteStatus", "onRemoteState", "onRemoteResult", "onRemotePairing", "onRemoteStop")
+           "onRemoteStatus", "onRemoteState", "onRemoteResult", "onRemotePairing", "onRemoteStop",
+           "onRemoteStart", "onRemoteFrame")
 
     OnCreate {
       self.engine.emit = { [weak self] name, body in self?.sendEvent(name, body) }
@@ -72,6 +73,8 @@ public class ReplayCameraModule: Module {
       RemoteHost.shared.emit = { [weak self] name, body in self?.sendEvent(name, body) }
       RemoteController.shared.emit = { [weak self] name, body in self?.sendEvent(name, body) }
       WatchBridge.shared.preview = self.engine.watchPreview
+      self.engine.remotePreview.onFrame = { RemoteHost.shared.sendFrame($0) }
+      RemoteHost.shared.onPreview = { [weak self] on in self?.engine.remotePreview.ask(on) }
       WatchBridge.shared.activate()
     }
 
@@ -186,6 +189,10 @@ public class ReplayCameraModule: Module {
     Function("remoteControllerSave") { RemoteController.shared.save() }
 
     Function("remoteControllerEndRecording") { RemoteController.shared.endRecording() }
+
+    Function("remoteControllerStartRecording") { RemoteController.shared.startRecording() }
+
+    Function("remoteControllerPreview") { (on: Bool) in RemoteController.shared.preview(on) }
 
     // The name this phone shows to the other one while pairing, and the way to change it.
     Function("remoteDeviceName") { () -> String in DeviceIdentity.name }
