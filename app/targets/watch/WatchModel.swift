@@ -41,5 +41,4 @@ enum WatchModel {
     return now - lastSave >= saveCooldown
   }
 
-  static func countLabel(_ count: Int) -> String { count == 1 ? "1 clipe" : "\(count) clipes" }
 }

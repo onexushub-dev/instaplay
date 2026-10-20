@@ -25,12 +25,6 @@ final class WatchModelTests: XCTestCase {
     XCTAssertEqual(WatchModel.elapsed(since: start, now: Date(timeIntervalSince1970: -5)), "00:00")
   }
 
-  func testCountLabel() {
-    XCTAssertEqual(WatchModel.countLabel(0), "0 clipes")
-    XCTAssertEqual(WatchModel.countLabel(1), "1 clipe")
-    XCTAssertEqual(WatchModel.countLabel(12), "12 clipes")
-  }
-
   func testPreviewIsWantedOnlyWhenOnReachableAndRecording() {
     XCTAssertTrue(WatchModel.previewWanted(viewOn: true, reachable: true, recording: true))
     XCTAssertFalse(WatchModel.previewWanted(viewOn: false, reachable: true, recording: true))

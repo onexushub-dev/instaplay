@@ -1,5 +1,8 @@
 import SwiftUI
 
+// Every text is an English key looked up in Localizable.xcstrings (English and Brazilian Portuguese); the watch
+// shows the watch's own language.
+
 private let ground = Color(red: 0.059, green: 0.063, blue: 0.051) // #0F100D
 private let accent = Color(red: 0.839, green: 0.949, blue: 0.247) // #D6F23F
 
@@ -11,10 +14,10 @@ struct ContentView: View {
     Group {
       switch link.screen {
       case .idle:
-        Message("Comece a gravar no iPhone")
+        Message("Start recording on your iPhone")
       case .offline:
         VStack(spacing: 8) {
-          Message("Sem conexão com o iPhone")
+          Message("No connection to your iPhone")
           SaveButton(enabled: false, height: 80, action: link.sendSave)
         }
       case let .recording(clipCount, startedAt):
@@ -31,7 +34,7 @@ struct ContentView: View {
                     Text(WatchModel.elapsed(since: startedAt, now: context.date)).monospacedDigit()
                   }
                 }
-                Text(WatchModel.countLabel(clipCount)).foregroundStyle(accent)
+                Text("\(clipCount) clips").foregroundStyle(accent)
               }
               .font(.system(.footnote, design: .rounded).weight(.bold))
             }
@@ -48,7 +51,7 @@ struct ContentView: View {
     .onChange(of: scenePhase) { _, phase in if phase != .active { link.setPreview(false) } }
   }
 
-  /// The camera fills the screen and there is no Salvar button: a tap anywhere saves. Only the corner
+  /// The camera fills the screen and there is no Save button: a tap anywhere saves. Only the corner
   /// buttons (close the camera) and the count sit over the picture.
   private func cameraView(clipCount: Int) -> some View {
     ZStack {
@@ -62,7 +65,7 @@ struct ContentView: View {
         HStack(alignment: .top) {
           CameraToggle(isOn: true) { link.setPreview(false) }
           Spacer(minLength: 0)
-          Text(WatchModel.countLabel(clipCount))
+          Text("\(clipCount) clips")
             .font(.system(.footnote, design: .rounded).weight(.bold))
             .foregroundStyle(accent)
             .padding(.horizontal, 8).padding(.vertical, 4)
@@ -75,7 +78,7 @@ struct ContentView: View {
     .contentShape(Rectangle())
     .onTapGesture { link.sendSave() }
     .accessibilityAddTraits(.isButton)
-    .accessibilityLabel("Salvar")
+    .accessibilityLabel(Text("Save"))
     .ignoresSafeArea(edges: .bottom)
   }
 }
@@ -88,7 +91,7 @@ private struct Confirmation: View {
       (saved ? accent : Color.red).opacity(0.92)
       VStack(spacing: 4) {
         Image(systemName: saved ? "checkmark.circle.fill" : "xmark.circle.fill").font(.system(size: 44))
-        Text(saved ? "Salvo" : "Não salvou").font(.system(.title3, design: .rounded).weight(.heavy))
+        (saved ? Text("Saved") : Text("Not saved")).font(.system(.title3, design: .rounded).weight(.heavy))
       }
       .foregroundStyle(saved ? ground : .white)
     }
@@ -111,14 +114,14 @@ private struct CameraToggle: View {
         .foregroundStyle(.white)
     }
     .buttonStyle(.plain)
-    .accessibilityLabel(isOn ? "Fechar câmera" : "Ver câmera")
+    .accessibilityLabel(isOn ? Text("Close camera") : Text("View camera"))
   }
 }
 
 
 private struct Message: View {
-  let text: String
-  init(_ text: String) { self.text = text }
+  let text: LocalizedStringKey
+  init(_ text: LocalizedStringKey) { self.text = text }
   var body: some View {
     Text(text).font(.headline).multilineTextAlignment(.center).foregroundStyle(.white)
   }
@@ -131,7 +134,7 @@ private struct SaveButton: View {
   let action: () -> Void
   var body: some View {
     Button(action: action) {
-      Text("Salvar")
+      Text("Save")
         .font(.system(.title3, design: .rounded).weight(.heavy))
         .frame(maxWidth: .infinity, minHeight: height)
     }
@@ -142,12 +145,12 @@ private struct SaveButton: View {
   }
 }
 
-#Preview("Gravando") {
+#Preview("Recording") {
   VStack(spacing: 6) {
     HStack {
-      Text("12:34").monospacedDigit()
+      Text(verbatim: "12:34").monospacedDigit()
       Spacer()
-      Text("3 clipes").foregroundStyle(accent)
+      Text("\(3) clips").foregroundStyle(accent)
     }
     .font(.system(.footnote, design: .rounded).weight(.bold))
     SaveButton(enabled: true, action: {})
@@ -156,15 +159,15 @@ private struct SaveButton: View {
   .background(ground)
 }
 
-#Preview("Sem conexão") {
+#Preview("Offline") {
   VStack(spacing: 8) {
-    Message("Sem conexão com o iPhone")
+    Message("No connection to your iPhone")
     SaveButton(enabled: false, action: {})
   }
   .padding(6)
   .background(ground)
 }
 
-#Preview("Parado") {
-  Message("Comece a gravar no iPhone").padding(6).background(ground)
+#Preview("Idle") {
+  Message("Start recording on your iPhone").padding(6).background(ground)
 }
