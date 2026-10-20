@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from 'react';
+import { type ReactNode, useLayoutEffect, useRef, useState } from 'react';
 import { PanResponder, StyleSheet, View } from 'react-native';
 
 import { clampTrim } from '../share/trim';
@@ -13,12 +13,14 @@ type Props = {
   /** `moved`: which edge the player is dragging, so the preview can follow it. */
   onChange: (trim: Cut, moved: 'start' | 'end') => void;
   onCommit: (trim: Cut) => void;
+  /** Drawn over the track under the handles (the playback cursor). */
+  children?: ReactNode;
 };
 
 const HANDLE = 44; // touch target
 
 /** The whole clip as a track, the cut as an accent window with a draggable handle on each edge. */
-export function TrimBar({ durationMs, trim, maxMs, onChange, onCommit }: Props) {
+export function TrimBar({ durationMs, trim, maxMs, onChange, onCommit, children }: Props) {
   const [width, setWidth] = useState(0);
   // Pan callbacks read the latest props through this ref (updated after each commit).
   const latest = useRef({ trim, width, durationMs, maxMs, onChange, onCommit });
@@ -61,6 +63,7 @@ export function TrimBar({ durationMs, trim, maxMs, onChange, onCommit }: Props) 
   return (
     <View style={styles.track} onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
       <View style={[styles.window, { left, width: Math.max(0, right - left) }]} />
+      {children}
       <View
         {...startPan.panHandlers}
         accessibilityRole="adjustable"

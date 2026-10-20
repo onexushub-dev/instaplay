@@ -29,6 +29,7 @@ import {
   ShareIcon,
   TrashIcon,
 } from '../../components/icons';
+import { Playhead } from '../../components/Playhead';
 import { TrimBar } from '../../components/TrimBar';
 import { removeFile, repo } from '../../data/mmkv';
 import { MAX_CLIP_NAME } from '../../data/schema';
@@ -106,6 +107,7 @@ export default function ClipEditor() {
   const [playing, setPlayingState] = useState(true);
   const scrubbing = useRef(false);
   const wantsPlay = useRef(true);
+  const [scrubMs, setScrubMs] = useState<number>();
 
   const [videoSize, setVideoSize] = useState({ width: 1920, height: 1080 });
   // Exports wait for the real shape: a portrait clip exported with the landscape default gets wrong bands.
@@ -200,11 +202,14 @@ export default function ClipEditor() {
       player.pause();
     }
     setTrim(next);
-    seek(player, moved === 'start' ? next.startMs : Math.max(next.startMs, next.endMs - 500));
+    const at = moved === 'start' ? next.startMs : Math.max(next.startMs, next.endMs - 500);
+    setScrubMs(at);
+    seek(player, at);
   }
 
   function commitTrim(next: { startMs: number; endMs: number }) {
     scrubbing.current = false;
+    setScrubMs(undefined);
     repo.updateClip(id, { trim: next });
     seek(player, next.startMs);
     setPlaying(player, wantsPlay.current);
@@ -421,7 +426,9 @@ export default function ClipEditor() {
             {playing ? <PauseIcon /> : <PlayIcon />}
           </IconButton>
           <View style={styles.trimBar}>
-            <TrimBar durationMs={clip.durationMs} trim={trim} maxMs={maxMs} onChange={scrub} onCommit={commitTrim} />
+            <TrimBar durationMs={clip.durationMs} trim={trim} maxMs={maxMs} onChange={scrub} onCommit={commitTrim}>
+              <Playhead player={player} durationMs={clip.durationMs} trim={trim} speed={edit.speed} scrubMs={scrubMs} />
+            </TrimBar>
           </View>
         </View>
       </View>
