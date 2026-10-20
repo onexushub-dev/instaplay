@@ -6,7 +6,7 @@ Ligar a cobrança do spec principal (seção 6 de `2026-10-17-lance-design.md`) 
 ## Decisões (tomadas com o Marcus em 2026-10-20)
 - **Só RevenueCat** sobre Apple IAP e Google Play Billing. Sem Stripe e sem arquitetura híbrida por ora.
 - **Sem backend e sem login na v1.** O usuário é anônimo (ID do RevenueCat). Nenhuma compra exige conta. Login pode vir depois, como convite opcional após a compra do Pro (`Purchases.logIn()` junta o histórico anônimo).
-- **Paywall do RevenueCat** (hospedado, montado no painel e exibido com `RevenueCatUI.presentPaywall()`). Se o resultado não for bom, troca-se por paywall próprio sem mexer nas regras de plano.
+- **Paywall do RevenueCat** (hospedado, montado no painel), exibido com o componente **embutido** `<RevenueCatUI.Paywall />` num painel inferior da tela de gravação. Não usar `presentPaywall()` durante a gravação: no Android ele abre uma Activity separada (`PaywallActivity`) que pode parar a Activity da câmera. Se o resultado não for bom, troca-se por paywall próprio sem mexer nas regras de plano. Meta: nada que prejudique a experiência nem exija muita manutenção.
 - **O Passe fica ligado à sessão para sempre.** Os lances daquela sessão exportam em HD, sem marca d'água, mesmo depois que ela termina. A janela de 4h só limita quanto tempo novos lances saem como ilimitados.
 - **O Passe é validado no aparelho** (resultado da compra + `nonSubscriptionTransactions`), sem servidor.
 
@@ -65,12 +65,18 @@ Login e contas, backend e webhooks, pagamento web (Stripe), link externo para pa
 | Duas compras seguidas | O paywall bloqueia o segundo toque durante a compra. |
 | App reinicia no meio da sessão | `passTransactionId` na `Session` (MMKV) mantém o Passe. |
 | Paywall sem oferta/preço | O RevenueCat mostra o layout padrão. A verificação de aceite exige o paywall do painel. |
-| **Gravação durante a compra** | Abrir o paywall e a folha da loja **não pode pausar a gravação nem apagar o buffer**. Se o estado `inactive` do app disparar a pausa do spec 7, ignorar `inactive` e pausar só em `background`. Teste obrigatório em aparelho. |
+| **Gravação durante a compra** | Abrir o paywall e a folha da loja **não pode pausar a gravação nem apagar o buffer**. A captura só reage a interrupção da sessão de câmera (`AVCaptureSession.wasInterrupted` no iOS, parada do pipeline em `ReplayEngine.kt` no Android), não a `AppState inactive`. Por isso o paywall é embutido na tela de gravação (sem trocar de Activity/ViewController). Barreira de validação em aparelho abaixo. |
 
 ## Testes
 - **Jest (unitários):** `tierFor` (grátis, Passe, Pro, Pro vence Passe), `isClipLocked`, `canSaveUnlimited` (limite de 4h e sessão encerrada), `detectPurchase` (Pro, Passe, nada novo, restauração), `snapshot` com `customerInfo` simulado, regra dos 5 lances ao salvar, `exportOptions` por plano. Tudo com `fakeClient`.
 - **Desenvolvimento:** Test Store do RevenueCat (chave `test_`), com compra bem-sucedida, falha e cancelamento.
 - **Aparelho:** sandbox da Apple e license tester do Google, no iOS e no Android. Conferir no painel do RevenueCat (visão Sandbox) que a transação aparece para o `appUserID` certo.
+
+## Barreira de validação: gravação durante a compra (primeira etapa do plano)
+Antes de construir o resto, um teste curto em aparelho real (iOS e Android, Test Store e depois sandbox): iniciar uma gravação, abrir o paywall embutido, concluir e cancelar uma compra, e conferir que `onInterrupted` não é emitido, que o buffer segue contínuo e que um lance salvo logo depois contém o trecho anterior à compra.
+- **Passou:** segue o plano.
+- **Falhou por causa do paywall embutido:** trocar por paywall próprio (a folha da loja continua sendo a do sistema).
+- **Falhou por causa da folha da loja (vale para qualquer paywall):** mostrar o paywall só no fim do jogo, na tela de resumo. Os lances bloqueados esperam até lá.
 
 ## Critérios de aceite
 1. O 6º lance fica salvo e bloqueado e abre o paywall com o layout do painel (não o padrão).
@@ -89,6 +95,6 @@ Login e contas, backend e webhooks, pagamento web (Stripe), link externo para pa
 
 ## Riscos
 - O texto "O lance #N já está guardado" vira título fixo no paywall hospedado, que não aceita o número do lance.
-- O paywall é modal, não o painel inferior com a gravação ao fundo do spec original.
+- O conteúdo do paywall (layout, textos) é o que o builder do RevenueCat permite. O painel inferior com a gravação ao fundo é nosso (contêiner), mas o interior é deles.
 - Passe validado no aparelho: um aparelho adulterado pode burlar o limite de um jogo de R$ 4,90. Aceito na v1.
 - Comissão das lojas (~15%) e RevenueCat (1% acima de ~US$ 2.500 de receita mensal, a confirmar no site deles) reduzem a margem; não afetam o design.
