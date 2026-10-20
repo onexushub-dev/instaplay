@@ -22,3 +22,15 @@ test('clampTrim allows up to 120s when asked (gym modes)', () => {
   expect(clampTrim({ startMs: 0, endMs: 100000 }, 120000, 'end', 120000)).toEqual({ startMs: 0, endMs: 100000 });
   expect(clampTrim({ startMs: 0, endMs: 130000 }, 150000, 'end', 120000)).toEqual({ startMs: 0, endMs: 120000 });
 });
+
+test('the cut never starts before the floor (the black start of a clip)', () => {
+  expect(clampTrim({ startMs: 2000, endMs: 30000 }, 57000, 'start', 60000, 11000)).toEqual({ startMs: 11000, endMs: 30000 });
+});
+
+test('with a floor the longest cut counts from the floor and the clip end still bounds it', () => {
+  expect(clampTrim({ startMs: 11000, endMs: 70000 }, 57000, 'end', 60000, 11000)).toEqual({ startMs: 11000, endMs: 57000 });
+});
+
+test('the shortest cut still applies next to the floor', () => {
+  expect(clampTrim({ startMs: 12000, endMs: 13000 }, 57000, 'start', 60000, 11000)).toEqual({ startMs: 10000 + 1000, endMs: 14000 });
+});

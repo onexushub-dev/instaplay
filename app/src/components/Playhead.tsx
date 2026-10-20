@@ -7,6 +7,8 @@ import { colors, fonts } from '../theme/tokens';
 type Props = {
   player: ReturnType<typeof useVideoPlayer>;
   durationMs: number;
+  /** Where the useful video starts; the track the cursor moves on begins here. */
+  floorMs?: number;
   trim: { startMs: number; endMs: number };
   speed: number;
   /** While a trim handle is dragged the cursor sits on that edge instead of following playback. */
@@ -20,7 +22,7 @@ type Props = {
  * The cursor over the trim track: where the video is playing and how many seconds into the result that is.
  * It listens to the player itself, so playback redraws only this view and not the whole screen.
  */
-export function Playhead({ player, durationMs, trim, speed, scrubMs, onScrub, onScrubEnd }: Props) {
+export function Playhead({ player, durationMs, floorMs = 0, trim, speed, scrubMs, onScrub, onScrubEnd }: Props) {
   const [playingMs, setPlayingMs] = useState(trim.startMs);
   useEffect(() => {
     const sub = player.addListener('timeUpdate', ({ currentTime }) => setPlayingMs(currentTime * 1000));
@@ -30,9 +32,9 @@ export function Playhead({ player, durationMs, trim, speed, scrubMs, onScrub, on
   const at = scrubMs ?? playingMs;
   const [width, setWidth] = useState(0);
   // Pan callbacks read the latest props through this ref (updated after each commit).
-  const latest = useRef({ at, width, durationMs, trim, onScrub, onScrubEnd });
+  const latest = useRef({ at, width, span: durationMs - floorMs, trim, onScrub, onScrubEnd });
   useLayoutEffect(() => {
-    latest.current = { at, width, durationMs, trim, onScrub, onScrubEnd };
+    latest.current = { at, width, span: durationMs - floorMs, trim, onScrub, onScrubEnd };
   });
   // eslint-disable-next-line react-hooks/refs -- the ref is only read inside pan callbacks, never during render
   const [pan] = useState(() => {
@@ -44,16 +46,17 @@ export function Playhead({ player, durationMs, trim, speed, scrubMs, onScrub, on
         latest.current.onScrub?.(origin);
       },
       onPanResponderMove: (_, g) => {
-        const { width: w, durationMs: d, trim: t } = latest.current;
+        const { width: w, span, trim: t } = latest.current;
         if (!w) return;
-        const ms = Math.min(Math.max(origin + (g.dx / w) * d, t.startMs), t.endMs);
+        const ms = Math.min(Math.max(origin + (g.dx / w) * span, t.startMs), t.endMs);
         latest.current.onScrub?.(ms);
       },
       onPanResponderRelease: () => latest.current.onScrubEnd?.(),
       onPanResponderTerminate: () => latest.current.onScrubEnd?.(),
     });
   });
-  const share = durationMs ? Math.min(Math.max(at / durationMs, 0), 1) : 0;
+  const span = durationMs - floorMs;
+  const share = span > 0 ? Math.min(Math.max((at - floorMs) / span, 0), 1) : 0;
   const elapsed = Math.max(0, (at - trim.startMs) / speed / 1000);
 
   return (

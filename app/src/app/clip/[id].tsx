@@ -17,7 +17,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { createThumbnail, exportClip } from '../../../modules/replay-camera';
+import { createThumbnail, exportClip, findContentStart } from '../../../modules/replay-camera';
 import { seconds, timeOfDay } from '../../components/format';
 import {
   BackIcon,
@@ -36,7 +36,7 @@ import { removeFile, repo } from '../../data/mmkv';
 import { MAX_CLIP_NAME } from '../../data/schema';
 import { effectiveSettings } from '../../modes/registry';
 import { captureOverlay } from '../../share/captureOverlay';
-import { nextRotation, outputMs, readEdit, SPEEDS, turnedSize } from '../../share/editing';
+import { contentFloor, nextRotation, outputMs, raiseToFloor, readEdit, SPEEDS, turnedSize } from '../../share/editing';
 import { useEntitlement } from '../../share/entitlement';
 import { exportOptions } from '../../share/exportOptions';
 import { frameLayout } from '../../share/layout';
@@ -100,6 +100,7 @@ export default function ClipEditor() {
 
   const [trim, setTrim] = useState(() => clip?.trim ?? { startMs: 0, endMs: 0 });
   const edit = readEdit(clip?.edit);
+  const floor = clip?.contentStartMs ?? 0;
   // Bumped to start the zoomed video over from the saved zoom (reset, or switching to/from full screen).
   const [zoomKey, setZoomKey] = useState(0);
   const [full, setFull] = useState(false);
@@ -155,6 +156,29 @@ export default function ClipEditor() {
     p.currentTime = trim.startMs / 1000;
     p.play();
   });
+
+  // The first time a clip opens, find where its picture starts: a black start is not part of the video.
+  const hasFloor = clip?.contentStartMs !== undefined;
+  useEffect(() => {
+    if (!clipPath || hasFloor) return;
+    let alive = true;
+    findContentStart(clipPath)
+      .catch(() => 0)
+      .then((contentMs) => {
+        if (!alive) return;
+        const current = repo.getClip(id);
+        if (!current) return;
+        const floor = contentFloor(contentMs, current.durationMs);
+        const raised = raiseToFloor(current.trim, floor, current.durationMs);
+        if (raised === current.trim) return void repo.updateClip(id, { contentStartMs: floor });
+        repo.updateClip(id, { contentStartMs: floor, trim: raised });
+        setTrim(raised);
+        seek(player, raised.startMs);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [clipPath, hasFloor, id, player]);
 
   // Loop the cut; follow speed and sound live.
   useEffect(() => {
@@ -454,7 +478,7 @@ export default function ClipEditor() {
             <Text style={styles.notice}>{notice}</Text>
           ) : null}
           <View style={styles.trimLabels}>
-            <Text style={styles.small}>{`-${seconds(clip.durationMs)}`}</Text>
+            <Text style={styles.small}>{`-${seconds(clip.durationMs - floor)}`}</Text>
             <Text style={styles.cut}>{`Corte: ${seconds(outputMs(trim, edit.speed))}`}</Text>
             <Text style={styles.small}>gatilho</Text>
           </View>
@@ -463,10 +487,17 @@ export default function ClipEditor() {
               {playing ? <PauseIcon /> : <PlayIcon />}
             </IconButton>
             <View style={styles.trimBar}>
-              <TrimBar durationMs={clip.durationMs} trim={trim} maxMs={maxMs} onChange={scrub} onCommit={commitTrim}>
+              <TrimBar
+                durationMs={clip.durationMs}
+                floorMs={floor}
+                trim={trim}
+                maxMs={maxMs}
+                onChange={scrub}
+                onCommit={commitTrim}>
                 <Playhead
                   player={player}
                   durationMs={clip.durationMs}
+                  floorMs={floor}
                   trim={trim}
                   speed={edit.speed}
                   scrubMs={scrubMs}

@@ -14,6 +14,8 @@ final class GestureDetector {
   /// When the phone is hot (720p30 mode), sample less and look at fewer people.
   static let hotSampleInterval = 0.5
   static let hotMaxPeople = 2
+  /// Gravity (g) along x or y needed to tell how the phone is held; flatter than this keeps the last position.
+  static let leanThreshold = 0.15
 
   var onGesture: (() -> Void)?
   /// Diagnostic: about once a second, what the detector saw (Etapa 0 spike only).
@@ -27,9 +29,8 @@ final class GestureDetector {
   private var _degraded = false
   private var busy = false
   private var lastSample = -Double.infinity
-  private var upright: DeviceUpright = .landscapeLeft
-  /// False until a firm reading says how the phone is held; until then a phone aimed down at a table still leans one way.
-  private var uprightKnown = false
+  /// Until the first reading: the app is portrait-locked, so a phone nobody has tilted is most likely held upright.
+  private var upright: DeviceUpright = .portrait
   private var samples = 0
   private var lastDebug = -Double.infinity
 
@@ -53,13 +54,11 @@ final class GestureDetector {
   /// The phone's physical position from the latest accelerometer reading; the last known one while it lies flat.
   func currentUpright() -> DeviceUpright {
     lock.withLock {
-      if let g = motion.accelerometerData?.acceleration {
-        if let now = DeviceUpright.from(gravityX: g.x, gravityY: g.y) {
-          upright = now
-          uprightKnown = true
-        } else if !uprightKnown, let leaning = DeviceUpright.from(gravityX: g.x, gravityY: g.y, threshold: 0.15) {
-          upright = leaning
-        }
+      // A phone aimed down at a table has most of gravity along the lens: lean on the stronger of x and y (0.15 g).
+      if let g = motion.accelerometerData?.acceleration,
+         let now = DeviceUpright.from(gravityX: g.x, gravityY: g.y, threshold: Self.leanThreshold)
+      {
+        upright = now
       }
       return upright
     }

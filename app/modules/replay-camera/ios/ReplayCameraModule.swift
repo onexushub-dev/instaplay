@@ -122,6 +122,10 @@ public class ReplayCameraModule: Module {
       try await ClipThumbnail.make(clipPath: clipPath, atMs: atMs)
     }
 
+    AsyncFunction("findContentStart") { (clipPath: String) async -> Double in
+      await ClipContent.firstPictureMs(clipPath: clipPath)
+    }
+
     Function("getWatchStatus") { () -> String in WatchBridge.shared.status }
 
     Function("watchSync") { (recording: Bool, clipCount: Int, startedAt: Double?) in

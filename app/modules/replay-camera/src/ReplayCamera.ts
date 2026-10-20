@@ -82,6 +82,11 @@ export function createThumbnail(clipPath: string, atMs: number): Promise<string>
   return ReplayCameraModule.createThumbnail(clipPath, atMs);
 }
 
+/** Time in ms where the clip's picture begins after a black start; 0 when it starts with a picture (always 0 on Android for now). */
+export async function findContentStart(clipPath: string): Promise<number> {
+  return (await ReplayCameraModule.findContentStart?.(clipPath)) ?? 0;
+}
+
 /** Renders the cut (optionally slowed/muted) into a width×height video with the overlay on top. */
 export function exportClip(opts: ExportClipOptions): Promise<ExportedClip> {
   return ReplayCameraModule.exportClip(opts);

@@ -6,10 +6,17 @@ type Cut = { startMs: number; endMs: number };
 /**
  * Keeps an edited cut valid: inside the clip, between 3s and `maxMs` (the mode's buffer) long. When the length is out of bounds,
  * the handle the player dragged is the one moved back, so the other edge stays where they left it.
+ * `floorMs`: where the useful video starts (a black start is not part of the clip); the cut never begins before it.
  */
-export function clampTrim(next: Cut, durationMs: number, moved: 'start' | 'end', maxMs: number = MAX_CUT_MS): Cut {
-  if (durationMs <= MIN_CUT_MS) return { startMs: 0, endMs: durationMs };
-  let startMs = Math.min(Math.max(0, next.startMs), durationMs);
+export function clampTrim(
+  next: Cut,
+  durationMs: number,
+  moved: 'start' | 'end',
+  maxMs: number = MAX_CUT_MS,
+  floorMs: number = 0,
+): Cut {
+  if (durationMs - floorMs <= MIN_CUT_MS) return { startMs: floorMs, endMs: durationMs };
+  let startMs = Math.min(Math.max(floorMs, next.startMs), durationMs);
   let endMs = Math.min(Math.max(0, next.endMs), durationMs);
   const length = endMs - startMs;
 
@@ -21,7 +28,7 @@ export function clampTrim(next: Cut, durationMs: number, moved: 'start' | 'end',
     else endMs = startMs + maxMs;
   }
   // Pushing past an end slides the window back inside.
-  if (startMs < 0) [startMs, endMs] = [0, endMs - startMs];
+  if (startMs < floorMs) [startMs, endMs] = [floorMs, endMs + (floorMs - startMs)];
   if (endMs > durationMs) [startMs, endMs] = [startMs - (endMs - durationMs), durationMs];
   return { startMs, endMs };
 }

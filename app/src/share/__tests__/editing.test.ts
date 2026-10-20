@@ -1,4 +1,4 @@
-import { clampZoom, cropRect, MAX_ZOOM, nextRotation, outputMs, panZoom, pinchZoom, readEdit, turnedSize } from '../editing';
+import { clampZoom, contentFloor, cropRect, MAX_ZOOM, nextRotation, outputMs, panZoom, pinchZoom, raiseToFloor, readEdit, turnedSize } from '../editing';
 
 test('a clip with no edit plays at normal speed, with sound and no zoom', () => {
   expect(readEdit(undefined)).toEqual({ speed: 1, muted: false, zoom: undefined, rotation: 0 });
@@ -73,4 +73,31 @@ test('a quarter turn swaps the width and height of the video', () => {
   expect(turnedSize({ width: 1920, height: 1080 }, 90)).toEqual({ width: 1080, height: 1920 });
   expect(turnedSize({ width: 1920, height: 1080 }, 180)).toEqual({ width: 1920, height: 1080 });
   expect(turnedSize({ width: 1920, height: 1080 }, 270)).toEqual({ width: 1080, height: 1920 });
+});
+
+describe('the useful start of a clip', () => {
+  test('a clip that starts with a long black takes its first picture as the start, a little before it', () => {
+    expect(contentFloor(11_000, 57_000)).toBe(10_750);
+  });
+
+  test('a black shorter than a second is just the camera starting: nothing to skip', () => {
+    expect(contentFloor(0, 57_000)).toBe(0);
+    expect(contentFloor(900, 57_000)).toBe(0);
+  });
+
+  test('a clip that is black almost to the end is left whole, not cut down to nothing', () => {
+    expect(contentFloor(55_000, 57_000)).toBe(0);
+  });
+
+  test('a cut that started inside the black moves to the floor and keeps its end', () => {
+    expect(raiseToFloor({ startMs: 0, endMs: 54_000 }, 10_750, 57_000)).toEqual({ startMs: 10_750, endMs: 54_000 });
+  });
+
+  test('a cut already past the floor is untouched', () => {
+    expect(raiseToFloor({ startMs: 20_000, endMs: 54_000 }, 10_750, 57_000)).toEqual({ startMs: 20_000, endMs: 54_000 });
+  });
+
+  test('a cut ending inside the black grows to the shortest cut after the floor', () => {
+    expect(raiseToFloor({ startMs: 0, endMs: 8_000 }, 10_750, 57_000)).toEqual({ startMs: 10_750, endMs: 13_750 });
+  });
 });

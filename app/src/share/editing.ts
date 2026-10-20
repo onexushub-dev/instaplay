@@ -1,4 +1,5 @@
 import type { Clip } from '../data/schema';
+import { MIN_CUT_MS } from './trim';
 
 export const SPEEDS = [0.5, 1, 1.5, 2] as const;
 export type Speed = (typeof SPEEDS)[number];
@@ -67,4 +68,23 @@ export function nextRotation(rotation: Rotation): Rotation {
 /** The video's shape on screen after turning it. */
 export function turnedSize(size: { width: number; height: number }, rotation: Rotation) {
   return rotation % 180 === 0 ? size : { width: size.height, height: size.width };
+}
+
+/** Black shorter than this is just the camera starting, not part of what to hide. */
+const BLACK_START_MS = 1_000;
+const LEAD_MS = 250;
+
+/**
+ * Where the useful video starts, given the time of its first picture (`contentMs`): a little before it. 0 when the black is
+ * short, or when so little picture is left that skipping would leave nothing to cut.
+ */
+export function contentFloor(contentMs: number, durationMs: number): number {
+  if (contentMs < BLACK_START_MS || durationMs - contentMs < MIN_CUT_MS) return 0;
+  return contentMs - LEAD_MS;
+}
+
+/** Moves a cut that begins in the black to the floor, keeping its end (at least the shortest cut). */
+export function raiseToFloor(trim: { startMs: number; endMs: number }, floorMs: number, durationMs: number) {
+  if (trim.startMs >= floorMs) return trim;
+  return { startMs: floorMs, endMs: Math.min(durationMs, Math.max(trim.endMs, floorMs + MIN_CUT_MS)) };
 }

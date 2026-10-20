@@ -46,3 +46,10 @@ test('never shows a negative time before the cut starts', async () => {
   await act(async () => player.tick(10));
   expect(screen.getByText('0.0s')).toBeTruthy();
 });
+
+test('with a floor the track starts at the floor', async () => {
+  const player = fakePlayer();
+  await render(<Playhead player={player as never} durationMs={60_000} floorMs={10_000} trim={{ startMs: 10_000, endMs: 60_000 }} speed={1} />);
+  await act(async () => player.tick(35));
+  expect(screen.getByTestId('playhead').props.style).toEqual(expect.arrayContaining([expect.objectContaining({ left: '50%' })]));
+});

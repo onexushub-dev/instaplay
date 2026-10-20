@@ -40,7 +40,13 @@ export function Button({ label, onPress, variant = 'primary', disabled = false, 
 }
 
 const styles = StyleSheet.create({
-  base: { height: 58, borderRadius: radius.button, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 14 },
+  base: {
+    height: 58,
+    borderRadius: radius.button,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 14,
+  },
   primary: { backgroundColor: colors.accent },
   secondary: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
   row: { flexDirection: 'row', alignItems: 'center', gap: 10 },

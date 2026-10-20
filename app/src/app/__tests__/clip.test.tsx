@@ -18,6 +18,7 @@ jest.mock('../../share/captureOverlay', () => ({ captureOverlay: jest.fn(async (
 jest.mock('../../../modules/replay-camera', () => ({
   exportClip: jest.fn(async () => ({ path: '/exports/e1.mp4', durationMs: 30000 })),
   createThumbnail: jest.fn(async () => '/c1.jpg'),
+  findContentStart: jest.fn(async () => 0),
 }));
 jest.mock('../../components/TrimBar', () => {
   const props: { last?: any } = {};
@@ -51,7 +52,7 @@ const media = jest.requireMock('expo-media-library');
 
 const base = {
   id: 'c1', sessionId: 's1', createdAt: new Date(2026, 9, 17, 19, 40).getTime(), source: 'gesture',
-  path: '/c1.mp4', durationMs: 60000, trim: { startMs: 30000, endMs: 60000 },
+  path: '/c1.mp4', durationMs: 60000, trim: { startMs: 30000, endMs: 60000 }, contentStartMs: 0,
 };
 
 beforeEach(() => {
@@ -291,4 +292,39 @@ test('a turned clip exports with its rotation', async () => {
   await open();
   await pressAction('Compartilhar');
   expect(camera.exportClip).toHaveBeenCalledWith(expect.objectContaining({ rotation: 90 }));
+});
+
+describe('a black start', () => {
+  const short = { ...base, durationMs: 57000, trim: { startMs: 0, endMs: 54000 }, contentStartMs: undefined };
+
+  test('is found when the editor first opens the clip and the cut moves past it', async () => {
+    camera.findContentStart.mockResolvedValueOnce(11000);
+    __setClip(short);
+    await open();
+    expect(camera.findContentStart).toHaveBeenCalledWith('/c1.mp4');
+    expect(repo.updateClip).toHaveBeenCalledWith('c1', {
+      contentStartMs: 10750,
+      trim: { startMs: 10750, endMs: 54000 },
+    });
+    expect(player.currentTime).toBe(10.75);
+  });
+
+  test('is remembered as nothing to skip when the clip starts with a picture', async () => {
+    __setClip(short);
+    await open();
+    expect(repo.updateClip).toHaveBeenCalledWith('c1', { contentStartMs: 0 });
+  });
+
+  test('is not looked for again once known', async () => {
+    __setClip({ ...short, contentStartMs: 10750, trim: { startMs: 10750, endMs: 54000 } });
+    await open();
+    expect(camera.findContentStart).not.toHaveBeenCalled();
+  });
+
+  test('the track starts at the useful video: the left label shows its length, not the whole file', async () => {
+    __setClip({ ...short, contentStartMs: 10750, trim: { startMs: 10750, endMs: 54000 } });
+    await open();
+    expect(screen.getByText('-0:46')).toBeTruthy();
+    expect(jest.requireMock('../../components/TrimBar').__props.last.floorMs).toBe(10750);
+  });
 });
