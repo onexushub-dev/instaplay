@@ -1,6 +1,7 @@
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Linking, StyleSheet, Text, View } from 'react-native';
 
+import { useT } from '../i18n/useT';
 import { colors, fonts, radius } from '../theme/tokens';
 import { Button } from './Button';
 
@@ -13,6 +14,7 @@ type Props = {
 
 /** A square window onto the camera that reads QR codes, so pairing does not need another app. */
 export function QrScanner({ onCode, active = true }: Props) {
+  const { t } = useT();
   const [permission, requestPermission] = useCameraPermissions();
 
   if (permission === null) return <View style={styles.box} />;
@@ -20,11 +22,11 @@ export function QrScanner({ onCode, active = true }: Props) {
   if (!permission.granted) {
     return (
       <View style={[styles.box, styles.ask]}>
-        <Text style={styles.askText}>Para ler o código, o LANCE precisa usar a câmera deste celular.</Text>
+        <Text style={styles.askText}>{t('remote.qrAsk')}</Text>
         {permission.canAskAgain ? (
-          <Button label="Permitir câmera" onPress={() => void requestPermission()} />
+          <Button label={t('remote.qrAllow')} onPress={() => void requestPermission()} />
         ) : (
-          <Button label="Abrir Ajustes" onPress={() => void Linking.openSettings()} />
+          <Button label={t('common.openSettings')} onPress={() => void Linking.openSettings()} />
         )}
       </View>
     );
@@ -34,7 +36,7 @@ export function QrScanner({ onCode, active = true }: Props) {
     <View style={styles.box}>
       {active ? (
         <CameraView
-          accessibilityLabel="Câmera para ler o código de pareamento"
+          accessibilityLabel={t('remote.qrCameraLabel')}
           barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
           facing="back"
           onBarcodeScanned={(e) => onCode(e.data)}

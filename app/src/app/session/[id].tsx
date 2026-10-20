@@ -8,12 +8,14 @@ import { ClipCard } from '../../components/ClipCard';
 import { dayAndTime, megabytes, modeLabel, recordedLabel, sessionLabel } from '../../components/format';
 import { repo } from '../../data/mmkv';
 import { MAX_GAME_NAME } from '../../data/schema';
+import { useT } from '../../i18n/useT';
 import { useSession } from '../../session/SessionContext';
 import { colors, fonts } from '../../theme/tokens';
 
 export default function SessionSummary() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { reset, state } = useSession();
+  const { t, locale } = useT();
   // Re-read whenever the repo changes (a clip deleted on the clip screen, a late save landing).
   const version = useSyncExternalStore(repo.subscribe, repo.version);
   const { session, clips, stats } = useMemo(
@@ -37,36 +39,36 @@ export default function SessionSummary() {
     <SafeAreaView style={styles.root}>
       <View style={styles.header}>
         {session ? (
-          <Text style={styles.subtitle}>{`${modeLabel(session.sport)} · ${dayAndTime(session.startedAt)}`}</Text>
+          <Text style={styles.subtitle}>{`${modeLabel(session.sport, locale)} · ${dayAndTime(session.startedAt, undefined, locale)}`}</Text>
         ) : null}
         <Text style={styles.title} accessibilityRole="header" numberOfLines={2}>
-          {session?.name ? sessionLabel(session) : 'GRAVAÇÃO ENCERRADA'}
+          {session?.name ? sessionLabel(session, undefined, locale) : t('summary.ended')}
         </Text>
         {session ? (
           <View style={styles.nameBox}>
             <TextInput
-              accessibilityLabel="Nome da gravação"
+              accessibilityLabel={t('summary.nameLabel')}
               value={name}
               onChangeText={setName}
               onSubmitEditing={saveName}
               onBlur={saveName}
-              placeholder={sessionLabel({ ...session, name: undefined })}
+              placeholder={sessionLabel({ ...session, name: undefined }, undefined, locale)}
               placeholderTextColor={colors.muted}
               maxLength={MAX_GAME_NAME}
               returnKeyType="done"
               style={styles.nameInput}
             />
-            <Text style={styles.nameCaption}>Opcional. Ajuda a achar a gravação depois.</Text>
+            <Text style={styles.nameCaption}>{t('summary.nameCaption')}</Text>
           </View>
         ) : null}
       </View>
 
       <View style={styles.stats}>
-        <Stat value={recordedLabel(stats.recordedMs)} label="gravadas" />
-        <Stat value={String(stats.clips)} label="clipes" accent />
-        <Stat value={megabytes(stats.bytes)} label="guardados" />
+        <Stat value={recordedLabel(stats.recordedMs, locale)} label={t('summary.recorded')} />
+        <Stat value={String(stats.clips)} label={t('summary.clipsStat', { count: stats.clips })} accent />
+        <Stat value={megabytes(stats.bytes, locale)} label={t('summary.kept')} />
       </View>
-      <Text style={styles.note}>O restante da gravação já foi apagado do celular.</Text>
+      <Text style={styles.note}>{t('summary.note')}</Text>
 
       <FlatList
         data={clips}
@@ -74,7 +76,7 @@ export default function SessionSummary() {
         numColumns={2}
         columnWrapperStyle={styles.gridRow}
         contentContainerStyle={styles.grid}
-        ListEmptyComponent={<Text style={styles.empty}>Nenhum clipe salvo nesta gravação.</Text>}
+        ListEmptyComponent={<Text style={styles.empty}>{t('summary.empty')}</Text>}
         renderItem={({ item, index }) => (
           <ClipCard clip={item} number={index + 1} onPress={() => router.push(`/clip/${item.id}`)} />
         )}
@@ -83,11 +85,11 @@ export default function SessionSummary() {
       <View style={styles.footer}>
         <View style={styles.buttons}>
           <View style={{ flex: 1 }}>
-            <Button label="Nova gravação" variant="secondary" onPress={newGame} />
+            <Button label={t('summary.newRecording')} variant="secondary" onPress={newGame} />
           </View>
           <View style={{ flex: 1.4 }}>
             <Button
-              label="Postar um clipe"
+              label={t('summary.postClip')}
               disabled={clips.length === 0}
               onPress={() => router.push(`/clip/${clips[clips.length - 1].id}`)}
             />

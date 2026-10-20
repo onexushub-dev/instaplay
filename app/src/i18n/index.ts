@@ -17,6 +17,7 @@ type Paths<T> = {
 /** Every translatable text: a dot path to a string or a plural (`{ one, other }`, picked by `count`). */
 export type MessageKey = Paths<Messages>;
 export type MessageParams = Record<string, string | number>;
+export type TFunction = (key: MessageKey, params?: MessageParams) => string;
 
 export const catalogs: Record<AppLocale, Messages> = { en, 'pt-BR': ptBR };
 

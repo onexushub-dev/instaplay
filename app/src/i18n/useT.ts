@@ -2,13 +2,13 @@ import { useLocales } from 'expo-localization';
 import { useCallback, useEffect, useSyncExternalStore } from 'react';
 import { AppState } from 'react-native';
 
-import { type AppLocale, currentLocale, type MessageKey, type MessageParams, subscribeLocale, syncLocale, translate } from '.';
+import { type AppLocale, currentLocale, type MessageKey, type MessageParams, subscribeLocale, syncLocale, type TFunction, translate } from '.';
 
 /**
  * The current language and a `t` bound to it. Re-renders when the language changes; `t` is a new function per
  * language, so memoized values that use it (React Compiler) are recomputed.
  */
-export function useT(): { t: (key: MessageKey, params?: MessageParams) => string; locale: AppLocale } {
+export function useT(): { t: TFunction; locale: AppLocale } {
   const locale = useSyncExternalStore(subscribeLocale, currentLocale);
   const t = useCallback((key: MessageKey, params?: MessageParams) => translate(locale, key, params), [locale]);
   return { t, locale };

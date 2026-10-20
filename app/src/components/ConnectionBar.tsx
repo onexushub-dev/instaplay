@@ -1,5 +1,7 @@
 import { StyleSheet, Text, View } from 'react-native';
 
+import { type AppLocale, translate } from '../i18n';
+import { useT } from '../i18n/useT';
 import type { ConnectionTone } from '../remote/remoteScreen';
 import { colors, fonts } from '../theme/tokens';
 
@@ -7,16 +9,17 @@ type Props = { tone: ConnectionTone; name: string; detail?: string };
 
 const DOT: Record<ConnectionTone, string> = { ok: colors.accent, warn: colors.warning, bad: colors.rec };
 
-function spoken(tone: ConnectionTone, name: string): string {
-  if (tone === 'ok') return `Conectado a ${name}`;
-  if (tone === 'warn') return `Reconectando a ${name}`;
-  return 'Sem acesso à rede local';
+function spoken(tone: ConnectionTone, name: string, locale: AppLocale): string {
+  if (tone === 'ok') return translate(locale, 'remote.connectedTo', { name });
+  if (tone === 'warn') return translate(locale, 'remote.reconnectingTo', { name });
+  return translate(locale, 'remote.noNetwork');
 }
 
 /** Always-visible strip at the top of the remote: a coloured dot (never colour alone: the label says it too), the camera phone's full name (it wraps instead of being cut) and, below it, the game. */
 export function ConnectionBar({ tone, name, detail }: Props) {
+  const { locale } = useT();
   return (
-    <View accessible accessibilityLabel={spoken(tone, name)} style={styles.bar}>
+    <View accessible accessibilityLabel={spoken(tone, name, locale)} style={styles.bar}>
       <View style={styles.top}>
         <View style={[styles.dot, { backgroundColor: DOT[tone] }]} />
         <Text style={styles.name}>{name}</Text>

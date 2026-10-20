@@ -2,17 +2,19 @@ import { Image } from 'expo-image';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import type { Clip, Session } from '../data/schema';
+import { useT } from '../i18n/useT';
 import { colors, fonts } from '../theme/tokens';
 import { recordedLabel, sessionLabel } from './format';
 import { useClipThumbnail } from './useClipThumbnail';
 
 type Props = { session: Session; clips: number; firstClip?: Clip; recordedMs: number; onPress: () => void };
 
-/** One past game in "Minhas gravações": first lance's frame, name (or sport + date), lances and time. */
+/** One past game in "My recordings": first lance's frame, name (or sport + date), lances and time. */
 export function GameCard({ session, clips, firstClip, recordedMs, onPress }: Props) {
   const thumb = useClipThumbnail(firstClip?.path ?? '', firstClip?.trim.startMs ?? 0);
-  const label = sessionLabel(session);
-  const detail = `${clips} ${clips === 1 ? 'clipe' : 'clipes'} · ${recordedLabel(recordedMs)}`;
+  const { t, locale } = useT();
+  const label = sessionLabel(session, undefined, locale);
+  const detail = t('games.detail', { clips: t('summary.clips', { count: clips }), time: recordedLabel(recordedMs, locale) });
   return (
     <Pressable
       accessibilityRole="button"

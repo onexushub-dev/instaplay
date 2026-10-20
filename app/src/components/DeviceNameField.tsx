@@ -2,10 +2,12 @@ import { useState } from 'react';
 import { StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { remoteDeviceName, remoteSetDeviceName } from '../../modules/replay-camera';
+import { useT } from '../i18n/useT';
 import { colors, fonts, radius } from '../theme/tokens';
 
 /** The name this phone shows to the other one while pairing. Starts as "iPhone XR#1234"; the person can rename it. */
 export function DeviceNameField() {
+  const { t } = useT();
   const [name, setName] = useState(() => remoteDeviceName());
 
   const save = () => {
@@ -16,9 +18,9 @@ export function DeviceNameField() {
 
   return (
     <View style={styles.box}>
-      <Text style={styles.label}>Nome deste celular</Text>
+      <Text style={styles.label}>{t('pairing.deviceName')}</Text>
       <TextInput
-        accessibilityLabel="Nome deste celular"
+        accessibilityLabel={t('pairing.deviceName')}
         autoCorrect={false}
         maxLength={30}
         onChangeText={setName}
@@ -28,7 +30,7 @@ export function DeviceNameField() {
         style={styles.input}
         value={name}
       />
-      <Text style={styles.hint}>O outro celular mostra este nome. A mudança vale na próxima conexão.</Text>
+      <Text style={styles.hint}>{t('pairing.deviceNameHint')}</Text>
     </View>
   );
 }

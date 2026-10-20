@@ -2,6 +2,7 @@ import { Image } from 'expo-image';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import type { Clip } from '../data/schema';
+import { useT } from '../i18n/useT';
 import { colors, fonts } from '../theme/tokens';
 import { seconds, timeOfDay } from './format';
 import { sourceLabel } from './sourceLabel';
@@ -10,12 +11,18 @@ import { useClipThumbnail } from './useClipThumbnail';
 type Props = { clip: Clip; number: number; onPress: () => void };
 
 export function ClipCard({ clip, number, onPress }: Props) {
+  const { t, locale } = useT();
   const thumb = useClipThumbnail(clip.path, clip.trim.startMs);
   const duration = seconds(clip.trim.endMs - clip.trim.startMs);
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`Clipe ${number}${clip.name ? ` · ${clip.name}` : ''}, ${duration}, ${sourceLabel(clip.source)}`}
+      accessibilityLabel={t('summary.clipA11y', {
+        number,
+        name: clip.name ? ` · ${clip.name}` : '',
+        duration,
+        source: sourceLabel(clip.source, locale),
+      })}
       onPress={onPress}
       style={styles.card}>
       <View style={styles.thumb}>
@@ -33,8 +40,8 @@ export function ClipCard({ clip, number, onPress }: Props) {
         </Text>
       ) : null}
       <View style={styles.meta}>
-        <Text style={styles.metaText}>{timeOfDay(clip.createdAt)}</Text>
-        <Text style={styles.metaText}>{sourceLabel(clip.source)}</Text>
+        <Text style={styles.metaText}>{timeOfDay(clip.createdAt, locale)}</Text>
+        <Text style={styles.metaText}>{sourceLabel(clip.source, locale)}</Text>
       </View>
     </Pressable>
   );

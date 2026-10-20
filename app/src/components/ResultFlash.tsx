@@ -1,18 +1,21 @@
 import { StyleSheet, Text, View } from 'react-native';
 
+import type { MessageKey } from '../i18n';
+import { useT } from '../i18n/useT';
 import { colors, fonts } from '../theme/tokens';
 import { CheckIcon, CloseIcon } from './icons';
 
 export type FlashKind = 'saved' | 'failed' | 'timeout';
 
-const LOOK: Record<FlashKind, { ground: string; word: string; hint: string | null }> = {
-  saved: { ground: colors.accent, word: 'SALVO!', hint: null },
-  failed: { ground: colors.rec, word: 'NÃO SALVOU', hint: 'Toque de novo' },
-  timeout: { ground: colors.warning, word: 'SEM RESPOSTA', hint: 'Confira o celular da câmera' },
+const LOOK: Record<FlashKind, { ground: string; word: MessageKey; hint: MessageKey | null }> = {
+  saved: { ground: colors.accent, word: 'remote.flashSaved', hint: null },
+  failed: { ground: colors.rec, word: 'remote.flashFailed', hint: 'remote.flashFailedHint' },
+  timeout: { ground: colors.warning, word: 'remote.flashTimeout', hint: 'remote.flashTimeoutHint' },
 };
 
-/** Full-screen answer to a tap on SALVAR, readable at arm's length and from across the court. Lets touches through. */
+/** Full-screen answer to a tap on SAVE, readable at arm's length and from across the court. Lets touches through. */
 export function ResultFlash({ kind }: { kind: FlashKind }) {
+  const { t } = useT();
   const look = LOOK[kind];
   return (
     <View
@@ -20,8 +23,8 @@ export function ResultFlash({ kind }: { kind: FlashKind }) {
       accessibilityLiveRegion="assertive"
       style={[StyleSheet.absoluteFill, styles.flash, { backgroundColor: look.ground }]}>
       {kind === 'saved' ? <CheckIcon size={160} /> : <CloseIcon color={colors.ground} size={160} />}
-      <Text style={styles.word}>{look.word}</Text>
-      {look.hint !== null ? <Text style={styles.hint}>{look.hint}</Text> : null}
+      <Text style={styles.word}>{t(look.word)}</Text>
+      {look.hint !== null ? <Text style={styles.hint}>{t(look.hint)}</Text> : null}
     </View>
   );
 }

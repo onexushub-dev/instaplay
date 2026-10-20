@@ -6,10 +6,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { GameCard } from '../components/GameCard';
 import { BackIcon } from '../components/icons';
 import { repo } from '../data/mmkv';
+import { useT } from '../i18n/useT';
 import { colors, fonts } from '../theme/tokens';
 
 /** Past games with at least one lance, newest first. */
 export default function Games() {
+  const { t } = useT();
   const version = useSyncExternalStore(repo.subscribe, repo.version);
   const games = useMemo(
     () => repo.listSessions().map((g) => ({ ...g, recordedMs: repo.sessionStats(g.session.id).recordedMs })),
@@ -20,18 +22,18 @@ export default function Games() {
   return (
     <SafeAreaView style={styles.root}>
       <View style={styles.top}>
-        <Pressable accessibilityRole="button" accessibilityLabel="Voltar" onPress={() => router.back()} style={styles.back}>
+        <Pressable accessibilityRole="button" accessibilityLabel={t('common.back')} onPress={() => router.back()} style={styles.back}>
           <BackIcon />
         </Pressable>
       </View>
       <Text style={styles.title} accessibilityRole="header">
-        MINHAS GRAVAÇÕES
+        {t('games.title')}
       </Text>
       <FlatList
         data={games}
         keyExtractor={(g) => g.session.id}
         contentContainerStyle={styles.list}
-        ListEmptyComponent={<Text style={styles.empty}>Nenhuma gravação com clipes ainda.</Text>}
+        ListEmptyComponent={<Text style={styles.empty}>{t('games.empty')}</Text>}
         renderItem={({ item }) => (
           <GameCard
             session={item.session}

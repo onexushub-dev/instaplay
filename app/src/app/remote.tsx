@@ -27,6 +27,8 @@ import { HoldButton } from '../components/HoldButton';
 import { CameraIcon } from '../components/icons';
 import { PulseRing } from '../components/PulseRing';
 import { ResultFlash } from '../components/ResultFlash';
+import type { MessageKey } from '../i18n';
+import { useT } from '../i18n/useT';
 import { parseCode, parsePairUrl } from '../remote/pairLink';
 import { canSave, connectionTone, remoteScreen } from '../remote/remoteScreen';
 import { cooldownLeft, IDLE, onResult, onTap, tick, type SaveFeedback } from '../remote/saveFeedback';
@@ -45,20 +47,20 @@ const clock = (seconds: number) => {
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
 };
 
-function failureText(reason: RemotePairFailure): string {
+function failureText(reason: RemotePairFailure): MessageKey {
   switch (reason) {
     case 'expired':
-      return 'Código vencido. Peça um novo no celular da câmera.';
+      return 'remote.failExpired';
     case 'locked':
-      return 'Muitas tentativas. Gere um novo código.';
+      return 'remote.failLocked';
     case 'notFound':
-      return 'Não encontrei o celular da câmera. Chegue mais perto e confira se o LANCE está aberto lá.';
+      return 'remote.failNotFound';
     case 'denied':
-      return 'Este controle não está mais pareado';
+      return 'remote.failUnpaired';
     case 'full':
-      return 'O celular da câmera já tem 4 controles. Remova um lá para conectar este.';
+      return 'remote.failFull';
     default:
-      return 'Código incorreto. Confira os números e tente de novo.';
+      return 'remote.failWrongCode';
   }
 }
 
@@ -73,8 +75,9 @@ function Step({ n, text }: { n: number; text: string }) {
   );
 }
 
-/** The second iPhone: shows the camera phone's game and taps Salvar for it. */
+/** The second iPhone: shows the camera phone's game and taps Save for it. */
 export default function Remote() {
+  const { t } = useT();
   const [host, setHost] = useState<RemotePeer | null>(() => remoteControllerHost());
   const [link, setLink] = useState<RemoteLink>('idle');
   const [peerName, setPeerName] = useState<string | null>(null);
@@ -82,7 +85,8 @@ export default function Remote() {
   const [now, setNow] = useState(() => Date.now());
   const [feedback, setFeedback] = useState<SaveFeedback>(IDLE);
   const [lastSave, setLastSave] = useState<number | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  // A key, not a text: it is shown in whatever language is current.
+  const [notice, setNotice] = useState<MessageKey | null>(null);
   const [failure, setFailure] = useState<RemotePairFailure | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [code, setCode] = useState('');
@@ -214,7 +218,7 @@ export default function Remote() {
   const connect = () => {
     const digits = parseCode(code);
     if (digits === null) {
-      setNotice('Digite os 6 números do código.');
+      setNotice('remote.enterSix');
       return;
     }
     submit(digits);
@@ -239,10 +243,10 @@ export default function Remote() {
   // Unpair from this side (the camera phone is told too, when it is in reach) and go back to asking for a code.
   const useOtherCamera = () => {
     const name = host === null ? '' : host.name;
-    Alert.alert(`Esquecer ${name}?`, 'Este celular deixa de ser o controle dessa câmera. Para usar de novo, é preciso parear outra vez.', [
-      { text: 'Cancelar', style: 'cancel' },
+    Alert.alert(t('remote.forgetTitle', { name }), t('remote.forgetBody'), [
+      { text: t('common.cancel'), style: 'cancel' },
       {
-        text: 'Esquecer',
+        text: t('remote.forget'),
         style: 'destructive',
         onPress: () => {
           remoteControllerForget();
@@ -274,24 +278,24 @@ export default function Remote() {
     return (
       <SafeAreaView style={styles.root}>
         <ScrollView automaticallyAdjustKeyboardInsets contentContainerStyle={styles.scrollBody} keyboardShouldPersistTaps="handled">
-          <Text style={styles.role}>ESTE IPHONE É O CONTROLE</Text>
-          <Text style={styles.title}>Conectar à câmera</Text>
-          {notice !== null ? <Text style={styles.warning}>{notice}</Text> : null}
-          <Step n={1} text="No celular que vai filmar, abra o LANCE e toque em “Celular” para começar o pareamento." />
-          <Step n={2} text="Aponte a câmera deste celular para o código QR que aparece lá." />
+          <Text style={styles.role}>{t('remote.roleRemote')}</Text>
+          <Text style={styles.title}>{t('remote.title')}</Text>
+          {notice !== null ? <Text style={styles.warning}>{t(notice)}</Text> : null}
+          <Step n={1} text={t('remote.step1')} />
+          <Step n={2} text={t('remote.step2')} />
           <QrScanner active={!connecting} onCode={onQr} />
           {connecting ? (
             <View style={styles.connecting}>
               <ActivityIndicator color={colors.text} />
-              <Text style={styles.text}>Conectando…</Text>
+              <Text style={styles.text}>{t('remote.connecting')}</Text>
             </View>
           ) : null}
           {failure === 'notFound' && !connecting && lastCode !== null ? (
-            <Button label="Tentar de novo" variant="secondary" onPress={retry} />
+            <Button label={t('common.tryAgain')} variant="secondary" onPress={retry} />
           ) : null}
-          <Text style={styles.text}>Não consegue ler o QR? Digite aqui o código de 6 números:</Text>
+          <Text style={styles.text}>{t('remote.cantScan')}</Text>
           <TextInput
-            accessibilityLabel="Código de 6 números"
+            accessibilityLabel={t('remote.codeLabel')}
             editable={!connecting}
             keyboardType="number-pad"
             maxLength={7}
@@ -301,15 +305,15 @@ export default function Remote() {
             style={styles.input}
             value={code}
           />
-          <Button label={connecting ? 'Conectando…' : 'Conectar'} loading={connecting} onPress={connect} />
+          <Button label={connecting ? t('remote.connecting') : t('remote.connect')} loading={connecting} onPress={connect} />
           <DeviceNameField />
-          <Button label="Fechar" variant="secondary" onPress={leave} />
+          <Button label={t('common.close')} variant="secondary" onPress={leave} />
         </ScrollView>
       </SafeAreaView>
     );
   }
 
-  const hostLabel = host.name.length > 0 ? host.name : peerName === null ? 'Celular da câmera' : peerName;
+  const hostLabel = host.name.length > 0 ? host.name : peerName === null ? t('remote.genericHost') : peerName;
   const screenModel = remoteScreen({
     link,
     hostName: hostLabel,
@@ -325,7 +329,10 @@ export default function Remote() {
   });
   const recordingDetail =
     screenModel.kind === 'recording'
-      ? `${screenModel.startedAt === null ? '0:00' : clock((now - screenModel.startedAt) / 1000)} · ${screenModel.clipCount} ${screenModel.clipCount === 1 ? 'lance' : 'lances'}`
+      ? t('remote.detail', {
+          time: screenModel.startedAt === null ? '0:00' : clock((now - screenModel.startedAt) / 1000),
+          plays: t('remote.plays', { count: screenModel.clipCount }),
+        })
       : undefined;
   const startWaiting = startAskedAt !== null && !(received !== null && received.recording);
   const startPending = startWaiting && now - startAskedAt < START_WAIT_MS;
@@ -338,39 +345,39 @@ export default function Remote() {
     <SafeAreaView style={styles.root}>
       <View style={styles.body}>
         <ConnectionBar tone={connectionTone(screenModel)} name={hostLabel} detail={recordingDetail} />
-        {screenModel.kind === 'recording' ? null : <Text style={styles.role}>ESTE IPHONE É O CONTROLE</Text>}
-        {notice !== null ? <Text style={styles.warning}>{notice}</Text> : null}
+        {screenModel.kind === 'recording' ? null : <Text style={styles.role}>{t('remote.roleRemote')}</Text>}
+        {notice !== null ? <Text style={styles.warning}>{t(notice)}</Text> : null}
 
         {screenModel.kind === 'denied' ? (
           <View style={styles.center}>
-            <Text style={styles.text}>Libere a rede local nos Ajustes para usar o controle.</Text>
-            <Button label="Abrir Ajustes" onPress={() => Linking.openSettings()} />
+            <Text style={styles.text}>{t('remote.failNetwork')}</Text>
+            <Button label={t('common.openSettings')} onPress={() => Linking.openSettings()} />
           </View>
         ) : null}
 
         {screenModel.kind === 'searching' ? (
           <View style={styles.center}>
             <PulseRing color={colors.warning} />
-            <Text style={styles.status}>{`Procurando ${screenModel.hostName === null ? hostLabel : screenModel.hostName}…`}</Text>
-            <Button label="Usar outra câmera" variant="secondary" onPress={useOtherCamera} />
+            <Text style={styles.status}>{t('remote.searching', { name: screenModel.hostName === null ? hostLabel : screenModel.hostName })}</Text>
+            <Button label={t('remote.useOther')} variant="secondary" onPress={useOtherCamera} />
           </View>
         ) : null}
 
         {screenModel.kind === 'waiting' ? (
           <View style={styles.center}>
             <PulseRing color={colors.accent} />
-            <Text style={styles.status}>Conectado. Pronto para começar a partida.</Text>
+            <Text style={styles.status}>{t('remote.ready')}</Text>
             <Button
-              label={startPending ? 'Iniciando…' : 'INICIAR GRAVAÇÃO'}
+              label={startPending ? t('remote.starting') : t('remote.startRecording')}
               loading={startPending}
               onPress={startRecording}
             />
             {startFailed ? (
-              <Text style={styles.warning}>A gravação não começou. Confira se o LANCE está aberto no celular da câmera.</Text>
+              <Text style={styles.warning}>{t('remote.startFailed')}</Text>
             ) : (
-              <Text style={styles.hint}>Ou comece pelo próprio celular da câmera.</Text>
+              <Text style={styles.hint}>{t('remote.orStartThere')}</Text>
             )}
-            <Button label="Usar outra câmera" variant="secondary" onPress={useOtherCamera} />
+            <Button label={t('remote.useOther')} variant="secondary" onPress={useOtherCamera} />
           </View>
         ) : null}
 
@@ -378,18 +385,18 @@ export default function Remote() {
           <>
             <View style={styles.center}>
               <PulseRing color={colors.warning} size={64} />
-              <Text style={styles.status}>{`Sem conexão com ${screenModel.hostName}`}</Text>
-              <Text style={styles.sub}>Reconectando…</Text>
-              <Button label="Tentar agora" variant="secondary" onPress={retryNow} />
-              <Button label="Usar outra câmera" variant="secondary" onPress={useOtherCamera} />
+              <Text style={styles.status}>{t('remote.noConnection', { name: screenModel.hostName })}</Text>
+              <Text style={styles.sub}>{t('remote.reconnecting')}</Text>
+              <Button label={t('remote.tryNow')} variant="secondary" onPress={retryNow} />
+              <Button label={t('remote.useOther')} variant="secondary" onPress={useOtherCamera} />
             </View>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="SALVAR"
+              accessibilityLabel={t('remote.save')}
               accessibilityState={{ disabled: true }}
               disabled
               style={[styles.save, styles.saveOff]}>
-              <Text style={styles.saveText}>SALVAR</Text>
+              <Text style={styles.saveText}>{t('remote.save')}</Text>
             </Pressable>
           </>
         ) : null}
@@ -397,17 +404,17 @@ export default function Remote() {
         {screenModel.kind === 'recording' ? (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="SALVAR"
+            accessibilityLabel={t('remote.save')}
             accessibilityState={{ busy: sending }}
             onPress={save}
             style={({ pressed }) => [styles.save, pressed && styles.savePressed]}>
             {sending ? (
               <>
                 <ActivityIndicator size="large" color={colors.onAccent} />
-                <Text style={styles.sendingText}>ENVIANDO…</Text>
+                <Text style={styles.sendingText}>{t('remote.sending')}</Text>
               </>
             ) : (
-              <Text style={styles.saveText}>SALVAR</Text>
+              <Text style={styles.saveText}>{t('remote.save')}</Text>
             )}
             {left > 0 ? <View testID="cooldown" pointerEvents="none" style={[styles.cooldown, { width: `${Math.round(left * 100)}%` }]} /> : null}
           </Pressable>
@@ -415,8 +422,8 @@ export default function Remote() {
 
         {screenModel.kind === 'recording' ? (
           <HoldButton
-            label="Segure para encerrar a gravação"
-            holdingLabel="Continue segurando…"
+            label={t('recording.holdToEnd')}
+            holdingLabel={t('recording.keepHolding')}
             onComplete={remoteControllerEndRecording}
           />
         ) : null}
@@ -425,7 +432,7 @@ export default function Remote() {
           {screenModel.kind === 'recording' || screenModel.kind === 'waiting' ? (
             <View style={styles.footerItem}>
               <Button
-                label="Ver câmera"
+                label={t('remote.seeCamera')}
                 variant="secondary"
                 icon={<CameraIcon />}
                 onPress={() => setPreviewOpen(true)}
@@ -433,7 +440,7 @@ export default function Remote() {
             </View>
           ) : null}
           <View style={styles.footerItem}>
-            <Button label="Fechar" variant="secondary" onPress={leave} />
+            <Button label={t('common.close')} variant="secondary" onPress={leave} />
           </View>
         </View>
       </View>
