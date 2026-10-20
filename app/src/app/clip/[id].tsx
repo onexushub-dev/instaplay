@@ -96,7 +96,7 @@ export default function ClipEditor() {
   );
   const session = clip ? repo.getSession(clip.sessionId) : undefined;
   const maxMs = session ? effectiveSettings(session.sport, repo.getPrefs()).bufferSeconds * 1000 : undefined;
-  const { tier } = useEntitlement();
+  const { tier } = useEntitlement(clip?.sessionId);
 
   const [trim, setTrim] = useState(() => clip?.trim ?? { startMs: 0, endMs: 0 });
   const edit = readEdit(clip?.edit);

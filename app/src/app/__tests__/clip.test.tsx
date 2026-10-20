@@ -4,6 +4,9 @@ import { Alert, Image } from 'react-native';
 import ClipEditor from '../clip/[id]';
 
 jest.mock('expo-router', () => ({ router: { push: jest.fn(), back: jest.fn() }, useLocalSearchParams: () => ({ id: 'c1' }) }));
+jest.mock('../../payments', () => ({
+  payments: { subscribe: () => () => {}, version: () => 0, tierFor: () => 'pro' },
+}));
 jest.mock('expo-video', () => {
   const mockPlayer = { addListener: () => ({ remove() {} }), play: jest.fn(), pause: jest.fn(), currentTime: 0, playbackRate: 1, muted: false };
   return { __player: mockPlayer, useVideoPlayer: () => mockPlayer, VideoView: () => null };
@@ -190,7 +193,7 @@ test('deleting asks first, then removes the file and the clip', async () => {
   expect(router.back).toHaveBeenCalled();
 });
 
-test('Compartilhar exports with the cut, speed, zoom and the app mark, then opens the share sheet', async () => {
+test('Compartilhar exports with the cut, speed, zoom and no app mark (pro), then opens the share sheet', async () => {
   const zoom = { scale: 2, cx: 0.25, cy: 0.75 };
   __setClip({ ...base, edit: { speed: 2, muted: false, zoom } });
   await open();
@@ -199,7 +202,7 @@ test('Compartilhar exports with the cut, speed, zoom and the app mark, then open
     expect.objectContaining({
       clipPath: '/c1.mp4', startMs: 30000, endMs: 60000, speed: 2, muted: true,
       crop: { x: 0, y: 0.5, width: 0.5, height: 0.5 },
-      width: 1080, height: 1920, overlayPngPath: '/tmp/overlay.png', watermark: true,
+      width: 1080, height: 1920, overlayPngPath: '/tmp/overlay.png', watermark: false,
     }),
   );
   expect(sharing.shareAsync).toHaveBeenCalledWith('file:///exports/e1.mp4', expect.objectContaining({ mimeType: 'video/mp4' }));

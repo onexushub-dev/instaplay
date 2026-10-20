@@ -16,19 +16,19 @@ export type ExportOptions = {
   watermark: boolean;
 };
 
-/** Free: 720x1280 (spec 6). Every export carries the app mark. Any speed other than 1x plays without sound. */
+/** Free: 720x1280 (spec 6). Paid tiers (pass, pro): 1080x1920 without the app mark; free exports carry it. Any speed other than 1x plays without sound. */
 export function exportOptions(tier: Tier, edit: Clip['edit'], trim: Clip['trim']): ExportOptions {
-  const pro = tier === 'pro';
+  const paid = tier !== 'free';
   const { speed, muted, zoom, rotation } = readEdit(edit);
   return {
-    width: pro ? 1080 : 720,
-    height: pro ? 1920 : 1280,
+    width: paid ? 1080 : 720,
+    height: paid ? 1920 : 1280,
     startMs: trim.startMs,
     endMs: trim.endMs,
     speed,
     muted: muted || speed !== 1,
     crop: zoom && zoom.scale > 1 ? cropRect(zoom) : undefined,
     rotation,
-    watermark: true,
+    watermark: !paid,
   };
 }

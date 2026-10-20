@@ -13,9 +13,16 @@ test('pro exports 1080x1920', () => {
   });
 });
 
-test('the app mark is always on, for every tier', () => {
-  expect(exportOptions('pro', undefined, trim).watermark).toBe(true);
+test('free keeps the app mark', () => {
   expect(exportOptions('free', undefined, trim).watermark).toBe(true);
+});
+
+test.each(['pass', 'pro'] as const)('%s exports without the app mark', (tier) => {
+  expect(exportOptions(tier, undefined, trim).watermark).toBe(false);
+});
+
+test('pass exports 1080x1920', () => {
+  expect(exportOptions('pass', undefined, trim)).toMatchObject({ width: 1080, height: 1920 });
 });
 
 test('slow motion halves the speed and drops the sound', () => {
