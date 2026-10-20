@@ -5,7 +5,7 @@ export type CustomerInfoLike = {
   nonSubscriptionTransactions: {
     transactionIdentifier: string;
     productIdentifier: string;
-    purchaseDateMillis: number;
+    purchaseDate: string; // ISO 8601, as the SDK delivers it
   }[];
 };
 
@@ -14,6 +14,6 @@ export function toSnapshot(info: CustomerInfoLike): Snapshot {
     proActive: PRO_ENTITLEMENT in info.entitlements.active,
     passTransactions: info.nonSubscriptionTransactions
       .filter((t) => t.productIdentifier === PASS_PRODUCT_ID)
-      .map((t) => ({ id: t.transactionIdentifier, productId: t.productIdentifier, purchasedAt: t.purchaseDateMillis })),
+      .map((t) => ({ id: t.transactionIdentifier, productId: t.productIdentifier, purchasedAt: Date.parse(t.purchaseDate) })),
   };
 }

@@ -8,6 +8,14 @@
  *   LANCE_APPLE_TEAM_ID=ABCDE12345         your Apple development team id
  *
  * With nothing set, the values from app.json are used unchanged.
+ *
+ * RevenueCat public SDK keys (never secret keys), read into extra.revenueCat:
+ *
+ *   LANCE_RC_IOS_KEY=appl_...              iOS key
+ *   LANCE_RC_ANDROID_KEY=goog_...          Android key
+ *   LANCE_RC_TEST_KEY=test_...             Test Store key, used only in development builds (__DEV__)
+ *
+ * With no key the app runs as free and the paywall reports an error.
  */
 module.exports = ({ config }) => {
   const bundleId = process.env.LANCE_BUNDLE_ID;
@@ -24,5 +32,13 @@ module.exports = ({ config }) => {
     ios.appleTeamId = teamId;
   }
 
-  return Object.assign({}, config, { ios: ios, android: android });
+  const extra = Object.assign({}, config.extra, {
+    revenueCat: {
+      ios: process.env.LANCE_RC_IOS_KEY,
+      android: process.env.LANCE_RC_ANDROID_KEY,
+      test: process.env.LANCE_RC_TEST_KEY,
+    },
+  });
+
+  return Object.assign({}, config, { ios: ios, android: android, extra: extra });
 };

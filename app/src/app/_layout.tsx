@@ -8,6 +8,7 @@ import { useEffect } from 'react';
 import { AppState } from 'react-native';
 
 import { isRemoteSupported, remoteHostStart, remoteHostStop } from '../../modules/replay-camera';
+import { payments } from '../payments';
 import { SessionProvider } from '../session/SessionContext';
 import { colors } from '../theme/tokens';
 
@@ -21,6 +22,10 @@ export default function RootLayout() {
     Manrope_600SemiBold,
     Manrope_700Bold,
   });
+
+  useEffect(() => {
+    payments.start();
+  }, []);
 
   useEffect(() => {
     if (loaded || error) SplashScreen.hideAsync();

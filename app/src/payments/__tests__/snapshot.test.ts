@@ -3,7 +3,7 @@ import { toSnapshot } from '../snapshot';
 const tx = (id: string, productIdentifier: string) => ({
   transactionIdentifier: id,
   productIdentifier,
-  purchaseDateMillis: 1000,
+  purchaseDate: '1970-01-01T00:00:01.000Z',
 });
 
 describe('toSnapshot', () => {
