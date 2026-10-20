@@ -178,3 +178,44 @@ test('renameClip on a deleted clip does nothing', () => {
   const repo = setup();
   expect(repo.renameClip('gone', 'x')).toBeUndefined();
 });
+
+test('setSessionPass persists the transaction id and notifies subscribers', () => {
+  const repo = setup();
+  const s = repo.startSession('quadra', 0);
+  const fn = jest.fn();
+  repo.subscribe(fn);
+  const updated = repo.setSessionPass(s.id, 'tx-1');
+  expect(updated?.passTransactionId).toBe('tx-1');
+  expect(repo.getSession(s.id)?.passTransactionId).toBe('tx-1');
+  expect(fn).toHaveBeenCalledTimes(1);
+});
+
+test('setSessionPass returns undefined for a missing game', () => {
+  const repo = setup();
+  const fn = jest.fn();
+  repo.subscribe(fn);
+  expect(repo.setSessionPass('nope', 'tx')).toBeUndefined();
+  expect(fn).not.toHaveBeenCalled();
+});
+
+test('addClip persists locked', () => {
+  const repo = setup({ '/a.mp4': 1 });
+  const s = repo.startSession('quadra', 0);
+  const c = repo.addClip({ sessionId: s.id, createdAt: 1, source: 'screen', path: '/a.mp4', durationMs: 1, locked: true });
+  expect(repo.getClip(c.id)?.locked).toBe(true);
+});
+
+test('unlockedClipCount and lockedCount count only existing clips and respect deleteClip', () => {
+  const repo = setup({ '/a.mp4': 1, '/b.mp4': 1, '/c.mp4': 1 });
+  const s = repo.startSession('quadra', 0);
+  const base = { sessionId: s.id, source: 'screen' as const, durationMs: 1 };
+  repo.addClip({ ...base, createdAt: 1, path: '/a.mp4' });
+  repo.addClip({ ...base, createdAt: 2, path: '/b.mp4', locked: false });
+  const l = repo.addClip({ ...base, createdAt: 3, path: '/c.mp4', locked: true });
+  repo.addClip({ ...base, createdAt: 4, path: '/gone.mp4', locked: true });
+  repo.addClip({ ...base, createdAt: 5, path: '/gone2.mp4' });
+  expect(repo.unlockedClipCount(s.id)).toBe(2);
+  expect(repo.lockedCount(s.id)).toBe(1);
+  repo.deleteClip(l.id);
+  expect(repo.lockedCount(s.id)).toBe(0);
+});

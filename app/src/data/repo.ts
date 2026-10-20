@@ -99,6 +99,26 @@ export function createRepo(kv: KV, files: FileProbe, newId: () => string) {
       return session;
     },
 
+    /** Records the game pass transaction on the game. Undefined if the game does not exist. */
+    setSessionPass(id: string, transactionId: string): Session | undefined {
+      const existing = getSession(id);
+      if (!existing) return undefined;
+      const session: Session = { ...existing, passTransactionId: transactionId };
+      write(key.session(id), session);
+      changed();
+      return session;
+    },
+
+    /** Existing clips of the game that are not locked. */
+    unlockedClipCount(sessionId: string): number {
+      return this.listClips(sessionId).filter((c) => c.locked !== true).length;
+    },
+
+    /** Existing clips of the game that are locked. */
+    lockedCount(sessionId: string): number {
+      return this.listClips(sessionId).filter((c) => c.locked === true).length;
+    },
+
     /** Trims and cuts the name to MAX_CLIP_NAME; a blank name removes it. Undefined if the clip is gone. */
     renameClip(id: string, name: string): Clip | undefined {
       const existing = read<Clip>(key.clip(id));

@@ -29,7 +29,7 @@ export type ModeSettings = {
   quality: '1080p60' | '1080p30';
 };
 
-export type Session = { id: string; sport: Sport; startedAt: number; endedAt?: number; name?: string };
+export type Session = { id: string; sport: Sport; startedAt: number; endedAt?: number; name?: string; /** RevenueCat transaction id of the game pass that unlocked this game; absent = no pass. */ passTransactionId?: string };
 
 export const MAX_GAME_NAME = 40;
 export const MAX_CLIP_NAME = 40;
@@ -48,6 +48,8 @@ export type Clip = {
   edit?: { slowmo?: boolean; speed?: 0.5 | 1 | 1.5 | 2; muted: boolean; zoom?: { scale: number; cx: number; cy: number }; rotation?: 0 | 90 | 180 | 270 };
   /** Optional name the player gives the clip (like a recording's name). */
   name?: string;
+  /** True when the clip was recorded over the free limit and is locked until the game has a pass. */
+  locked?: boolean;
 };
 
 export type Prefs = {
