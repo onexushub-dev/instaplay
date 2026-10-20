@@ -53,7 +53,8 @@
       "expo-video",
       "expo-sharing",
       "@bacons/apple-targets",
-      "./plugins/withPodsDeploymentTarget"
+      "./plugins/withPodsDeploymentTarget",
+      "expo-image"
     ],
     "experiments": {
       "typedRoutes": true,
