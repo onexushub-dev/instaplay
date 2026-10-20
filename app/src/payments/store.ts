@@ -3,11 +3,12 @@ import type { PaymentsClient, PaywallOutcome } from './client';
 import { detectPurchase, tierFor as ruleTier } from './rules';
 import { EMPTY_SNAPSHOT, type Snapshot, type Tier } from './types';
 
-type Pending = { sessionId: string; before: Snapshot; blocked?: boolean };
+type Pending = { sessionId: string; before: Snapshot };
 
 export function createPaymentsStore(client: PaymentsClient, repo: Pick<Repo, 'getSession' | 'setSessionPass'>) {
   let current: Snapshot | null = null;
-  let pendings: Pending[] = [];
+  // At most one paywall result we could not explain yet. A new paywall never opens while it exists unresolved.
+  let pending: Pending | null = null;
   const bound = new Set<string>(); // transaction ids this store already bound; never bind one twice
   let open = false;
   let version = 0;
@@ -19,27 +20,24 @@ export function createPaymentsStore(client: PaymentsClient, repo: Pick<Repo, 'ge
     listeners.forEach((fn) => fn());
   }
 
-  /** Binds every pending purchase that `snapshot` can now explain; keeps the rest. */
-  function resolvePendings(snapshot: Snapshot) {
-    // Paywalls run one at a time, so pendings are in purchase order: the oldest
-    // pending takes the oldest new transaction.
-    pendings = pendings.filter((p) => {
-      if (p.blocked && open) return true; // older pendings must not claim a purchase made while a newer paywall is open
-      const known = new Set([...p.before.passTransactions.map((t) => t.id), ...bound]);
-      const fresh = snapshot.passTransactions.filter((t) => !known.has(t.id));
-      if (fresh.length > 0) {
-        const oldest = fresh.reduce((x, y) => (y.purchasedAt < x.purchasedAt ? y : x));
-        repo.setSessionPass(p.sessionId, oldest.id);
-        bound.add(oldest.id);
-        return false;
-      }
-      return !detectPurchase(p.before, snapshot).pro;
-    });
+  /** Binds the pending purchase if `snapshot` explains it (oldest new pass tx); clears it on a new pass or Pro. */
+  function resolvePending(snapshot: Snapshot) {
+    if (!pending) return;
+    const known = new Set([...pending.before.passTransactions.map((t) => t.id), ...bound]);
+    const fresh = snapshot.passTransactions.filter((t) => !known.has(t.id));
+    if (fresh.length > 0) {
+      const oldest = fresh.reduce((x, y) => (y.purchasedAt < x.purchasedAt ? y : x));
+      repo.setSessionPass(pending.sessionId, oldest.id);
+      bound.add(oldest.id);
+      pending = null;
+    } else if (detectPurchase(pending.before, snapshot).pro) {
+      pending = null;
+    }
   }
 
   function apply(s: Snapshot) {
     current = s;
-    resolvePendings(s);
+    resolvePending(s);
     notify();
   }
 
@@ -88,26 +86,16 @@ export function createPaymentsStore(client: PaymentsClient, repo: Pick<Repo, 'ge
       if (open) return 'cancelled';
       open = true;
       try {
-        let beforeKnown = true;
         let before = current;
-        if (pendings.length > 0) {
-          // Settle older results first so they cannot capture this paywall's purchase.
+        if (pending || !before) {
           const fresh = await read(() => client.getSnapshot());
           if (fresh) {
-            apply(fresh);
-            pendings = [];
+            apply(fresh); // binds the pending to its own session if its pass shows up now
+            pending = null; // still unexplained: dropped so it cannot capture this paywall's purchase
             before = fresh;
-          } else {
-            pendings.forEach((x) => (x.blocked = true));
-            beforeKnown = false;
+          } else if (pending) {
+            return 'error'; // never sell another pass while an earlier purchase is unexplained
           }
-        } else if (!before) {
-          before = await read(() => client.getSnapshot());
-          if (before) apply(before);
-        }
-        if (!before) {
-          beforeKnown = false;
-          before = EMPTY_SNAPSHOT;
         }
         let outcome: PaywallOutcome;
         try {
@@ -117,21 +105,18 @@ export function createPaymentsStore(client: PaymentsClient, repo: Pick<Repo, 'ge
         }
         if (outcome === 'purchased' || outcome === 'restored') {
           // Without a known "before", a restore could re-bind an old pass to the wrong game.
-          const p: Pending = { sessionId, before };
-          const tracked = beforeKnown || outcome === 'purchased';
-          if (tracked) pendings.push(p);
+          if (before || outcome === 'purchased') pending = { sessionId, before: before ?? EMPTY_SNAPSHOT };
           const after = await read(() => client.getSnapshot());
           if (after) {
-            apply(after);
-            // The successful read explains this paywall: nothing older may capture a later purchase.
-            if (tracked && !pendings.includes(p)) pendings = [];
+            current = after;
+            resolvePending(after);
             // A restore that shows nothing new leaves no pending; a purchase may just be SDK lag.
-            else if (tracked && outcome === 'restored') pendings = pendings.filter((x) => x !== p);
+            if (outcome === 'restored') pending = null;
           } else if (current) {
             // The SDK listener may already have delivered the new data during the paywall.
-            resolvePendings(current);
-            notify();
+            resolvePending(current);
           }
+          notify();
         }
         return outcome;
       } finally {
