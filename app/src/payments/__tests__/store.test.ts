@@ -1,0 +1,132 @@
+import { createFakeClient } from '../fakeClient';
+import { createPaymentsStore } from '../store';
+import { EMPTY_SNAPSHOT, type Snapshot } from '../types';
+
+const tx = (id: string, purchasedAt = 1) => ({ id, productId: 'lance_game_pass', purchasedAt });
+const snap = (over: Partial<Snapshot> = {}): Snapshot => ({ ...EMPTY_SNAPSHOT, ...over });
+
+function memRepo(sessions: Record<string, { passTransactionId?: string }> = { s1: {}, s2: {} }) {
+  return {
+    getSession: jest.fn((id: string) => sessions[id] as any),
+    setSessionPass: jest.fn((id: string, t: string) => {
+      if (!sessions[id]) return undefined;
+      sessions[id] = { ...sessions[id], passTransactionId: t };
+      return sessions[id] as any;
+    }),
+  };
+}
+
+const flush = () => new Promise<void>((r) => setImmediate(() => r()));
+
+async function setup(initial: Snapshot = snap(), sessions?: Record<string, { passTransactionId?: string }>) {
+  const client = createFakeClient();
+  client.snapshot = initial;
+  const repo = memRepo(sessions);
+  const store = createPaymentsStore(client, repo);
+  store.start();
+  await flush();
+  return { client, repo, store };
+}
+
+describe('payments store', () => {
+  it('start loads the snapshot and onSnapshot updates and notifies', async () => {
+    const { client, store } = await setup(snap({ proActive: true }));
+    expect(store.getSnapshot().proActive).toBe(true);
+    const fn = jest.fn();
+    store.subscribe(fn);
+    const v = store.version();
+    client.emit(snap({ passTransactions: [tx('a')] }));
+    expect(store.getSnapshot().passTransactions).toHaveLength(1);
+    expect(fn).toHaveBeenCalled();
+    expect(store.version()).not.toBe(v);
+  });
+
+  it('tierFor reflects pass, pro and free', async () => {
+    const { store } = await setup(snap(), { s1: { passTransactionId: 't' }, s2: {} });
+    expect(store.tierFor('s1')).toBe('pass');
+    expect(store.tierFor('s2')).toBe('free');
+    expect(store.tierFor()).toBe('free');
+    const p = await setup(snap({ proActive: true }));
+    expect(p.store.tierFor('s1')).toBe('pro');
+  });
+
+  it('tierFor never throws when getSnapshot fails', async () => {
+    const { client, store } = await (async () => {
+      const client = createFakeClient();
+      client.failSnapshot = true;
+      const repo = memRepo({ s1: { passTransactionId: 't' }, s2: {} });
+      const store = createPaymentsStore(client, repo);
+      store.start();
+      await flush();
+      return { client, store };
+    })();
+    expect(client.failSnapshot).toBe(true);
+    expect(store.tierFor('s2')).toBe('free');
+    expect(store.tierFor('s1')).toBe('pass');
+  });
+
+  it('purchased with a new transaction binds the pass to the session', async () => {
+    const { client, repo, store } = await setup(snap({ passTransactions: [tx('tx-1')] }));
+    client.nextOutcome = 'purchased';
+    client.snapshot = snap({ passTransactions: [tx('tx-1'), tx('tx-2', 2)] });
+    const fn = jest.fn();
+    store.subscribe(fn);
+    await expect(store.showPaywall('s1')).resolves.toBe('purchased');
+    expect(repo.setSessionPass).toHaveBeenCalledWith('s1', 'tx-2');
+    expect(store.tierFor('s1')).toBe('pass');
+    expect(store.tierFor('s2')).toBe('free');
+    expect(fn).toHaveBeenCalled();
+  });
+
+  it('Pro purchase binds nothing and tier is pro', async () => {
+    const { client, repo, store } = await setup();
+    client.nextOutcome = 'purchased';
+    client.snapshot = snap({ proActive: true });
+    await store.showPaywall('s1');
+    expect(repo.setSessionPass).not.toHaveBeenCalled();
+    expect(store.tierFor('s1')).toBe('pro');
+  });
+
+  it('cancelled binds nothing', async () => {
+    const { client, repo, store } = await setup();
+    client.nextOutcome = 'cancelled';
+    client.snapshot = snap({ passTransactions: [tx('x')] });
+    await expect(store.showPaywall('s1')).resolves.toBe('cancelled');
+    expect(repo.setSessionPass).not.toHaveBeenCalled();
+  });
+
+  it('restored without a new transaction binds nothing', async () => {
+    const { client, repo, store } = await setup(snap({ passTransactions: [tx('tx-1')] }));
+    client.nextOutcome = 'restored';
+    await store.showPaywall('s1');
+    expect(repo.setSessionPass).not.toHaveBeenCalled();
+  });
+
+  it('failure reading the snapshot after purchased keeps a pending bind resolved by onSnapshot', async () => {
+    const { client, repo, store } = await setup(snap({ passTransactions: [tx('tx-1')] }));
+    client.nextOutcome = 'purchased';
+    client.failSnapshot = true;
+    await expect(store.showPaywall('s1')).resolves.toBe('purchased');
+    expect(repo.setSessionPass).not.toHaveBeenCalled();
+    client.emit(snap({ passTransactions: [tx('tx-1'), tx('tx-2', 2)] }));
+    expect(repo.setSessionPass).toHaveBeenCalledWith('s1', 'tx-2');
+    expect(store.tierFor('s1')).toBe('pass');
+  });
+
+  it('a second showPaywall while one is open returns cancelled without calling the client', async () => {
+    const { client, store } = await setup();
+    const spy = jest.spyOn(client, 'showPaywall');
+    client.nextOutcome = 'cancelled';
+    const first = store.showPaywall('s1');
+    await expect(store.showPaywall('s1')).resolves.toBe('cancelled');
+    expect(spy).toHaveBeenCalledTimes(1);
+    await first;
+  });
+
+  it('restore resolves true when pro became active', async () => {
+    const { client, store } = await setup();
+    client.snapshot = snap({ proActive: true });
+    await expect(store.restore()).resolves.toBe(true);
+    expect(store.getSnapshot().proActive).toBe(true);
+  });
+});
