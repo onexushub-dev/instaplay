@@ -157,21 +157,22 @@ describe('payments store', () => {
     expect(repo.setSessionPass).toHaveBeenCalledTimes(1);
   });
 
-  it('S1 pending then S2 paywall never binds the same transaction twice', async () => {
+  it('S1 pending then S2 paywall (pre-paywall read failing) never binds the same transaction twice', async () => {
     const { client, repo, store } = await setup(snap({ passTransactions: [tx('tx-1')] }));
     client.nextOutcome = 'purchased';
     client.failSnapshot = true;
     await store.showPaywall('s1');
-    client.failSnapshot = false;
-    client.snapshot = snap({ passTransactions: [tx('tx-1'), tx('tx-2', 2), tx('tx-3', 3)] });
+    const full = snap({ passTransactions: [tx('tx-1'), tx('tx-2', 2), tx('tx-3', 3)] });
+    let reads = 0;
+    client.getSnapshot = async () => {
+      reads += 1;
+      if (reads === 1) throw new Error('x');
+      return full;
+    };
     await store.showPaywall('s2');
-    const calls = repo.setSessionPass.mock.calls;
-    expect(calls).toHaveLength(2);
-    expect(new Set(calls.map((c) => c[1])).size).toBe(2);
-    expect(calls).toEqual([
-      ['s1', 'tx-2'],
-      ['s2', 'tx-3'],
-    ]);
+    expect(repo.setSessionPass.mock.calls).toEqual([['s2', 'tx-2']]);
+    client.emit(full);
+    expect(repo.setSessionPass.mock.calls).toEqual([['s2', 'tx-2']]); // older pending dropped, nothing bound twice
   });
 
   it('restored does not bind when the before snapshot is unknown', async () => {
@@ -250,5 +251,71 @@ describe('payments store', () => {
     expect(repo.setSessionPass).not.toHaveBeenCalled();
     client.emit(snap({ passTransactions: [tx('tx-1'), tx('tx-2', 2)] }));
     expect(repo.setSessionPass).toHaveBeenCalledWith('s1', 'tx-2');
+  });
+
+  it('a pending from a failed read cannot capture the next game purchase (fresh pre-paywall read)', async () => {
+    const { client, repo, store } = await setup(snap({ passTransactions: [tx('tx-1')] }));
+    client.nextOutcome = 'restored';
+    client.failSnapshot = true;
+    await store.showPaywall('s1');
+    client.failSnapshot = false;
+    client.nextOutcome = 'purchased';
+    client.snapshot = snap({ passTransactions: [tx('tx-1')] });
+    let calls = 0;
+    const real = client.showPaywall.bind(client);
+    client.showPaywall = async () => {
+      calls += 1;
+      client.snapshot = snap({ passTransactions: [tx('tx-1'), tx('tx-2', 2)] });
+      return real();
+    };
+    await store.showPaywall('s2');
+    expect(calls).toBe(1);
+    expect(repo.setSessionPass.mock.calls).toEqual([['s2', 'tx-2']]);
+  });
+
+  it('a pending whose transaction shows in the fresh pre-paywall read binds to its own session', async () => {
+    const { client, repo, store } = await setup(snap({ passTransactions: [tx('tx-1')] }));
+    client.nextOutcome = 'purchased';
+    client.failSnapshot = true;
+    await store.showPaywall('s1');
+    client.failSnapshot = false;
+    client.snapshot = snap({ passTransactions: [tx('tx-1'), tx('tx-2', 2)] });
+    client.nextOutcome = 'cancelled';
+    await store.showPaywall('s2');
+    expect(repo.setSessionPass.mock.calls).toEqual([['s1', 'tx-2']]);
+  });
+
+  it('with the pre-paywall read still failing, the old pending is kept but cannot claim the new purchase', async () => {
+    const { client, repo, store } = await setup(snap({ passTransactions: [tx('tx-1')] }));
+    client.nextOutcome = 'restored';
+    client.failSnapshot = true;
+    await store.showPaywall('s1');
+    // pre-paywall read fails, post-paywall read succeeds
+    let reads = 0;
+    client.getSnapshot = async () => {
+      reads += 1;
+      if (reads === 1) throw new Error('x');
+      return client.snapshot;
+    };
+    client.nextOutcome = 'purchased';
+    client.snapshot = snap({ passTransactions: [tx('tx-1'), tx('tx-2', 2)] });
+    await store.showPaywall('s2');
+    expect(repo.setSessionPass.mock.calls).toEqual([['s2', 'tx-2']]);
+  });
+
+  it('a restored with unknown before does not wipe an older purchased pending waiting on SDK lag', async () => {
+    const { client, repo, store } = await setup(snap({ passTransactions: [tx('tx-1')] }));
+    client.nextOutcome = 'purchased';
+    await store.showPaywall('s1'); // SDK lag: nothing new yet, pending kept
+    let reads = 0;
+    client.getSnapshot = async () => {
+      reads += 1;
+      if (reads === 1) throw new Error('x'); // pre-paywall fresh read fails
+      return snap({ passTransactions: [tx('tx-1')] });
+    };
+    client.nextOutcome = 'restored';
+    await store.showPaywall('s2');
+    client.emit(snap({ passTransactions: [tx('tx-1'), tx('tx-2', 2)] }));
+    expect(repo.setSessionPass.mock.calls).toEqual([['s1', 'tx-2']]);
   });
 });
