@@ -23,6 +23,7 @@ declare class ReplayCameraModule extends NativeModule<ReplayCameraModuleEvents> 
   isVoiceSupported(): boolean;
   getSpeechPermission(): 'granted' | 'denied' | 'undetermined';
   createThumbnail(clipPath: string, atMs: number): Promise<string>;
+  findContentStart?(clipPath: string): Promise<number>;
   exportClip(opts: ExportClipOptions): Promise<ExportedClip>;
   getWatchStatus(): WatchStatus;
   watchSync(recording: boolean, clipCount: number, startedAt: number | null): void;

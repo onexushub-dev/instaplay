@@ -133,7 +133,11 @@ export function RecordingPanel({ bufferSeconds = 60, gesture = true, voice = fal
               <WatchIcon color={colors.muted} size={20} />
             </View>
           </View>
-          <HoldButton label="Segure para encerrar a gravação" holdingLabel="Continue segurando…" onComplete={() => void end()} />
+          <HoldButton
+            label="Segure para encerrar a gravação"
+            holdingLabel="Continue segurando…"
+            onComplete={() => void end()}
+          />
         </View>
       </SafeAreaView>
 
@@ -147,16 +151,38 @@ const glass = 'rgba(15,16,13,0.72)';
 const styles = StyleSheet.create({
   content: { flex: 1, paddingHorizontal: 16, gap: 10 },
   topRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 },
-  pill: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: glass, paddingVertical: 8, paddingHorizontal: 12, borderRadius: 999 },
+  pill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: glass,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+  },
   recDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.rec },
   pillLabel: { fontFamily: fonts.bodyBold, fontSize: 13, color: colors.text },
   elapsed: { fontFamily: fonts.display, fontSize: 18, color: colors.text, fontVariant: ['tabular-nums'] },
   countText: { fontFamily: fonts.bodyBold, fontSize: 14, color: colors.accent },
-  banner: { backgroundColor: colors.warningGround, borderColor: colors.warning, borderWidth: 1, borderRadius: 14, padding: 12 },
+  banner: {
+    backgroundColor: colors.warningGround,
+    borderColor: colors.warning,
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 12,
+  },
   bannerText: { fontFamily: fonts.body, fontSize: 13, lineHeight: 18, color: colors.text },
   bold: { fontFamily: fonts.bodyBold },
   bottom: { marginTop: 'auto', gap: 8, marginBottom: 12 },
-  hintCard: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: glass, borderRadius: 18, paddingVertical: 14, paddingHorizontal: 16 },
+  hintCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: glass,
+    borderRadius: 18,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+  },
   hintText: { flex: 1, gap: 2 },
   hint: { fontFamily: fonts.bodyBold, fontSize: 18, lineHeight: 22, color: colors.text },
   hintSub: { fontFamily: fonts.body, fontSize: 12, color: colors.soft },

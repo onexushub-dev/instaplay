@@ -29,7 +29,10 @@ export default function RootLayout() {
   return (
     <SessionProvider>
       <StatusBar style="light" />
-      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.ground } }} />
+      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.ground } }}>
+        {/* Dragging the trim handles to the right would otherwise count as the swipe back. */}
+        <Stack.Screen name="clip/[id]" options={{ gestureEnabled: false }} />
+      </Stack>
     </SessionProvider>
   );
 }

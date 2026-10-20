@@ -14,7 +14,11 @@ export function GameCard({ session, clips, firstClip, recordedMs, onPress }: Pro
   const label = sessionLabel(session);
   const detail = `${clips} ${clips === 1 ? 'clipe' : 'clipes'} · ${recordedLabel(recordedMs)}`;
   return (
-    <Pressable accessibilityRole="button" accessibilityLabel={`${label}, ${detail}`} onPress={onPress} style={styles.card}>
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`${label}, ${detail}`}
+      onPress={onPress}
+      style={styles.card}>
       <View style={styles.thumb}>
         {thumb ? <Image source={{ uri: thumb }} style={StyleSheet.absoluteFill} contentFit="cover" /> : null}
       </View>
@@ -29,7 +33,14 @@ export function GameCard({ session, clips, firstClip, recordedMs, onPress }: Pro
 }
 
 const styles = StyleSheet.create({
-  card: { flexDirection: 'row', gap: 12, alignItems: 'center', backgroundColor: colors.surface, borderRadius: 16, padding: 10 },
+  card: {
+    flexDirection: 'row',
+    gap: 12,
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    padding: 10,
+  },
   thumb: { width: 96, height: 64, borderRadius: 10, overflow: 'hidden', backgroundColor: colors.border },
   text: { flex: 1, gap: 4 },
   label: { fontFamily: fonts.bodyBold, fontSize: 16, color: colors.text },

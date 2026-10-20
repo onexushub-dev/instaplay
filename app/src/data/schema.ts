@@ -42,8 +42,10 @@ export type Clip = {
   path: string;
   durationMs: number;
   trim: { startMs: number; endMs: number };
-  /** Editor choices; absent = no slow motion, with sound. */
-  edit?: { slowmo: boolean; muted: boolean };
+  /** Where the useful video starts after a black start (0 = from the beginning); unset until the editor first checked. */
+  contentStartMs?: number;
+  /** Editor choices; absent = normal speed, with sound, no zoom. `slowmo` is how clips saved before speeds were stored. */
+  edit?: { slowmo?: boolean; speed?: 0.5 | 1 | 1.5 | 2; muted: boolean; zoom?: { scale: number; cx: number; cy: number }; rotation?: 0 | 90 | 180 | 270 };
   /** Optional name the player gives the clip (like a recording's name). */
   name?: string;
 };

@@ -26,7 +26,7 @@ import java.io.File
 import java.util.UUID
 
 /**
- * Renders a Story/share video from a saved clip with Media3 Transformer: the cut, optional half speed
+ * Renders a Story/share video from a saved clip with Media3 Transformer: the cut, optional speed change
  * (audio removed) or mute, the whole video fit in a width×height frame, and a full-frame PNG overlay on top.
  */
 object ClipExporter {
@@ -44,7 +44,7 @@ object ClipExporter {
   fun export(context: Context, o: Options, onDone: (String, Long) -> Unit, onError: (Throwable) -> Unit) {
     val dir = File(context.cacheDir, "exports").apply { mkdirs() }
     val out = File(dir, "${UUID.randomUUID()}.mp4")
-    val slow = o.speed < 1f
+    val slow = o.speed != 1f // any speed but 1x drops the sound
 
     val item = MediaItem.Builder()
       .setUri(Uri.fromFile(File(o.clipPath)))

@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from 'react';
+import { type ReactNode, useLayoutEffect, useRef, useState } from 'react';
 import { PanResponder, StyleSheet, View } from 'react-native';
 
 import { clampTrim } from '../share/trim';
@@ -10,19 +10,24 @@ type Props = {
   trim: Cut;
   /** Longest cut allowed: the mode's buffer (60s court, 120s gym). */
   maxMs?: number;
-  onChange: (trim: Cut) => void;
+  /** Where the useful video starts: the track begins here, so a black start can neither be seen nor cut into. */
+  floorMs?: number;
+  /** `moved`: which edge the player is dragging, so the preview can follow it. */
+  onChange: (trim: Cut, moved: 'start' | 'end') => void;
   onCommit: (trim: Cut) => void;
+  /** Drawn over the track under the handles (the playback cursor). */
+  children?: ReactNode;
 };
 
 const HANDLE = 44; // touch target
 
 /** The whole clip as a track, the cut as an accent window with a draggable handle on each edge. */
-export function TrimBar({ durationMs, trim, maxMs, onChange, onCommit }: Props) {
+export function TrimBar({ durationMs, trim, maxMs, floorMs = 0, onChange, onCommit, children }: Props) {
   const [width, setWidth] = useState(0);
   // Pan callbacks read the latest props through this ref (updated after each commit).
-  const latest = useRef({ trim, width, durationMs, maxMs, onChange, onCommit });
+  const latest = useRef({ trim, width, durationMs, maxMs, floorMs, onChange, onCommit });
   useLayoutEffect(() => {
-    latest.current = { trim, width, durationMs, maxMs, onChange, onCommit };
+    latest.current = { trim, width, durationMs, maxMs, floorMs, onChange, onCommit };
   });
 
   const handle = (moved: 'start' | 'end') => {
@@ -35,12 +40,15 @@ export function TrimBar({ durationMs, trim, maxMs, onChange, onCommit }: Props) 
         current = origin;
       },
       onPanResponderMove: (_, g) => {
-        const { width: w, durationMs: d } = latest.current;
+        const { width: w, durationMs: d, floorMs: floor } = latest.current;
         if (!w) return;
-        const delta = (g.dx / w) * d;
-        const next = moved === 'start' ? { ...origin, startMs: origin.startMs + delta } : { ...origin, endMs: origin.endMs + delta };
-        current = clampTrim(next, d, moved, latest.current.maxMs);
-        latest.current.onChange(current);
+        const delta = (g.dx / w) * (d - floor);
+        const next =
+          moved === 'start'
+            ? { ...origin, startMs: origin.startMs + delta }
+            : { ...origin, endMs: origin.endMs + delta };
+        current = clampTrim(next, d, moved, latest.current.maxMs, floor);
+        latest.current.onChange(current, moved);
       },
       onPanResponderRelease: () => latest.current.onCommit(current),
       onPanResponderTerminate: () => latest.current.onCommit(current),
@@ -51,12 +59,14 @@ export function TrimBar({ durationMs, trim, maxMs, onChange, onCommit }: Props) 
   // eslint-disable-next-line react-hooks/refs -- same as above
   const [endPan] = useState(() => handle('end'));
 
-  const left = durationMs ? (trim.startMs / durationMs) * width : 0;
-  const right = durationMs ? (trim.endMs / durationMs) * width : 0;
+  const span = durationMs - floorMs;
+  const left = span > 0 ? ((trim.startMs - floorMs) / span) * width : 0;
+  const right = span > 0 ? ((trim.endMs - floorMs) / span) * width : 0;
 
   return (
     <View style={styles.track} onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
       <View style={[styles.window, { left, width: Math.max(0, right - left) }]} />
+      {children}
       <View
         {...startPan.panHandlers}
         accessibilityRole="adjustable"
@@ -77,7 +87,15 @@ export function TrimBar({ durationMs, trim, maxMs, onChange, onCommit }: Props) 
 
 const styles = StyleSheet.create({
   track: { height: 56, borderRadius: 10, backgroundColor: colors.surface, justifyContent: 'center' },
-  window: { position: 'absolute', top: 0, bottom: 0, borderWidth: 3, borderColor: colors.accent, borderRadius: 10, backgroundColor: 'rgba(214,242,63,0.12)' },
+  window: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    borderWidth: 3,
+    borderColor: colors.accent,
+    borderRadius: 10,
+    backgroundColor: 'rgba(214,242,63,0.12)',
+  },
   handle: { position: 'absolute', top: 0, bottom: 0, width: HANDLE, alignItems: 'center', justifyContent: 'center' },
   grip: { width: 12, height: 32, borderRadius: 4, backgroundColor: colors.accent },
 });

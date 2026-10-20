@@ -39,6 +39,62 @@ export function ShareIcon({ color = colors.text, size = 22 }: IconProps) {
   );
 }
 
+export function DownloadIcon({ color = colors.text, size = 22 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" accessibilityElementsHidden>
+      <Path d="M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4M8 10l4 4 4-4M12 3v11" {...stroke(color)} />
+    </Svg>
+  );
+}
+
+export function TrashIcon({ color = colors.text, size = 22 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" accessibilityElementsHidden>
+      <Path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6" {...stroke(color)} />
+    </Svg>
+  );
+}
+
+export function PlayIcon({ color = colors.text, size = 22 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" accessibilityElementsHidden>
+      <Path d="M8 5l11 7-11 7z" fill={color} />
+    </Svg>
+  );
+}
+
+export function PauseIcon({ color = colors.text, size = 22 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" accessibilityElementsHidden>
+      <Path d="M8 5v14M16 5v14" {...stroke(color)} strokeWidth={3} />
+    </Svg>
+  );
+}
+
+export function ExpandIcon({ color = colors.text, size = 20 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" accessibilityElementsHidden>
+      <Path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" {...stroke(color)} />
+    </Svg>
+  );
+}
+
+export function CloseIcon({ color = colors.text, size = 20 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" accessibilityElementsHidden>
+      <Path d="M6 6l12 12M18 6L6 18" {...stroke(color)} strokeWidth={2} />
+    </Svg>
+  );
+}
+
+export function RotateIcon({ color = colors.text, size = 20 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" accessibilityElementsHidden>
+      <Path d="M20 12a8 8 0 1 1-2.6-5.9M20 4v5h-5" {...stroke(color)} />
+    </Svg>
+  );
+}
+
 export function ShieldIcon({ color = colors.soft, size = 20 }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" accessibilityElementsHidden>
