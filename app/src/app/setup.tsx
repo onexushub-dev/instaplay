@@ -94,7 +94,7 @@ export default function Setup() {
   };
   const summary = `Ajustes: ${mode.label} · ${[
     `voz ${voiceOn ? 'ligada' : 'desligada'}`,
-    `braços para cima ${settings.gestureEnabled ? 'ligado' : 'desligado'}`,
+    `acenar com os braços ${settings.gestureEnabled ? 'ligado' : 'desligado'}`,
     `controle ${remoteWorks ? 'funcionando' : 'não testado'}`,
     ...(watch === 'ready' ? ['relógio pronto'] : []),
   ].join(', ')}`;
@@ -241,7 +241,7 @@ export default function Setup() {
             />
             <TriggerTile
               icon={<ArmsUpIcon />}
-              title="Braços para cima"
+              title="Acenar com os braços"
               status={settings.gestureEnabled ? 'Ativo' : 'Desligado'}
               active={settings.gestureEnabled}
               onPress={() => updateMode({ gestureEnabled: !settings.gestureEnabled })}

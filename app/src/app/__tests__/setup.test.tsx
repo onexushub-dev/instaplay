@@ -138,7 +138,7 @@ test('the gesture tile toggles the gesture preference', async () => {
   session({});
   await render(<Setup />);
   await openSettings();
-  await fireEvent.press(screen.getByRole('button', { name: /Braços para cima/ }));
+  await fireEvent.press(screen.getByRole('button', { name: /Acenar com os braços/ }));
   expect(repo.setPrefs).toHaveBeenCalledWith(
     expect.objectContaining({ modeSettings: expect.objectContaining({ quadra: { gestureEnabled: false } }) }),
   );
@@ -272,7 +272,7 @@ test('the gesture tile reflects the mode default (off in gym)', async () => {
   session({});
   await render(<Setup />);
   await openSettings();
-  expect(screen.getByLabelText('Braços para cima, Desligado')).toBeTruthy();
+  expect(screen.getByLabelText('Acenar com os braços, Desligado')).toBeTruthy();
 });
 
 test('a gym mode without speech permission shows Toque para permitir', async () => {
@@ -310,7 +310,7 @@ test('the summary tells which triggers are on without opening', async () => {
   await render(<Setup />);
   expect(
     screen.getByRole('button', {
-      name: 'Ajustes: Academia · voz ligada, braços para cima desligado, controle não testado',
+      name: 'Ajustes: Academia · voz ligada, acenar com os braços desligado, controle não testado',
     }),
   ).toBeTruthy();
 });
@@ -386,6 +386,6 @@ test('without a watch the other triggers behave as before', async () => {
   session({});
   await render(<Setup />);
   await openSettings();
-  expect(screen.getByLabelText('Braços para cima, Ativo')).toBeTruthy();
+  expect(screen.getByLabelText('Acenar com os braços, Ativo')).toBeTruthy();
   expect(screen.getByRole('button', { name: 'Começar a gravar' })).toBeEnabled();
 });

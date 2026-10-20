@@ -53,7 +53,7 @@ test('a saved clipe shows the overlay with its number and source', async () => {
   session({ clipCount: 3, lastSaved: { clipId: 'c3', number: 3, source: 'gesture', at: Date.now() } });
   await render(<Recording />);
   expect(screen.getByText('CLIPE #3 SALVO')).toBeTruthy();
-  expect(screen.getByText('via Braços para cima · últimos 30s')).toBeTruthy();
+  expect(screen.getByText('via Acenar com os braços · últimos 30s')).toBeTruthy();
 });
 
 test('Desfazer undoes the last clipe', async () => {
@@ -109,5 +109,5 @@ test('the hint lists the triggers on in this mode and the buffer length', async 
 test('a court game keeps the arms-up hint', async () => {
   session({});
   await render(<Recording bufferSeconds={60} gesture voice={false} />);
-  expect(screen.getByText('Últimos 60s prontos · ou levante os braços · ou use o controle')).toBeTruthy();
+  expect(screen.getByText('Últimos 60s prontos · ou acene com os braços · ou use o controle')).toBeTruthy();
 });

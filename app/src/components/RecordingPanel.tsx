@@ -78,7 +78,7 @@ export function RecordingPanel({ bufferSeconds = 60, gesture = true, voice = fal
   const hintSub = [
     `Últimos ${bufferSeconds}s prontos`,
     ...(voice ? ['ou diga “salvar”'] : []),
-    ...(gesture ? ['ou levante os braços'] : []),
+    ...(gesture ? ['ou acene com os braços'] : []),
     'ou use o controle',
   ].join(' · ');
   const clips = `${state.clipCount} ${state.clipCount === 1 ? 'clipe' : 'clipes'}`;

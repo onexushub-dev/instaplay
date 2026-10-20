@@ -21,12 +21,13 @@ export function PhoneIcon({ color = colors.text, size = 22 }: IconProps) {
   );
 }
 
-/** A player with both arms raised straight up: the save gesture. */
+/** A player with both arms up, with small motion arcs beside the hands: raise them or wave them to save. */
 export function ArmsUpIcon({ color = colors.text, size = 22 }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" accessibilityElementsHidden>
       <Circle cx={12} cy={8} r={2} {...stroke(color)} />
       <Path d="M8 2v9l4 1 4-1V2M12 12v4M9 22l3-6 3 6" {...stroke(color)} />
+      <Path d="M5 3.5c-1 1.2-1 3 0 4.2M19 3.5c1 1.2 1 3 0 4.2" {...stroke(color)} />
     </Svg>
   );
 }
