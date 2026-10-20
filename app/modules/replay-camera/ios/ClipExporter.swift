@@ -10,6 +10,8 @@ enum ClipExporter {
     let endMs: Double
     let speed: Double
     let muted: Bool
+    /// Extra clockwise turn in degrees (0, 90, 180, 270) on top of the clip's own rotation.
+    let rotation: Int
     /// The visible part of the video, 0..1 of its (rotated) size; nil = all of it.
     let crop: CGRect?
     let width: Int
@@ -50,7 +52,8 @@ enum ClipExporter {
     // Place the (possibly rotated) video in the middle of the frame. A zoom shows only `crop` of it, scaled to fill the
     // same spot; whatever spills past that spot is hidden by the overlay's opaque bands and the frame's edges.
     let render = CGSize(width: o.width, height: o.height)
-    let transform = try await source.load(.preferredTransform)
+    let turn = CGAffineTransform(rotationAngle: CGFloat(o.rotation) * .pi / 180)
+    let transform = try await source.load(.preferredTransform).concatenating(turn)
     let natural = try await source.load(.naturalSize)
     let rotated = CGRect(origin: .zero, size: natural).applying(transform)
     let target = FitRect.fit(rotated.size, into: render)

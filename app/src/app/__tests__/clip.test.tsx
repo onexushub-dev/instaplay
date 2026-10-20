@@ -271,3 +271,24 @@ test('a zoomed clip shows its zoom and can go back to 1x', async () => {
   await pressAction('Voltar zoom para 1x');
   expect(repo.updateClip).toHaveBeenLastCalledWith('c1', { edit: { speed: 1, muted: false } });
 });
+
+test('Girar turns the video a quarter, stored on the clip, and starts the zoom over', async () => {
+  __setClip({ ...base, edit: { speed: 1, muted: false, zoom: { scale: 2, cx: 0.5, cy: 0.5 } } });
+  await open();
+  await pressAction('Girar vídeo');
+  expect(repo.updateClip).toHaveBeenLastCalledWith('c1', { edit: { speed: 1, muted: false, rotation: 90 } });
+});
+
+test('turning a clip already turned three times brings it back to upright', async () => {
+  __setClip({ ...base, edit: { speed: 1, muted: false, rotation: 270 } });
+  await open();
+  await pressAction('Girar vídeo');
+  expect(repo.updateClip).toHaveBeenLastCalledWith('c1', { edit: { speed: 1, muted: false } });
+});
+
+test('a turned clip exports with its rotation', async () => {
+  __setClip({ ...base, edit: { speed: 1, muted: false, rotation: 90 } });
+  await open();
+  await pressAction('Compartilhar');
+  expect(camera.exportClip).toHaveBeenCalledWith(expect.objectContaining({ rotation: 90 }));
+});

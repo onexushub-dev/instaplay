@@ -63,3 +63,4 @@ Itens adiados nas revisões finais. Nada aqui bloqueia o uso, mas vale resolver 
 
 ## Editor unificado (zoom e velocidades)
 - Android: a exportação ignora `crop` (zoom da prévia não vai para o arquivo). Fazer com `Crop` do Media3 na etapa do Android.
+- Android: a exportação também ignora `rotation` (botão Girar do editor). Usar `ScaleAndRotateTransformation` do Media3.

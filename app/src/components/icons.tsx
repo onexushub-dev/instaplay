@@ -87,6 +87,14 @@ export function CloseIcon({ color = colors.text, size = 20 }: IconProps) {
   );
 }
 
+export function RotateIcon({ color = colors.text, size = 20 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" accessibilityElementsHidden>
+      <Path d="M20 12a8 8 0 1 1-2.6-5.9M20 4v5h-5" {...stroke(color)} />
+    </Svg>
+  );
+}
+
 export function ShieldIcon({ color = colors.soft, size = 20 }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" accessibilityElementsHidden>

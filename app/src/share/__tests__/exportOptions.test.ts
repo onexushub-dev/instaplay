@@ -43,3 +43,8 @@ test('muted keeps normal speed', () => {
 test('free exports 720x1280', () => {
   expect(exportOptions('free', undefined, trim)).toMatchObject({ width: 720, height: 1280 });
 });
+
+test('a turned clip exports with its rotation, and none by default', () => {
+  expect(exportOptions('pro', undefined, trim).rotation).toBe(0);
+  expect(exportOptions('pro', { speed: 1, muted: false, rotation: 90 }, trim).rotation).toBe(90);
+});

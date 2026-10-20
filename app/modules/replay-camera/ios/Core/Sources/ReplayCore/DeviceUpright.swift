@@ -3,9 +3,9 @@
 public enum DeviceUpright: Equatable {
   case portrait, portraitUpsideDown, landscapeLeft, landscapeRight
 
-  /// nil when the phone lies too flat to tell; keep the previous value then.
-  public static func from(gravityX x: Double, gravityY y: Double) -> DeviceUpright? {
-    guard max(abs(x), abs(y)) >= 0.5 else { return nil }
+  /// nil when the phone lies too flat to tell (neither axis reaches `threshold` g); keep the previous value then.
+  public static func from(gravityX x: Double, gravityY y: Double, threshold: Double = 0.5) -> DeviceUpright? {
+    guard max(abs(x), abs(y)) >= threshold else { return nil }
     if abs(y) >= abs(x) { return y < 0 ? .portrait : .portraitUpsideDown }
     return x < 0 ? .landscapeLeft : .landscapeRight
   }

@@ -26,6 +26,7 @@ import {
   ExpandIcon,
   PauseIcon,
   PlayIcon,
+  RotateIcon,
   ShareIcon,
   TrashIcon,
 } from '../../components/icons';
@@ -35,7 +36,7 @@ import { removeFile, repo } from '../../data/mmkv';
 import { MAX_CLIP_NAME } from '../../data/schema';
 import { effectiveSettings } from '../../modes/registry';
 import { captureOverlay } from '../../share/captureOverlay';
-import { outputMs, readEdit, SPEEDS } from '../../share/editing';
+import { nextRotation, outputMs, readEdit, SPEEDS, turnedSize } from '../../share/editing';
 import { useEntitlement } from '../../share/entitlement';
 import { exportOptions } from '../../share/exportOptions';
 import { frameLayout } from '../../share/layout';
@@ -122,7 +123,9 @@ export default function ClipEditor() {
 
   const options = clip ? exportOptions(tier, clip.edit, clip.trim) : undefined;
   const frame = { width: options?.width ?? 1080, height: options?.height ?? 1920 };
-  const layout = frameLayout(videoSize, frame);
+  // The shape after the player's own turn; the clip's own rotation is already in the thumbnail's shape.
+  const shape = turnedSize(videoSize, edit.rotation);
+  const layout = frameLayout(shape, frame);
   // The real aspect ratio (rotation applied) comes from the clip's thumbnail.
   const clipPath = clip?.path;
   const startMs = clip?.trim.startMs ?? 0;
@@ -177,7 +180,14 @@ export default function ClipEditor() {
 
   function setEdit(patch: Partial<ReturnType<typeof readEdit>>) {
     const next = { ...edit, ...patch };
-    repo.updateClip(id, { edit: { speed: next.speed, muted: next.muted, ...(next.zoom ? { zoom: next.zoom } : {}) } });
+    repo.updateClip(id, {
+      edit: {
+        speed: next.speed,
+        muted: next.muted,
+        ...(next.zoom ? { zoom: next.zoom } : {}),
+        ...(next.rotation ? { rotation: next.rotation } : {}),
+      },
+    });
   }
 
   function commitZoom(z: { scale: number; cx: number; cy: number }) {
@@ -291,9 +301,9 @@ export default function ClipEditor() {
 
   if (full) {
     // The whole screen shows the raw video, so a pinch has room; the zoom is the same one the export uses.
-    const fit = Math.min(window.width / videoSize.width, window.height / videoSize.height);
-    const w = videoSize.width * fit;
-    const h = videoSize.height * fit;
+    const fit = Math.min(window.width / shape.width, window.height / shape.height);
+    const w = shape.width * fit;
+    const h = shape.height * fit;
     return (
       <View style={styles.full}>
         <ZoomableVideo
@@ -302,6 +312,7 @@ export default function ClipEditor() {
           area={window}
           box={{ left: (window.width - w) / 2, top: (window.height - h) / 2, width: w, height: h }}
           zoom={edit.zoom}
+          rotation={edit.rotation}
           onCommit={commitZoom}
           onTap={togglePlay}
         />
@@ -371,6 +382,7 @@ export default function ClipEditor() {
             area={{ width: frame.width * scale, height: previewHeight }}
             box={videoBox}
             zoom={edit.zoom}
+            rotation={edit.rotation}
             onCommit={commitZoom}
             onTap={togglePlay}
           />
@@ -394,6 +406,17 @@ export default function ClipEditor() {
               <Text style={styles.zoomText}>{`${edit.zoom!.scale.toFixed(1)}x  ✕`}</Text>
             </Pressable>
           ) : null}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Girar vídeo"
+            onPress={() => {
+              // A zoom window means something else after a turn, so start from the whole picture again.
+              setEdit({ rotation: nextRotation(edit.rotation), zoom: undefined });
+              setZoomKey((k) => k + 1);
+            }}
+            style={[styles.fullButton, styles.rotateButton]}>
+            <RotateIcon />
+          </Pressable>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Tela cheia"
@@ -526,6 +549,7 @@ const styles = StyleSheet.create({
   area: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   preview: { borderRadius: 16, overflow: 'hidden', backgroundColor: colors.ground },
   full: { flex: 1, backgroundColor: '#000' },
+  rotateButton: { top: 54 },
   fullTop: {
     position: 'absolute',
     left: 0,

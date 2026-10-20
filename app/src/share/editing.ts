@@ -8,11 +8,19 @@ export type Zoom = { scale: number; cx: number; cy: number };
 export const MAX_ZOOM = 4;
 export const NO_ZOOM: Zoom = { scale: 1, cx: 0.5, cy: 0.5 };
 
-export type Edit = { speed: Speed; muted: boolean; zoom: Zoom | undefined };
+/** Clockwise degrees the player turned the video, for a clip recorded with the phone's position misread. */
+export type Rotation = 0 | 90 | 180 | 270;
+
+export type Edit = { speed: Speed; muted: boolean; zoom: Zoom | undefined; rotation: Rotation };
 
 /** What the editor works with. Clips saved before speeds existed only have the slow motion switch. */
 export function readEdit(edit: Clip['edit']): Edit {
-  return { speed: edit?.speed ?? (edit?.slowmo ? 0.5 : 1), muted: edit?.muted ?? false, zoom: edit?.zoom };
+  return {
+    speed: edit?.speed ?? (edit?.slowmo ? 0.5 : 1),
+    muted: edit?.muted ?? false,
+    zoom: edit?.zoom,
+    rotation: edit?.rotation ?? 0,
+  };
 }
 
 /** How long the result lasts: the cut played at `speed`. */
@@ -50,4 +58,13 @@ export function pinchZoom(base: Zoom, ratio: number, focal: { x: number; y: numb
 /** `dx`/`dy`: how far the fingers moved, as a fraction of the video's size on screen. The picture follows them. */
 export function panZoom(base: Zoom, dx: number, dy: number): Zoom {
   return clampZoom({ ...base, cx: base.cx - dx / base.scale, cy: base.cy - dy / base.scale });
+}
+
+export function nextRotation(rotation: Rotation): Rotation {
+  return ((rotation + 90) % 360) as Rotation;
+}
+
+/** The video's shape on screen after turning it. */
+export function turnedSize(size: { width: number; height: number }, rotation: Rotation) {
+  return rotation % 180 === 0 ? size : { width: size.height, height: size.width };
 }

@@ -1,7 +1,7 @@
-import { clampZoom, cropRect, MAX_ZOOM, outputMs, panZoom, pinchZoom, readEdit } from '../editing';
+import { clampZoom, cropRect, MAX_ZOOM, nextRotation, outputMs, panZoom, pinchZoom, readEdit, turnedSize } from '../editing';
 
 test('a clip with no edit plays at normal speed, with sound and no zoom', () => {
-  expect(readEdit(undefined)).toEqual({ speed: 1, muted: false, zoom: undefined });
+  expect(readEdit(undefined)).toEqual({ speed: 1, muted: false, zoom: undefined, rotation: 0 });
 });
 
 test('clips saved with the old slow motion switch read as 0.5x', () => {
@@ -56,4 +56,21 @@ test('pinching keeps the point under the fingers where it is', () => {
 
 test('pinching with fingers in the middle zooms around the centre', () => {
   expect(pinchZoom({ scale: 1, cx: 0.3, cy: 0.6 }, 2, { x: 0.5, y: 0.5 }).scale).toBe(2);
+});
+
+test('no rotation by default', () => {
+  expect(readEdit(undefined).rotation).toBe(0);
+  expect(readEdit({ speed: 1, muted: false, rotation: 90 }).rotation).toBe(90);
+});
+
+test('turning goes a quarter at a time and wraps around', () => {
+  expect(nextRotation(0)).toBe(90);
+  expect(nextRotation(270)).toBe(0);
+});
+
+test('a quarter turn swaps the width and height of the video', () => {
+  expect(turnedSize({ width: 1920, height: 1080 }, 0)).toEqual({ width: 1920, height: 1080 });
+  expect(turnedSize({ width: 1920, height: 1080 }, 90)).toEqual({ width: 1080, height: 1920 });
+  expect(turnedSize({ width: 1920, height: 1080 }, 180)).toEqual({ width: 1920, height: 1080 });
+  expect(turnedSize({ width: 1920, height: 1080 }, 270)).toEqual({ width: 1080, height: 1920 });
 });

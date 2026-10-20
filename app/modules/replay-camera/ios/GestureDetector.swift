@@ -28,6 +28,8 @@ final class GestureDetector {
   private var busy = false
   private var lastSample = -Double.infinity
   private var upright: DeviceUpright = .landscapeLeft
+  /// False until a firm reading says how the phone is held; until then a phone aimed down at a table still leans one way.
+  private var uprightKnown = false
   private var samples = 0
   private var lastDebug = -Double.infinity
 
@@ -51,8 +53,13 @@ final class GestureDetector {
   /// The phone's physical position from the latest accelerometer reading; the last known one while it lies flat.
   func currentUpright() -> DeviceUpright {
     lock.withLock {
-      if let g = motion.accelerometerData?.acceleration, let now = DeviceUpright.from(gravityX: g.x, gravityY: g.y) {
-        upright = now
+      if let g = motion.accelerometerData?.acceleration {
+        if let now = DeviceUpright.from(gravityX: g.x, gravityY: g.y) {
+          upright = now
+          uprightKnown = true
+        } else if !uprightKnown, let leaning = DeviceUpright.from(gravityX: g.x, gravityY: g.y, threshold: 0.15) {
+          upright = leaning
+        }
       }
       return upright
     }
