@@ -7,13 +7,16 @@ import { Button } from './Button';
 import { CheckIcon } from './icons';
 import { sourceLabel } from './sourceLabel';
 
-type Props = { number: number; source: TriggerSource; onUndo: () => void };
+type Props = { number: number; source: TriggerSource; onUndo: () => void;
+  /** Already-translated note that replaces the usual hint (last free clip, locked clip). */
+  note?: string;
+};
 
 /**
  * Confirmation shown for ~2s after each save: an accent frame around the screen and a compact card,
  * so the camera picture stays visible and the rest of the screen still saves on tap.
  */
-export function SavedOverlay({ number, source, onUndo }: Props) {
+export function SavedOverlay({ number, source, onUndo, note }: Props) {
   const { t, locale } = useT();
   return (
     <View pointerEvents="box-none" style={styles.frame}>
@@ -27,7 +30,7 @@ export function SavedOverlay({ number, source, onUndo }: Props) {
             <Text style={styles.via}>{t('recording.savedVia', { source: sourceLabel(source, locale) })}</Text>
           </View>
         </View>
-        <Text style={styles.hint}>{t('recording.savedHint')}</Text>
+        <Text style={styles.hint}>{note ?? t('recording.savedHint')}</Text>
         <Button label={t('recording.undo')} variant="secondary" onPress={onUndo} />
       </View>
     </View>

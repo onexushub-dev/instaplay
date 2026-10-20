@@ -5,7 +5,7 @@ import { type SessionDeps, useReplaySession } from '../useReplaySession';
 
 type Listener = (e: any) => void;
 
-function fakeDeps() {
+function fakeDeps(tier: 'free' | 'pro' | 'pass' = 'free') {
   const listeners = new Map<string, Listener>();
   const map = new Map<string, string>();
   const kv: KV = { getString: (k) => map.get(k), set: (k, v) => void map.set(k, v), delete: (k) => void map.delete(k) };
@@ -40,6 +40,7 @@ function fakeDeps() {
     haptic: jest.fn(),
     now: () => t,
     locale: () => 'pt-BR',
+    tierFor: () => tier,
     useRemote: () => {},
   };
   return {
@@ -423,4 +424,61 @@ test('the voice command listens in the app language', async () => {
   const view = await renderHook(() => useReplaySession(f.deps));
   await act(() => view.result.current.start('musculacao'));
   expect(f.camera.setVoiceEnabled).toHaveBeenLastCalledWith(true, 'en-US');
+});
+
+async function saveClips(f: ReturnType<typeof fakeDeps>, view: any, n: number) {
+  for (let i = 0; i < n; i++) {
+    f.advance(5000);
+    await act(async () => view.result.current.trigger('screen'));
+    await act(async () => f.finishSave());
+  }
+}
+
+describe('free limit', () => {
+  test('the sixth free clip is locked, the first five are not, and recording continues', async () => {
+    const f = fakeDeps('free');
+    const view = await renderHook(() => useReplaySession(f.deps));
+    await act(() => view.result.current.start('futevolei'));
+    const id = view.result.current.state.sessionId!;
+    await saveClips(f, view, 5);
+    expect(f.deps.repo.listClips(id).every((c) => !c.locked)).toBe(true);
+    expect(view.result.current.state.lastSaved).toMatchObject({ locked: false, lastFree: true });
+    await saveClips(f, view, 1);
+    expect(f.deps.repo.listClips(id)[5].locked).toBe(true);
+    expect(view.result.current.state.lastSaved).toMatchObject({ locked: true, lastFree: false });
+    await saveClips(f, view, 2);
+    expect(view.result.current.state.phase).toBe('recording');
+    expect(view.result.current.state.clipCount).toBe(8);
+  });
+
+  test('earlier clips are not flagged as the last free one', async () => {
+    const f = fakeDeps('free');
+    const view = await renderHook(() => useReplaySession(f.deps));
+    await act(() => view.result.current.start('futevolei'));
+    await saveClips(f, view, 4);
+    expect(view.result.current.state.lastSaved).toMatchObject({ locked: false, lastFree: false });
+  });
+
+  test('undoing the fifth clip and saving again gives an unlocked clip', async () => {
+    const f = fakeDeps('free');
+    const view = await renderHook(() => useReplaySession(f.deps));
+    await act(() => view.result.current.start('futevolei'));
+    const id = view.result.current.state.sessionId!;
+    await saveClips(f, view, 5);
+    await act(async () => view.result.current.undoLast());
+    await saveClips(f, view, 1);
+    expect(f.deps.repo.listClips(id).filter((c) => c.locked)).toHaveLength(0);
+    expect(view.result.current.state.lastSaved).toMatchObject({ locked: false, lastFree: true });
+  });
+
+  test.each(['pro', 'pass'] as const)('tier %s never locks', async (tier) => {
+    const f = fakeDeps(tier);
+    const view = await renderHook(() => useReplaySession(f.deps));
+    await act(() => view.result.current.start('futevolei'));
+    const id = view.result.current.state.sessionId!;
+    await saveClips(f, view, 7);
+    expect(f.deps.repo.listClips(id).some((c) => c.locked)).toBe(false);
+    expect(view.result.current.state.lastSaved).toMatchObject({ locked: false, lastFree: false });
+    expect(view.result.current.state.phase).toBe('recording');
+  });
 });

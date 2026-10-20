@@ -11,7 +11,7 @@ export type SessionState = {
   sessionId?: string;
   startedAt?: number;
   clipCount: number;
-  lastSaved?: { clipId: string; number: number; source: TriggerSource; at: number };
+  lastSaved?: { clipId: string; number: number; source: TriggerSource; at: number; locked: boolean; lastFree: boolean };
   saving: boolean;
   paused: boolean;
   thermal: { level: ThermalLevel; degraded: boolean };
@@ -29,7 +29,7 @@ export type SessionAction =
   | { type: 'started'; sessionId: string; startedAt: number }
   | { type: 'startFailed'; code: ReplayErrorCode }
   | { type: 'saveStarted' }
-  | { type: 'saved'; sessionId: string; clipId: string; source: TriggerSource; at: number }
+  | { type: 'saved'; sessionId: string; clipId: string; source: TriggerSource; at: number; locked: boolean; lastFree: boolean }
   | { type: 'saveFailed'; sessionId: string }
   | { type: 'undone'; clipId: string }
   | { type: 'interrupted' }
@@ -75,7 +75,7 @@ export function reducer(state: SessionState, action: SessionAction): SessionStat
         ...state,
         saving: false,
         clipCount: number,
-        lastSaved: { clipId: action.clipId, number, source: action.source, at: action.at },
+        lastSaved: { clipId: action.clipId, number, source: action.source, at: action.at, locked: action.locked, lastFree: action.lastFree },
       };
     }
     case 'saveFailed':

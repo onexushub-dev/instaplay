@@ -11,6 +11,8 @@ import type {
 import type { Repo } from '../data/repo';
 import type { ModeId, Sport, TriggerSource } from '../data/schema';
 import { type AppLocale, voiceLocale } from '../i18n/locale';
+import { shouldLockOnSave } from '../payments/rules';
+import { FREE_CLIPS, type Tier } from '../payments/types';
 import { effectiveSettings } from '../modes/registry';
 import { createTriggerBus } from '../triggers/bus';
 import { initialState, reducer } from './reducer';
@@ -41,6 +43,8 @@ export type SessionDeps = {
   now(): number;
   /** The app's language now: the voice command listens in it. */
   locale(): AppLocale;
+  /** The tier that applies to this game right now (free, pass or pro). */
+  tierFor: (sessionId: string) => Tier;
   /** Bluetooth remote: calls onPress per press while enabled (useVolumeRemote in the app). */
   useRemote(enabled: boolean, onPress: () => void): void;
 };
@@ -77,15 +81,21 @@ export function useReplaySession(deps: SessionDeps) {
       deps.camera.signalSaved({ sound: prefs.soundOnSave, flash: prefs.flashOnSave });
       try {
         const saved = await deps.camera.saveClip({ source, at });
+        // The limit never interrupts the game: past the free clips the clip is kept, just locked.
+        const tier = deps.tierFor(sessionId);
+        const unlocked = deps.repo.unlockedClipCount(sessionId);
+        const locked = shouldLockOnSave(tier, unlocked);
+        const lastFree = tier === 'free' && !locked && unlocked + 1 === FREE_CLIPS;
         const clip = deps.repo.addClip({
           sessionId,
           createdAt: at,
           source,
           path: saved.clipPath,
           durationMs: saved.durationMs,
+          ...(locked ? { locked: true } : {}),
         }, effectiveSettings(gameMode.current, deps.repo.getPrefs()).cutSeconds * 1000);
         deps.haptic();
-        dispatch({ type: 'saved', sessionId, clipId: clip.id, source, at });
+        dispatch({ type: 'saved', sessionId, clipId: clip.id, source, at, locked, lastFree });
         deps.camera.watchSignal(true);
         deps.camera.remoteSignal(true);
       } catch {

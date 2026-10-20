@@ -86,6 +86,7 @@ export function RecordingPanel({ bufferSeconds = 60, gesture = true, voice = fal
     );
   }
 
+  const note = last?.locked ? t('payments.lockedNote') : last?.lastFree ? t('payments.lastFreeNote') : undefined;
   const showOverlay = last !== undefined && dismissed !== last.clipId;
   const hintSub = [
     t('recording.lastReady', { seconds: bufferSeconds }),
@@ -153,7 +154,7 @@ export function RecordingPanel({ bufferSeconds = 60, gesture = true, voice = fal
         </View>
       </SafeAreaView>
 
-      {showOverlay ? <SavedOverlay number={last.number} source={last.source} onUndo={undoLast} /> : null}
+      {showOverlay ? <SavedOverlay number={last.number} source={last.source} onUndo={undoLast} note={note} /> : null}
     </View>
   );
 }

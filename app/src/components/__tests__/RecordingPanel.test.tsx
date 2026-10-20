@@ -131,3 +131,22 @@ test('a stop asked outside a recording is ignored', async () => {
   await act(async () => ask());
   expect(s.stop).not.toHaveBeenCalled();
 });
+
+test('the fifth free clip says it was the last free one', async () => {
+  session({ clipCount: 5, lastSaved: { clipId: 'c5', number: 5, source: 'screen', at: Date.now(), locked: false, lastFree: true } });
+  await render(<Recording />);
+  expect(screen.getByText('Último clipe grátis deste jogo.')).toBeTruthy();
+});
+
+test('a locked clip says it is saved and unlocks after the game', async () => {
+  session({ clipCount: 6, lastSaved: { clipId: 'c6', number: 6, source: 'screen', at: Date.now(), locked: true, lastFree: false } });
+  await render(<Recording />);
+  expect(screen.getByText('Guardado. Libere no fim do jogo.')).toBeTruthy();
+});
+
+test('before the limit the usual hint stays', async () => {
+  session({ clipCount: 2, lastSaved: { clipId: 'c2', number: 2, source: 'screen', at: Date.now(), locked: false, lastFree: false } });
+  await render(<Recording />);
+  expect(screen.queryByText('Último clipe grátis deste jogo.')).toBeNull();
+  expect(screen.queryByText('Guardado. Libere no fim do jogo.')).toBeNull();
+});
