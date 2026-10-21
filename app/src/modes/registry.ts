@@ -1,4 +1,5 @@
 import type { ModeId, ModeSettings, Prefs } from '../data/schema';
+import { zoomFromLens } from './zoom';
 
 export type ModeGroup = 'quadra' | 'academia';
 export type Guide = 'court' | 'person' | 'none';
@@ -17,7 +18,7 @@ const COURT: Omit<Mode, 'id' | 'label'> = {
   guide: 'court',
   tip: '',
   defaults: {
-    lens: 'ultraWide',
+    zoom: 0.5,
     gestureEnabled: true,
     voiceEnabled: false,
     bufferSeconds: 60,
@@ -33,7 +34,7 @@ const GYM: Omit<Mode, 'id' | 'label'> = {
   guide: 'person',
   tip: 'No chão ou no tripé, a 2–3 m, de lado para o exercício',
   defaults: {
-    lens: 'wide',
+    zoom: 1,
     gestureEnabled: false,
     voiceEnabled: true,
     bufferSeconds: 120,
@@ -79,9 +80,13 @@ export function effectiveSettings(mode: ModeId, prefs: Prefs): ModeSettings {
   const own = offeredMode(mode);
   const legacy: Partial<ModeSettings> =
     m.group === 'quadra'
-      ? { lens: prefs.lens, gestureEnabled: prefs.gestureEnabled, voiceEnabled: prefs.voiceEnabled }
+      ? { zoom: zoomFromLens(prefs.lens), gestureEnabled: prefs.gestureEnabled, voiceEnabled: prefs.voiceEnabled }
       : {};
-  return { ...m.defaults, ...legacy, ...prefs.modeSettings?.[own] };
+  const saved = prefs.modeSettings && prefs.modeSettings[own] ? prefs.modeSettings[own] : {};
+  const { lens: savedLens, ...rest } = saved;
+  // A zoom saved for the mode wins; a lens saved before zoom existed keeps its framing.
+  const savedZoom = rest.zoom !== undefined ? rest.zoom : savedLens !== undefined ? zoomFromLens(savedLens) : undefined;
+  return { ...m.defaults, ...legacy, ...rest, ...(savedZoom !== undefined ? { zoom: savedZoom } : {}) };
 }
 
 /** The prefs patch that records `patch` as the player's change for `mode` only. */

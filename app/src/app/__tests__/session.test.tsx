@@ -4,6 +4,8 @@ import SessionSummary from '../session/[id]';
 
 jest.mock('expo-router', () => ({
   router: { replace: jest.fn(), push: jest.fn(), dismissTo: jest.fn() },
+  // The stack under the summary: tests that open it from Minhas gravações keep /games in it.
+  useNavigation: () => ({ getState: () => ({ routes: [{ name: 'setup' }, { name: 'games' }, { name: 'session/[id]' }] }) }),
   useLocalSearchParams: () => ({ id: 's1' }),
 }));
 jest.mock('../../components/useClipThumbnail', () => ({ useClipThumbnail: () => undefined }));
@@ -197,4 +199,28 @@ test('Apagar gravação removes the game and its clips after confirming, and goe
   expect(reset).toHaveBeenCalled();
   expect(router.dismissTo).toHaveBeenCalledWith('/games');
   alert.mockRestore();
+});
+
+test('deleting the last clip removes the game too and goes back to the list', async () => {
+  repo.listClips.mockReturnValue([clip('a', 'gesture', 1)]);
+  repo.sessionStats.mockReturnValue({ clips: 1, bytes: 1, recordedMs: 1 });
+  const reset = jest.fn();
+  useSession.mockReturnValue({ reset, state: { sessionId: 's1' } });
+  await render(<SessionSummary />);
+  expect(repo.deleteSession).not.toHaveBeenCalled();
+  repo.listClips.mockReturnValue([]);
+  repo.sessionStats.mockReturnValue({ clips: 0, bytes: 0, recordedMs: 1 });
+  await act(async () => repo.__change());
+  expect(repo.deleteSession).toHaveBeenCalledWith('s1');
+  expect(reset).toHaveBeenCalled();
+  expect(router.dismissTo).toHaveBeenCalledWith('/games');
+});
+
+test('a game recorded without any clip still opens as an empty summary', async () => {
+  repo.listClips.mockReturnValue([]);
+  repo.sessionStats.mockReturnValue({ clips: 0, bytes: 0, recordedMs: 1 });
+  await render(<SessionSummary />);
+  await act(async () => repo.__change());
+  expect(repo.deleteSession).not.toHaveBeenCalled();
+  expect(router.dismissTo).not.toHaveBeenCalled();
 });

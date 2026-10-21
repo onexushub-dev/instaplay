@@ -3,14 +3,17 @@ import { useMemo, useSyncExternalStore } from 'react';
 import { Alert, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { Button } from '../components/Button';
 import { GameCard } from '../components/GameCard';
 import { BackIcon } from '../components/icons';
 import { removeFile, repo } from '../data/mmkv';
 import { sessionLabel } from '../components/format';
+import { useSession } from '../session/SessionContext';
 import { colors, fonts } from '../theme/tokens';
 
 /** Past games with at least one lance, newest first. */
 export default function Games() {
+  const { reset, state } = useSession();
   const version = useSyncExternalStore(repo.subscribe, repo.version);
   const games = useMemo(
     () => repo.listSessions().map((g) => ({ ...g, recordedMs: repo.sessionStats(g.session.id).recordedMs })),
@@ -32,6 +35,12 @@ export default function Games() {
         },
       ],
     );
+  };
+
+  // The setup screen is already under this one. A game that has just ended still holds the live session, so start clean.
+  const newGame = () => {
+    if (state.phase === 'ended') reset();
+    router.dismissTo('/setup');
   };
 
   return (
@@ -70,6 +79,9 @@ export default function Games() {
           return card;
         }}
       />
+      <View style={styles.footer}>
+        <Button label="Nova gravação" onPress={newGame} />
+      </View>
     </SafeAreaView>
   );
 }
@@ -87,5 +99,6 @@ const styles = StyleSheet.create({
   },
   title: { fontFamily: fonts.displayBold, fontSize: 44, color: colors.text },
   list: { gap: 10, paddingBottom: 24 },
+  footer: { paddingBottom: 12 },
   empty: { fontFamily: fonts.body, fontSize: 15, color: colors.soft, textAlign: 'center', marginTop: 40 },
 });

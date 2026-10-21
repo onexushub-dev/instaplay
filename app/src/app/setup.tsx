@@ -1,6 +1,6 @@
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { router, useIsFocused } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -8,6 +8,7 @@ import {
   addReplayListener,
   getSpeechPermission,
   getWatchStatus,
+  getZoomRange,
   isRemoteSupported,
   isVoiceSupported,
   remoteControllerForget,
@@ -18,18 +19,27 @@ import {
   requestSpeechPermission,
 } from '../../modules/replay-camera';
 import type { RemotePeer, ReplayErrorCode } from '../../modules/replay-camera/src/ReplayCamera.types';
+import { useCameraPinch } from '../camera/useCameraPinch';
 import { Button } from '../components/Button';
 import { Chip } from '../components/Chip';
 import { PositionGuide } from '../components/PositionGuide';
 import { RecordingPanel } from '../components/RecordingPanel';
 import { ArmsUpIcon, MicIcon, PhoneIcon, RemoteIcon, WatchIcon } from '../components/icons';
 import { TriggerTile } from '../components/TriggerTile';
+import { ZoomBubble } from '../components/ZoomBubble';
+import { ZoomButton } from '../components/ZoomButton';
 import { repo } from '../data/mmkv';
+import { remoteDeviceView } from '../devices/remoteDevice';
+import { useRemoteTest } from '../devices/useRemoteTest';
 import type { ModeSettings, Prefs } from '../data/schema';
 import { effectiveSettings, modeById, offeredMode, withModeOverride } from '../modes/registry';
+import { clampZoom, lensFor, nextZoomStep } from '../modes/zoom';
 import { useSession } from '../session/SessionContext';
 import { colors, fonts } from '../theme/tokens';
 import { useVolumeRemote } from '../triggers/useVolumeRemote';
+
+/** How long the zoom value stays over the preview after the last pinch move. */
+const BUBBLE_MS = 800;
 
 const START_ERRORS: Partial<Record<ReplayErrorCode, string>> = {
   LOW_STORAGE: 'Pouco espaço no celular. Libere pelo menos 500 MB para gravar.',
@@ -48,7 +58,44 @@ export default function Setup() {
   const modeId = offeredMode(prefs.sport);
   const settings = effectiveSettings(modeId, prefs);
   const updateMode = (patch: Partial<ModeSettings>) => update(withModeOverride(prefs, modeId, patch));
-  const [remoteWorks, setRemoteWorks] = useState(false);
+  // Zoom: the button goes through the stops, two fingers on the preview zoom freely. Saved per mode when the gesture ends;
+  // while pinching the live value is only shown (and sent to the camera), so the screen does not rewrite the prefs per frame.
+  const [zoomRange] = useState(() => getZoomRange());
+  const savedZoom = clampZoom(settings.zoom, zoomRange);
+  const [liveZoom, setLiveZoom] = useState<number | null>(null);
+  const zoom = liveZoom !== null ? liveZoom : savedZoom;
+  // With two fixed lenses (Android) crossing 1x means opening the other lens; with continuous zoom the session ignores it.
+  const lens = lensFor(savedZoom);
+  const [bubble, setBubble] = useState(false);
+  const bubbleTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const showBubble = () => {
+    setBubble(true);
+    if (bubbleTimer.current !== undefined) clearTimeout(bubbleTimer.current);
+    bubbleTimer.current = setTimeout(() => setBubble(false), BUBBLE_MS);
+  };
+  useEffect(() => () => clearTimeout(bubbleTimer.current), []);
+  const pinch = useCameraPinch({
+    zoom,
+    range: zoomRange,
+    onChange: (next) => {
+      setLiveZoom(next);
+      session.setZoom(next, false);
+      showBubble();
+    },
+    onCommit: (next) => {
+      setLiveZoom(null);
+      if (Math.abs(next - savedZoom) > 1e-6) updateMode({ zoom: next });
+    },
+  });
+  const cycleZoom = () => {
+    const next = nextZoomStep(zoom, zoomRange);
+    session.setZoom(next, true);
+    updateMode({ zoom: next });
+  };
+  // The Bluetooth remote: the app cannot see the iOS pairing, only presses (this launch, or heard before).
+  const remoteTest = useRemoteTest();
+  const remoteView = remoteDeviceView({ pressed: remoteTest.pressed, testedBefore: remoteTest.testedBefore, waitedLong: false });
+  const remoteWorks = remoteView.state === 'connected';
   // The sheet opens collapsed so the camera and its guide stay visible; mode and triggers sit behind the summary.
   const [expanded, setExpanded] = useState(false);
   const [sheetHeight, setSheetHeight] = useState(0);
@@ -145,7 +192,7 @@ export default function Setup() {
   const summary = `Ajustes: ${[
     `voz ${voiceOn ? 'ligada' : 'desligada'}`,
     `acenar com os braços ${settings.gestureEnabled ? 'ligado' : 'desligado'}`,
-    `controle ${remoteWorks ? 'funcionando' : 'não testado'}`,
+    `controle ${remoteView.state === 'connected' ? 'conectado' : remoteView.state === 'offline' ? 'pareado' : 'não conectado'}`,
     ...(watch === 'ready' ? ['relógio pronto'] : []),
   ].join(', ')}`;
 
@@ -156,7 +203,7 @@ export default function Setup() {
   useEffect(() => {
     if (focused) void prepare(modeId);
     else void release();
-  }, [focused, prepare, release, modeId, settings.lens]);
+  }, [focused, prepare, release, modeId, lens]);
 
   useEffect(() => {
     if (!focused) return;
@@ -165,7 +212,7 @@ export default function Setup() {
   }, [focused]);
 
   // A press of the Bluetooth remote here proves it is paired and reaching the app.
-  useVolumeRemote(focused && phase === 'idle', () => setRemoteWorks(true));
+  useVolumeRemote(focused && phase === 'idle', remoteTest.press);
 
   const opening = camera === 'starting';
   const starting = phase === 'starting' || opening;
@@ -200,6 +247,8 @@ export default function Setup() {
   function renderSetupControls() {
     return (
       <>
+        {zoomRange.continuous ? <View testID="zoom-pinch" style={StyleSheet.absoluteFill} {...pinch} /> : null}
+        {bubble ? <ZoomBubble value={zoom} bottom={sheetHeight + 16} /> : null}
         <View testID="guide-area" pointerEvents="none" style={[styles.guideArea, { bottom: sheetHeight }]}>
           <PositionGuide guide={mode.guide} />
         </View>
@@ -213,21 +262,7 @@ export default function Setup() {
               style={[styles.pill, styles.pillButton]}>
               <Text style={styles.pillText}>Minhas gravações</Text>
             </Pressable>
-            <View style={styles.lens}>
-              {(['ultraWide', 'wide'] as const).map((lens) => (
-                <Pressable
-                  key={lens}
-                  accessibilityRole="button"
-                  accessibilityLabel={lens === 'ultraWide' ? '0.5x' : '1x'}
-                  accessibilityState={{ selected: settings.lens === lens }}
-                  onPress={() => updateMode({ lens })}
-                  style={[styles.lensButton, settings.lens === lens && styles.lensOn]}>
-                  <Text style={[styles.lensText, settings.lens === lens && { color: colors.onAccent }]}>
-                    {lens === 'ultraWide' ? '0.5x' : '1x'}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
+            <ZoomButton value={zoom} onPress={cycleZoom} />
           </View>
           {mode.tip.length > 0 ? (
             <View style={styles.tip}>
@@ -309,8 +344,9 @@ export default function Setup() {
             <TriggerTile
               icon={<RemoteIcon />}
               title="Controle Bluetooth"
-              status={remoteWorks ? 'Funcionando' : 'Aperte um botão para testar'}
+              status={remoteView.statusText}
               active={remoteWorks}
+              onPress={() => router.push({ pathname: '/devices', params: { kind: 'remote' } })}
             />
             <TriggerTile
               icon={<WatchIcon />}
@@ -407,22 +443,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: colors.onAccent,
   },
-  lens: {
-    flexDirection: 'row',
-    backgroundColor: 'rgba(15,16,13,0.75)',
-    borderRadius: 999,
-    padding: 4,
-    gap: 2,
-  },
-  lensButton: {
-    minWidth: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  lensOn: { backgroundColor: colors.accent },
-  lensText: { fontFamily: fonts.bodyBold, fontSize: 13, color: colors.text },
   tip: {
     alignSelf: 'flex-start',
     backgroundColor: 'rgba(15,16,13,0.8)',

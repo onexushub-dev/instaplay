@@ -1,5 +1,5 @@
-import { router, useLocalSearchParams } from 'expo-router';
-import { useMemo, useState, useSyncExternalStore } from 'react';
+import { router, useLocalSearchParams, useNavigation } from 'expo-router';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Alert, FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -14,6 +14,7 @@ import { colors, fonts } from '../../theme/tokens';
 export default function SessionSummary() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { reset, state } = useSession();
+  const navigation = useNavigation();
   // Re-read whenever the repo changes (a clip deleted on the clip screen, a late save landing).
   const version = useSyncExternalStore(repo.subscribe, repo.version);
   const { session, clips, stats } = useMemo(
@@ -72,11 +73,24 @@ export default function SessionSummary() {
           onPress: () => {
             repo.deleteSession(id).forEach((path) => removeFile(path));
             if (state.sessionId === id) reset();
-            router.dismissTo('/games');
+            leaveToGames();
           },
         },
       ],
     );
+  }
+
+  // Minhas gravações must always have the setup screen under it. A game that has just ended got here by replacing the
+  // setup, so /games is not in the stack and dismissTo would leave it as the only screen, with nowhere to go back to.
+  function leaveToGames() {
+    const state = navigation.getState();
+    const inStack = state === undefined || state.routes.some((route) => route.name === 'games');
+    if (inStack) {
+      router.dismissTo('/games');
+      return;
+    }
+    router.dismissTo('/setup');
+    router.push('/games');
   }
 
   function newGame() {
@@ -84,6 +98,22 @@ export default function SessionSummary() {
     if (state.sessionId === id) reset();
     router.dismissTo('/setup');
   }
+
+  // A game whose last clip was just deleted (here or on the clip screen) has nothing left to show: remove it too and go
+  // back to the list. A game that was recorded without any clip still opens as an empty summary.
+  const hadClips = useRef(clips.length > 0);
+  useEffect(() => {
+    if (clips.length > 0) {
+      hadClips.current = true;
+      return;
+    }
+    if (!hadClips.current || !session) return;
+    hadClips.current = false;
+    repo.deleteSession(id).forEach((path) => removeFile(path));
+    if (state.sessionId === id) reset();
+    leaveToGames();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs when the clip list changes
+  }, [clips.length, session]);
 
   return (
     <SafeAreaView style={styles.root}>
@@ -195,7 +225,7 @@ export default function SessionSummary() {
           />
         ) : (
           <>
-            <Button label="Nova gravação" variant="secondary" onPress={newGame} />
+            <Button label="Nova gravação" onPress={newGame} />
             {session ? (
               <Pressable
                 accessibilityRole="button"

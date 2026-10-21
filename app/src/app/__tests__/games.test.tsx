@@ -2,7 +2,8 @@ import { act, fireEvent, render, screen } from '@testing-library/react-native';
 
 import Games from '../games';
 
-jest.mock('expo-router', () => ({ router: { push: jest.fn(), back: jest.fn() } }));
+jest.mock('expo-router', () => ({ router: { push: jest.fn(), back: jest.fn(), dismissTo: jest.fn() } }));
+jest.mock('../../session/SessionContext', () => ({ useSession: jest.fn() }));
 jest.mock('../../components/useClipThumbnail', () => ({ useClipThumbnail: () => undefined }));
 jest.mock('../../data/mmkv', () => ({
   repo: {
@@ -17,10 +18,14 @@ jest.mock('../../data/mmkv', () => ({
 
 const { repo } = jest.requireMock('../../data/mmkv');
 const { router } = jest.requireMock('expo-router');
+const { useSession } = jest.requireMock('../../session/SessionContext');
 
 const clip = { id: 'c1', sessionId: 's1', createdAt: 1, source: 'screen', path: '/c1.mp4', durationMs: 1, trim: { startMs: 0, endMs: 1 } };
 
-beforeEach(() => jest.clearAllMocks());
+beforeEach(() => {
+  jest.clearAllMocks();
+  useSession.mockReturnValue({ reset: jest.fn(), state: { phase: 'idle' } });
+});
 
 test('lists games with their label and clipe count', async () => {
   repo.listSessions.mockReturnValue([
@@ -81,4 +86,20 @@ test('a game still being recorded cannot be deleted from the list', async () => 
   repo.sessionStats.mockReturnValue({ clips: 1, bytes: 1, recordedMs: 0 });
   await render(<Games />);
   expect(screen.queryByRole('button', { name: /Apagar/ })).toBeNull();
+});
+
+test('Nova gravação goes back to the setup screen', async () => {
+  repo.listSessions.mockReturnValue([]);
+  await render(<Games />);
+  await fireEvent.press(screen.getByRole('button', { name: 'Nova gravação' }));
+  expect(router.dismissTo).toHaveBeenCalledWith('/setup');
+});
+
+test('Nova gravação clears a game that has just ended before starting over', async () => {
+  repo.listSessions.mockReturnValue([]);
+  const reset = jest.fn();
+  useSession.mockReturnValue({ reset, state: { phase: 'ended', sessionId: 's1' } });
+  await render(<Games />);
+  await fireEvent.press(screen.getByRole('button', { name: 'Nova gravação' }));
+  expect(reset).toHaveBeenCalled();
 });

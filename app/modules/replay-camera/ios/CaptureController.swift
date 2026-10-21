@@ -16,6 +16,9 @@ final class CaptureController: NSObject, AVCaptureVideoDataOutputSampleBufferDel
   private(set) var fps = 30
   private(set) var hasAudio = false
   private(set) var camera: AVCaptureDevice?
+  /// The zoom the player wants (0.5 = ultra-wide, 1 = wide, above 1 a digital crop); nil = no zoom, the lens decides.
+  /// Kept here, not only in the engine, so every reconfiguration (the thermal fallback) puts it back.
+  var wantedZoom: Double?
 
   enum Failure: Error { case noCamera, cannotAddInput, cannotAddOutput }
 
@@ -26,13 +29,14 @@ final class CaptureController: NSObject, AVCaptureVideoDataOutputSampleBufferDel
     session.outputs.forEach { session.removeOutput($0) }
     session.sessionPreset = .inputPriority
 
-    guard let camera = Self.camera(lens: lens) else { throw Failure.noCamera }
+    guard let camera = Self.camera(lens: lens, continuousZoom: wantedZoom != nil) else { throw Failure.noCamera }
     self.camera = camera
     let input = try AVCaptureDeviceInput(device: camera)
     guard session.canAddInput(input) else { throw Failure.cannotAddInput }
     session.addInput(input)
     let target = Self.target(for: maxQuality)
     try applyFormat(camera, width: target.width, fps: target.fps)
+    applyZoom(animated: false) // a new format starts at factor 1, so the zoom goes on after it
 
     hasAudio = false
     if AVCaptureDevice.authorizationStatus(for: .audio) == .authorized,
@@ -59,11 +63,58 @@ final class CaptureController: NSObject, AVCaptureVideoDataOutputSampleBufferDel
     if output === videoOutput { onVideo?(sampleBuffer) } else { onAudio?(sampleBuffer) }
   }
 
-  private static func camera(lens: String) -> AVCaptureDevice? {
+  /// The virtual ultra-wide + wide camera: one device for the whole zoom, so crossing 1x never restarts the session.
+  private static var dualWide: AVCaptureDevice? {
+    AVCaptureDevice.default(.builtInDualWideCamera, for: .video, position: .back)
+  }
+
+  /// With zoom the virtual camera is used where it exists (the others have no ultra-wide: the wide covers 1x and up).
+  private static func camera(lens: String, continuousZoom: Bool) -> AVCaptureDevice? {
+    if continuousZoom, let dual = dualWide { return dual }
     if lens == "ultraWide", let ultra = AVCaptureDevice.default(.builtInUltraWideCamera, for: .video, position: .back) {
       return ultra
     }
     return AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back)
+  }
+
+  /// Where the virtual camera hands over from the ultra-wide to the wide (a device zoom factor): the player's 1x. 1 for a single lens.
+  private static func wideFactor(of device: AVCaptureDevice) -> Double {
+    guard device.deviceType == .builtInDualWideCamera,
+          let first = device.virtualDeviceSwitchOverVideoZoomFactors.first else { return 1 }
+    return first.doubleValue
+  }
+
+  /// What the player can zoom on this phone; needs no session.
+  static func zoomRange() -> (min: Double, max: Double) {
+    guard let device = dualWide ?? AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back) else {
+      return (1, 1)
+    }
+    return ZoomMath.userRange(minFactor: Double(device.minAvailableVideoZoomFactor),
+                              maxFactor: Double(device.maxAvailableVideoZoomFactor),
+                              wideFactor: wideFactor(of: device))
+  }
+
+  /// Zooms the running camera; `animated` ramps smoothly (a button tap), otherwise it follows the fingers at once.
+  /// Remembered when the camera is not running, so the next start opens with it.
+  func setZoom(_ zoom: Double, animated: Bool) {
+    wantedZoom = zoom
+    applyZoom(animated: animated)
+  }
+
+  private func applyZoom(animated: Bool) {
+    guard let device = camera, let wanted = wantedZoom else { return }
+    let upper = min(Double(device.maxAvailableVideoZoomFactor), Double(device.activeFormat.videoMaxZoomFactor))
+    let factor = ZoomMath.deviceFactor(forUserZoom: wanted, wideFactor: Self.wideFactor(of: device),
+                                       minFactor: Double(device.minAvailableVideoZoomFactor), maxFactor: upper)
+    // A zoom that can't lock (the camera is being reconfigured) is skipped: the next call or the next start sets it.
+    guard (try? device.lockForConfiguration()) != nil else { return }
+    defer { device.unlockForConfiguration() }
+    if animated {
+      device.ramp(toVideoZoomFactor: CGFloat(factor), withRate: 4)
+    } else {
+      device.cancelVideoZoomRamp()
+      device.videoZoomFactor = CGFloat(factor)
+    }
   }
 
   /// "1080p60" | "1080p30" | "720p30" (the hot-phone fallback) → frame width and rate.

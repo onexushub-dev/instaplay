@@ -11,8 +11,13 @@ export type ReplayErrorCode =
   | 'ENCODER_FAILED'
   | 'NO_SESSION';
 
-/** `bufferSeconds`: the rolling window kept for saves (default 60; gym modes use 120). */
-export type SessionOptions = { lens: Lens; maxQuality: Quality; bufferSeconds?: number };
+/**
+ * `bufferSeconds`: the rolling window kept for saves (default 60; gym modes use 120).
+ * `zoom`: the starting zoom where zoom is continuous (iOS: 0.5 = ultra-wide, 1 = wide); `lens` is what the others open.
+ */
+export type SessionOptions = { lens: Lens; zoom?: number; maxQuality: Quality; bufferSeconds?: number };
+/** What the camera can zoom: `continuous` is false where only the two lenses exist (Android). */
+export type ZoomRange = { min: number; max: number; continuous: boolean };
 /** `at` = ms since epoch when the trigger happened. */
 export type SaveClipOptions = { source: TriggerSource; at: number };
 export type SavedClip = { clipPath: string; durationMs: number };
