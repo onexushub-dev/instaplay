@@ -37,7 +37,6 @@ import { removeFile, repo } from '../../data/mmkv';
 import { MAX_CLIP_NAME } from '../../data/schema';
 import type { MessageKey } from '../../i18n';
 import { useT } from '../../i18n/useT';
-import { payments } from '../../payments';
 import { openPaywall } from '../../payments/feedback';
 import { isClipLocked } from '../../payments/rules';
 import { effectiveSettings } from '../../modes/registry';

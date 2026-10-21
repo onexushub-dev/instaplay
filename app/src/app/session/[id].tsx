@@ -8,7 +8,6 @@ import { ClipCard } from '../../components/ClipCard';
 import { dayAndTime, megabytes, modeLabel, recordedLabel, sessionLabel } from '../../components/format';
 import { repo } from '../../data/mmkv';
 import { MAX_GAME_NAME } from '../../data/schema';
-import { payments } from '../../payments';
 import { openPaywall } from '../../payments/feedback';
 import { isClipLocked } from '../../payments/rules';
 import { useEntitlement } from '../../share/entitlement';
