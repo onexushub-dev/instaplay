@@ -1,7 +1,7 @@
 import type { Session, Sport } from '../data/schema';
 
 export const MODE_LABEL: Record<Sport, string> = {
-  quadra: 'Quadra',
+  quadra: 'Gravação',
   academia: 'Academia',
   beachTennis: 'Beach tennis',
   futevolei: 'Futevôlei',

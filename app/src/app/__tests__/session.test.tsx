@@ -17,6 +17,8 @@ jest.mock('../../data/mmkv', () => {
       listClips: jest.fn(),
       sessionStats: jest.fn(),
       renameSession: jest.fn(),
+      deleteClip: jest.fn(),
+      deleteSession: jest.fn(() => ['/a.mp4', '/b.mp4']),
       subscribe: (fn: () => void) => {
         listeners.add(fn);
         return () => listeners.delete(fn);
@@ -27,6 +29,7 @@ jest.mock('../../data/mmkv', () => {
         listeners.forEach((fn) => fn());
       },
     },
+    removeFile: jest.fn(),
   };
 });
 
@@ -117,12 +120,13 @@ test('a named game shows its name as the title', async () => {
   expect(screen.getByRole('header')).toHaveTextContent('Final do torneio');
 });
 
-test("Postar um clipe opens the newest clipe's editor", async () => {
+test('the footer has no "Postar um clipe": sharing happens inside the clip', async () => {
   repo.listClips.mockReturnValue([clip('a', 'gesture', 1), clip('b', 'screen', 2)]);
   repo.sessionStats.mockReturnValue({ clips: 2, bytes: 1, recordedMs: 1 });
   await render(<SessionSummary />);
-  await fireEvent.press(screen.getByRole('button', { name: 'Postar um clipe' }));
-  expect(router.push).toHaveBeenCalledWith('/clip/b');
+  expect(screen.queryByRole('button', { name: 'Postar um clipe' })).toBeNull();
+  expect(screen.getByRole('button', { name: 'Nova gravação' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Apagar gravação' })).toBeTruthy();
 });
 
 test('Nova gravação from a past game goes back to the existing setup without touching the current session', async () => {
@@ -143,4 +147,54 @@ test('a named clip is identified by its name in the recording', async () => {
   expect(screen.getByText('Ace no fundo')).toBeTruthy();
   expect(screen.getByRole('button', { name: /^Clipe 1 · Ace no fundo/ })).toBeTruthy();
   expect(screen.getByRole('button', { name: /^Clipe 2,/ })).toBeTruthy();
+});
+
+function lastAlertButtons(alert: jest.SpyInstance) {
+  return alert.mock.calls[alert.mock.calls.length - 1][2] as { text: string; onPress?: () => void }[];
+}
+
+test('Selecionar clipes: pick some, delete them after confirming', async () => {
+  repo.listClips.mockReturnValue([clip('a', 'gesture', 1), clip('b', 'screen', 2), clip('c', 'screen', 3)]);
+  repo.sessionStats.mockReturnValue({ clips: 3, bytes: 1, recordedMs: 1 });
+  const alert = jest.spyOn(require('react-native').Alert, 'alert').mockImplementation(() => {});
+  await render(<SessionSummary />);
+  await fireEvent.press(screen.getByRole('button', { name: 'Selecionar clipes' }));
+  expect(screen.getByText('Toque nos clipes')).toBeTruthy();
+  await fireEvent.press(screen.getByRole('button', { name: /^Clipe 1/ }));
+  await fireEvent.press(screen.getByRole('button', { name: /^Clipe 3/ }));
+  expect(screen.getByText('2 selecionados')).toBeTruthy();
+  await fireEvent.press(screen.getByRole('button', { name: 'Apagar 2 clipes' }));
+  expect(repo.deleteClip).not.toHaveBeenCalled();
+  await act(async () => lastAlertButtons(alert).find((b) => b.text === 'Apagar')!.onPress!());
+  expect(repo.deleteClip.mock.calls.map((c: string[]) => c[0])).toEqual(['a', 'c']);
+  expect(jest.requireMock('../../data/mmkv').removeFile).toHaveBeenCalledWith('/a.mp4');
+  expect(screen.queryByText('2 selecionados')).toBeNull();
+  alert.mockRestore();
+});
+
+test('holding a clip starts the selection with it picked; Cancelar leaves it', async () => {
+  repo.listClips.mockReturnValue([clip('a', 'gesture', 1), clip('b', 'screen', 2)]);
+  repo.sessionStats.mockReturnValue({ clips: 2, bytes: 1, recordedMs: 1 });
+  await render(<SessionSummary />);
+  await fireEvent(screen.getByRole('button', { name: /^Clipe 2/ }), 'longPress');
+  expect(screen.getByText('1 selecionado')).toBeTruthy();
+  await fireEvent.press(screen.getByRole('button', { name: 'Cancelar seleção' }));
+  expect(screen.getByRole('button', { name: 'Selecionar clipes' })).toBeTruthy();
+});
+
+test('Apagar gravação removes the game and its clips after confirming, and goes to the list', async () => {
+  repo.listClips.mockReturnValue([clip('a', 'gesture', 1), clip('b', 'screen', 2)]);
+  repo.sessionStats.mockReturnValue({ clips: 2, bytes: 1, recordedMs: 1 });
+  const reset = jest.fn();
+  useSession.mockReturnValue({ reset, state: { sessionId: 's1' } });
+  const alert = jest.spyOn(require('react-native').Alert, 'alert').mockImplementation(() => {});
+  await render(<SessionSummary />);
+  await fireEvent.press(screen.getByRole('button', { name: 'Apagar gravação' }));
+  expect(repo.deleteSession).not.toHaveBeenCalled();
+  await act(async () => lastAlertButtons(alert).find((b) => b.text === 'Apagar')!.onPress!());
+  expect(repo.deleteSession).toHaveBeenCalledWith('s1');
+  expect(jest.requireMock('../../data/mmkv').removeFile).toHaveBeenCalledTimes(2);
+  expect(reset).toHaveBeenCalled();
+  expect(router.dismissTo).toHaveBeenCalledWith('/games');
+  alert.mockRestore();
 });
