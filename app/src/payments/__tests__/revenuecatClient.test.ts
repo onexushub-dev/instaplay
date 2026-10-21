@@ -66,6 +66,19 @@ describe('createRevenueCatClient', () => {
     expect(Purchases.addCustomerInfoUpdateListener).not.toHaveBeenCalled();
   });
 
+  it('a throwing configure does not crash launch and the client stays free', async () => {
+    Platform.OS = 'ios';
+    setKeys({ test: 'test_x' });
+    (Purchases.configure as jest.Mock).mockImplementationOnce(() => {
+      throw new Error('native boom');
+    });
+    const c = createRevenueCatClient();
+    expect(() => c.configure()).not.toThrow();
+    expect(await c.getSnapshot()).toEqual(EMPTY_SNAPSHOT);
+    expect(await c.showPaywall()).toBe('error');
+    expect(Purchases.getCustomerInfo).not.toHaveBeenCalled();
+  });
+
   it('configures once with the dev test key and converts customer info', async () => {
     Platform.OS = 'ios';
     setKeys({ ios: 'appl_x', test: 'test_x' });

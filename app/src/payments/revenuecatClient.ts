@@ -35,8 +35,12 @@ export function createRevenueCatClient(): PaymentsClient {
       const keys = (Constants.expoConfig?.extra?.revenueCat ?? {}) as RevenueCatKeys;
       const apiKey = pickApiKey(keys, Platform.OS, __DEV__);
       if (!apiKey) return; // no key: the app runs as free
-      Purchases.configure({ apiKey });
-      configured = true;
+      try {
+        Purchases.configure({ apiKey });
+        configured = true;
+      } catch {
+        // a failing SDK must not crash launch: stay unconfigured, the app runs as free
+      }
     },
 
     async getSnapshot() {
