@@ -14,11 +14,10 @@ struct ContentView: View {
       switch link.screen {
       case .idle:
         idleView
+      case .connecting:
+        ConnectingView()
       case .offline:
-        VStack(spacing: 3) {
-          Header { Text("Sem conexão").foregroundStyle(.red) }
-          BigButton(title: "Salvar", enabled: false, action: link.sendSave)
-        }
+        PhoneClosedView(lostRecording: true)
       case let .recording(clipCount, startedAt):
         if dimmed {
           dimmedView(clipCount: clipCount)
@@ -44,11 +43,18 @@ struct ContentView: View {
     }
   }
 
-  /// Nothing is recording: one big Gravar button, or the reason it cannot work.
-  private var idleView: some View {
-    VStack(spacing: 3) {
-      Header { if !link.reachable { Text("Sem conexão").foregroundStyle(.red) } }
-      BigButton(title: "Gravar", enabled: link.reachable, action: link.sendStart)
+  /// Nothing is recording: one big Começar gravação button. Without the LANCE app open on the phone it cannot work, so
+  /// the screen says to open it instead: nothing to tap that would go nowhere.
+  @ViewBuilder private var idleView: some View {
+    if !link.reachable || link.startFailed {
+      PhoneClosedView(lostRecording: false).onTapGesture { link.dismissStartFailed() }
+    } else {
+      VStack(spacing: 3) {
+        Header {}
+        BigButton(
+          title: link.starting ? "Começando…" : "Começar gravação", style: .title2, enabled: !link.starting,
+          action: link.sendStart)
+      }
     }
   }
 
@@ -150,6 +156,51 @@ private struct CameraToggle: View {
 }
 
 
+/// The LANCE app is not open on the phone, so nothing here can record or save: say so, large, and say what to do.
+private struct PhoneClosedView: View {
+  /// A recording that lost its phone, rather than a watch that never had one.
+  let lostRecording: Bool
+  var body: some View {
+    VStack(spacing: 3) {
+      Header { if lostRecording { Text("Sem conexão").foregroundStyle(.red) } }
+      VStack(spacing: 8) {
+        Image(systemName: "iphone.gen3").font(.system(size: 42, weight: .semibold)).foregroundStyle(accent)
+        Text("Abra o LANCE no iPhone")
+          .font(.system(.title3, design: .rounded).weight(.heavy))
+          .multilineTextAlignment(.center)
+          .foregroundStyle(.white)
+        Text(lostRecording ? "A gravação perdeu a conexão com o relógio." : "Sem o app aberto não dá para gravar nem salvar clipes.")
+          .font(.system(.footnote, design: .rounded))
+          .multilineTextAlignment(.center)
+          .minimumScaleFactor(0.8)
+          .foregroundStyle(.white.opacity(0.7))
+      }
+      .padding(.horizontal, 10)
+      .frame(maxWidth: .infinity, maxHeight: .infinity)
+      .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+    }
+  }
+}
+
+/// Just opened and the phone has not spoken yet: a short, neutral wait before deciding anything.
+private struct ConnectingView: View {
+  var body: some View {
+    VStack(spacing: 3) {
+      Header {}
+      VStack(spacing: 10) {
+        ProgressView().tint(accent)
+        Text("Conectando ao iPhone…")
+          .font(.system(.title3, design: .rounded).weight(.heavy))
+          .multilineTextAlignment(.center)
+          .foregroundStyle(.white)
+      }
+      .padding(.horizontal, 10)
+      .frame(maxWidth: .infinity, maxHeight: .infinity)
+      .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+    }
+  }
+}
+
 /// The line at the top, level with the system clock (which owns the right side): text on the left only.
 private struct Header<Content: View>: View {
   @ViewBuilder let content: Content
@@ -170,12 +221,16 @@ private struct Header<Content: View>: View {
 /// Drawn by hand: the system prominent style adds its own margin and shrinks the target.
 private struct BigButton: View {
   let title: String
+  var style: Font.TextStyle = .title
   let enabled: Bool
   let action: () -> Void
   var body: some View {
     Button(action: action) {
       Text(title)
-        .font(.system(.title, design: .rounded).weight(.heavy))
+        .font(.system(style, design: .rounded).weight(.heavy))
+        .multilineTextAlignment(.center)
+        .minimumScaleFactor(0.7)
+        .padding(.horizontal, 8)
         .foregroundStyle(ground)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(enabled ? accent : accent.opacity(0.25), in: RoundedRectangle(cornerRadius: 26, style: .continuous))
@@ -232,19 +287,18 @@ private struct StopButton: View {
   .background(ground)
 }
 
-#Preview("Sem conexão") {
-  VStack(spacing: 3) {
-    Header { Text("Sem conexão").foregroundStyle(.red) }
-    BigButton(title: "Gravar", enabled: false, action: {})
-  }
-  .padding(3)
-  .background(ground)
+#Preview("iPhone fechado") {
+  PhoneClosedView(lostRecording: false).padding(3).background(ground)
+}
+
+#Preview("Conectando") {
+  ConnectingView().padding(3).background(ground)
 }
 
 #Preview("Parado") {
   VStack(spacing: 3) {
     Header {}
-    BigButton(title: "Gravar", enabled: true, action: {})
+    BigButton(title: "Começar gravação", style: .title2, enabled: true, action: {})
   }
   .padding(3)
   .background(ground)
