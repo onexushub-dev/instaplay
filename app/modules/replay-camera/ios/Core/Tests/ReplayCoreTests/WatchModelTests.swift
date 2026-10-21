@@ -4,17 +4,17 @@ import XCTest
 // WatchModel.swift is the watch app's own file, symlinked into this test target.
 final class WatchModelTests: XCTestCase {
   func testIdleWhenNotRecording() {
-    XCTAssertEqual(WatchModel.screen(recording: false, reachable: true, clipCount: 0, startedAtMs: nil, stateAge: 0), .idle)
+    XCTAssertEqual(WatchModel.screen(recording: false, reachable: true, clipCount: 0, startedAtMs: nil, stateAge: 0, unreachableFor: 0), .idle)
     // an old state heard before the phone went away still reads as idle
-    XCTAssertEqual(WatchModel.screen(recording: false, reachable: false, clipCount: 4, startedAtMs: 1, stateAge: 0), .idle)
+    XCTAssertEqual(WatchModel.screen(recording: false, reachable: false, clipCount: 4, startedAtMs: 1, stateAge: 0, unreachableFor: 0), .idle)
   }
 
   func testOfflineWhenRecordingButPhoneUnreachable() {
-    XCTAssertEqual(WatchModel.screen(recording: true, reachable: false, clipCount: 2, startedAtMs: 1_000, stateAge: 0), .offline)
+    XCTAssertEqual(WatchModel.screen(recording: true, reachable: false, clipCount: 2, startedAtMs: 1_000, stateAge: 0, unreachableFor: WatchModel.offlineGrace), .offline)
   }
 
   func testRecordingCarriesCountAndStart() {
-    let screen = WatchModel.screen(recording: true, reachable: true, clipCount: 3, startedAtMs: 1_700_000_000_000, stateAge: 1)
+    let screen = WatchModel.screen(recording: true, reachable: true, clipCount: 3, startedAtMs: 1_700_000_000_000, stateAge: 1, unreachableFor: 0)
     XCTAssertEqual(screen, .recording(clipCount: 3, startedAt: Date(timeIntervalSince1970: 1_700_000_000)))
   }
 
@@ -41,12 +41,12 @@ final class WatchModelTests: XCTestCase {
   func testARecordingThePhoneStopsReportingIsOffline() {
     // Phone app killed while still in range: the link stays "reachable" but the heartbeat stops.
     let stale = WatchModel.staleAfter + 1
-    XCTAssertEqual(WatchModel.screen(recording: true, reachable: true, clipCount: 2, startedAtMs: 1, stateAge: stale), .offline)
+    XCTAssertEqual(WatchModel.screen(recording: true, reachable: true, clipCount: 2, startedAtMs: 1, stateAge: stale, unreachableFor: 0), .offline)
     XCTAssertEqual(
-      WatchModel.screen(recording: true, reachable: true, clipCount: 2, startedAtMs: 1, stateAge: WatchModel.staleAfter - 1),
+      WatchModel.screen(recording: true, reachable: true, clipCount: 2, startedAtMs: 1, stateAge: WatchModel.staleAfter - 1, unreachableFor: 0),
       .recording(clipCount: 2, startedAt: Date(timeIntervalSince1970: 0.001)))
     // an old idle state is still idle, not offline
-    XCTAssertEqual(WatchModel.screen(recording: false, reachable: true, clipCount: 0, startedAtMs: nil, stateAge: stale), .idle)
+    XCTAssertEqual(WatchModel.screen(recording: false, reachable: true, clipCount: 0, startedAtMs: nil, stateAge: stale, unreachableFor: 0), .idle)
   }
 
   func testTheHeartbeatBeatsTheStaleLimitWithRoomToSpare() {
@@ -58,5 +58,40 @@ final class WatchModelTests: XCTestCase {
     XCTAssertTrue(WatchModel.canSave(now: 100, lastSave: nil))
     XCTAssertFalse(WatchModel.canSave(now: 101, lastSave: 100))
     XCTAssertTrue(WatchModel.canSave(now: 103.1, lastSave: 100))
+  }
+
+  func testShortDropoutKeepsRecording() {
+    let screen = WatchModel.screen(recording: true, reachable: false, clipCount: 2, startedAtMs: 1_000, stateAge: 1, unreachableFor: 4)
+    XCTAssertEqual(screen, .recording(clipCount: 2, startedAt: Date(timeIntervalSince1970: 1)))
+  }
+
+  func testLongDropoutIsOffline() {
+    XCTAssertEqual(
+      WatchModel.screen(recording: true, reachable: false, clipCount: 2, startedAtMs: 1_000, stateAge: 1, unreachableFor: 10), .offline)
+  }
+
+  func testStaleStateIsOfflineEvenIfReachable() {
+    XCTAssertEqual(
+      WatchModel.screen(recording: true, reachable: true, clipCount: 2, startedAtMs: 1_000, stateAge: WatchModel.staleAfter + 1, unreachableFor: 0),
+      .offline)
+  }
+
+  func testWorkoutWantedOnlyWhileFreshRecording() {
+    XCTAssertTrue(WatchModel.workoutWanted(recording: true, stale: false))
+    XCTAssertFalse(WatchModel.workoutWanted(recording: true, stale: true))
+    XCTAssertFalse(WatchModel.workoutWanted(recording: false, stale: false))
+    XCTAssertFalse(WatchModel.workoutWanted(recording: false, stale: true))
+  }
+
+  func testCanStartOnlyIdleAndReachable() {
+    XCTAssertTrue(WatchModel.canStart(recording: false, reachable: true))
+    XCTAssertFalse(WatchModel.canStart(recording: true, reachable: true))
+    XCTAssertFalse(WatchModel.canStart(recording: false, reachable: false))
+  }
+
+  func testCanStopOnlyRecordingAndReachable() {
+    XCTAssertTrue(WatchModel.canStop(recording: true, reachable: true))
+    XCTAssertFalse(WatchModel.canStop(recording: false, reachable: true))
+    XCTAssertFalse(WatchModel.canStop(recording: true, reachable: false))
   }
 }

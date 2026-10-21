@@ -13,16 +13,28 @@ enum WatchModel {
   static let heartbeat = 5.0
   /// A recording state older than this is not believed: the phone app is gone even if the link says reachable.
   static let staleAfter = 12.0
+  /// A phone that cannot be reached for less than this is a flicker, not a lost link: the screen stays as it was.
+  static let offlineGrace = 10.0
   /// One save per this many seconds from the watch: a sleeve or a ball on a full-screen target saves nothing more.
   static let saveCooldown = 3.0
 
-  /// A recording whose phone cannot be reached, or has stopped reporting (`stateAge` in seconds), is `offline`
-  /// (the button would go nowhere); with no recording the watch is `idle`, whatever the connection.
-  static func screen(recording: Bool, reachable: Bool, clipCount: Int, startedAtMs: Double?, stateAge: Double) -> WatchScreen {
+  /// A recording whose phone has been unreachable for `offlineGrace` seconds (`unreachableFor`), or has stopped
+  /// reporting (`stateAge` in seconds), is `offline` (the button would go nowhere); with no recording the watch
+  /// is `idle`, whatever the connection.
+  static func screen(
+    recording: Bool, reachable: Bool, clipCount: Int, startedAtMs: Double?, stateAge: Double, unreachableFor: Double
+  ) -> WatchScreen {
     guard recording else { return .idle }
-    guard reachable, stateAge <= staleAfter else { return .offline }
+    guard stateAge <= staleAfter, reachable || unreachableFor < offlineGrace else { return .offline }
     return .recording(clipCount: clipCount, startedAt: startedAtMs.map { Date(timeIntervalSince1970: $0 / 1000) })
   }
+
+  /// The workout session that keeps the watch app alive runs only while a fresh recording is reported.
+  static func workoutWanted(recording: Bool, stale: Bool) -> Bool { recording && !stale }
+
+  /// Start is for an idle phone, Stop for a recording one, and both need the phone within reach.
+  static func canStart(recording: Bool, reachable: Bool) -> Bool { !recording && reachable }
+  static func canStop(recording: Bool, reachable: Bool) -> Bool { recording && reachable }
 
   /// "mm:ss", or "h:mm:ss" from one hour on.
   static func elapsed(since start: Date, now: Date) -> String {
