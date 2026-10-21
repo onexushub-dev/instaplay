@@ -65,7 +65,16 @@ struct ContentView: View {
   private func dimmedView(clipCount: Int) -> some View {
     VStack(spacing: 3) {
       Header { Text("\(clipCount) clips").foregroundStyle(accent) }
+      saveButton
+    }
+  }
+
+  /// Save, or (watch trigger locked: it is paid) a short note in its place; the timer and count keep working.
+  @ViewBuilder private var saveButton: some View {
+    if link.saveAllowed {
       BigButton(title: Text("Save"), enabled: true, action: link.sendSave)
+    } else {
+      ProOnlyNote()
     }
   }
 
@@ -85,7 +94,7 @@ struct ContentView: View {
         StopButton(action: link.sendStop)
       }
       // Room between the small controls and Save, so a thumb aiming at one does not land on the other.
-      BigButton(title: Text("Save"), enabled: true, action: link.sendSave)
+      saveButton
         .padding(.top, 8)
     }
   }
@@ -115,9 +124,9 @@ struct ContentView: View {
       .padding(4)
     }
     .contentShape(Rectangle())
-    .onTapGesture { link.sendSave() }
-    .accessibilityAddTraits(.isButton)
-    .accessibilityLabel(Text("Save"))
+    .onTapGesture { if link.saveAllowed { link.sendSave() } }
+    .accessibilityAddTraits(link.saveAllowed ? .isButton : [])
+    .accessibilityLabel(link.saveAllowed ? Text("Save") : Text("Available with Pro"))
     .ignoresSafeArea(edges: .bottom)
   }
 }
@@ -184,6 +193,23 @@ private struct PhoneClosedView: View {
       .frame(maxWidth: .infinity, maxHeight: .infinity)
       .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 26, style: .continuous))
     }
+  }
+}
+
+/// In place of Save when the watch trigger is locked (free tier): nothing to tap, just where it comes from.
+private struct ProOnlyNote: View {
+  var body: some View {
+    VStack(spacing: 6) {
+      Image(systemName: "lock.fill").font(.system(size: 22, weight: .semibold)).foregroundStyle(accent)
+      Text("Available with Pro")
+        .font(.system(.title3, design: .rounded).weight(.heavy))
+        .multilineTextAlignment(.center)
+        .minimumScaleFactor(0.7)
+        .foregroundStyle(.white)
+    }
+    .padding(.horizontal, 8)
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+    .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 26, style: .continuous))
   }
 }
 

@@ -59,6 +59,12 @@ test('the Portuguese copy is what the watch said before', () => {
   expect(pt('Not saved')).toBe('Não salvou');
 });
 
+test('the locked watch trigger says where Save comes from, in both languages', () => {
+  const unit = (lang: string) => (catalog.strings['Available with Pro'].localizations[lang] as Unit).stringUnit.value;
+  expect(unit('en')).toBe('Available with Pro');
+  expect(unit('pt-BR')).toBe('Disponível no Pro');
+});
+
 test('no Portuguese is left hard-coded in the watch view', () => {
   const literals = [...view.matchAll(/"((?:[^"\\]|\\.)*)"/g)].map((m) => m[1]);
   expect(literals.filter((s) => /[À-ÿ]/.test(s))).toEqual([]);

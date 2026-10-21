@@ -29,7 +29,10 @@ final class WatchBridge: NSObject, WCSessionDelegate {
   // The last state JS reported, kept so it can be sent again whenever the link (re)appears, and repeated as a
   // heartbeat while recording: if the app dies the beats stop and the watch notices (WatchModel.staleAfter).
   private let stateLock = NSLock()
-  private var lastState: WatchMessage = .state(recording: false, clipCount: 0, startedAt: nil)
+  private var lastState: WatchMessage = .state(recording: false, clipCount: 0, startedAt: nil, saveAllowed: true)
+  /// Whether the watch may save clips (the watch trigger is paid). JS sets it on launch and whenever the tier changes;
+  /// allowed until then, so a slow start never hides Save from a paying player.
+  private var saveAllowed = true
   private var heartbeat: DispatchSourceTimer?
 
   func activate() {
@@ -40,9 +43,8 @@ final class WatchBridge: NSObject, WCSessionDelegate {
 
   /// The latest state is also kept as application context, so a watch app opened later still reads it.
   func sync(recording: Bool, clipCount: Int, startedAt: Double?) {
-    let state = WatchMessage.state(recording: recording, clipCount: clipCount, startedAt: startedAt)
     stateLock.withLock {
-      lastState = state
+      lastState = .state(recording: recording, clipCount: clipCount, startedAt: startedAt, saveAllowed: saveAllowed)
       heartbeat?.cancel()
       heartbeat = nil
       guard recording else { return }
@@ -51,6 +53,17 @@ final class WatchBridge: NSObject, WCSessionDelegate {
       timer.setEventHandler { [weak self] in self?.pushState() }
       timer.resume()
       heartbeat = timer
+    }
+    pushState()
+  }
+
+  /// The watch trigger is locked (false) or open (true): travels with the state, so a watch opened later reads it too.
+  func setSaveAllowed(_ allowed: Bool) {
+    stateLock.withLock {
+      saveAllowed = allowed
+      if case let .state(recording, clipCount, startedAt, _) = lastState {
+        lastState = .state(recording: recording, clipCount: clipCount, startedAt: startedAt, saveAllowed: allowed)
+      }
     }
     pushState()
   }

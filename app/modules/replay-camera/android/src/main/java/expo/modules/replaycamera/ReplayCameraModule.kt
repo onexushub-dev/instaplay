@@ -88,6 +88,7 @@ class ReplayCameraModule : Module() {
     Function("getWatchStatus") { "unsupported" }
 
     Function("watchSync") { _: Boolean, _: Int, _: Double? -> }
+    Function("watchSetSaveAllowed") { _: Boolean -> }
 
     Function("watchSignal") { _: Boolean -> }
 

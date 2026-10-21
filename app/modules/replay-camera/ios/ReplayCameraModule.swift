@@ -150,6 +150,10 @@ public class ReplayCameraModule: Module {
       WatchBridge.shared.sync(recording: recording, clipCount: clipCount, startedAt: startedAt)
     }
 
+    Function("watchSetSaveAllowed") { (allowed: Bool) in
+      WatchBridge.shared.setSaveAllowed(allowed)
+    }
+
     Function("watchSignal") { (saved: Bool) in
       WatchBridge.shared.signal(saved: saved)
     }

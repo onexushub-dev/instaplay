@@ -34,6 +34,7 @@ import {
   saveClip,
   setVoiceEnabled,
   startSession,
+  watchSetSaveAllowed,
   watchSignal,
   watchSync,
 } from '../ReplayCamera';
@@ -78,6 +79,16 @@ test('the watch calls pass plain values to native, with a missing start as null'
   expect(mockNative.watchSync).toHaveBeenLastCalledWith(false, 0, null);
   watchSignal(false);
   expect(mockNative.watchSignal).toHaveBeenCalledWith(false);
+});
+
+test('the watch is told whether its Save button works; an older native build without it ignores the call', () => {
+  expect(() => watchSetSaveAllowed(false)).not.toThrow();
+  mockNative.watchSetSaveAllowed = jest.fn();
+  watchSetSaveAllowed(false);
+  expect(mockNative.watchSetSaveAllowed).toHaveBeenLastCalledWith(false);
+  watchSetSaveAllowed(true);
+  expect(mockNative.watchSetSaveAllowed).toHaveBeenLastCalledWith(true);
+  delete mockNative.watchSetSaveAllowed;
 });
 
 test('without the remote functions on native, the remote calls do nothing and nothing throws', () => {

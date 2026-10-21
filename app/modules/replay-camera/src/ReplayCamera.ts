@@ -67,6 +67,14 @@ export function watchSync(state: { recording: boolean; clipCount: number; starte
   ReplayCameraModule.watchSync(state.recording, state.clipCount, state.startedAt ?? null);
 }
 
+/**
+ * Tells the watch whether its Save button works (the watch trigger is paid). Sent with the recording state, so a watch
+ * app opened later reads it too. A native build without it ignores the call (the watch then keeps Save).
+ */
+export function watchSetSaveAllowed(allowed: boolean): void {
+  if (typeof ReplayCameraModule.watchSetSaveAllowed === 'function') ReplayCameraModule.watchSetSaveAllowed(allowed);
+}
+
 /** Makes the watch vibrate for a clip that was saved (true) or a save that failed (false). */
 export function watchSignal(saved: boolean): void {
   ReplayCameraModule.watchSignal(saved);

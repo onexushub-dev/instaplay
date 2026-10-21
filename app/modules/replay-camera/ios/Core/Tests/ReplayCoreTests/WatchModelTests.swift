@@ -57,6 +57,13 @@ final class WatchModelTests: XCTestCase {
     XCTAssertTrue(WatchModel.canSave(now: 103.1, lastSave: 100))
   }
 
+  func testNoSaveWhenThePhoneSaysTheWatchTriggerIsLocked() {
+    // Free tier: the phone says the watch may not save; the button is gone and a stray tap sends nothing.
+    XCTAssertFalse(WatchModel.canSave(now: 100, lastSave: nil, allowed: false))
+    XCTAssertTrue(WatchModel.canSave(now: 100, lastSave: nil, allowed: true))
+    XCTAssertFalse(WatchModel.canSave(now: 101, lastSave: 100, allowed: true))
+  }
+
   func testShortDropoutKeepsRecording() {
     let screen = WatchModel.screen(recording: true, reachable: false, clipCount: 2, startedAtMs: 1_000, stateAge: 1, unreachableFor: 4, sinceActive: settled)
     XCTAssertEqual(screen, .recording(clipCount: 2, startedAt: Date(timeIntervalSince1970: 1)))

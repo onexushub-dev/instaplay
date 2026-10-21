@@ -35,6 +35,8 @@ declare class ReplayCameraModule extends NativeModule<ReplayCameraModuleEvents> 
   getWatchStatus(): WatchStatus;
   watchSync(recording: boolean, clipCount: number, startedAt: number | null): void;
   watchSignal(saved: boolean): void;
+  /** Missing on native builds from before the watch trigger was paid. */
+  watchSetSaveAllowed?(allowed: boolean): void;
   // Second iPhone as a remote (iOS only: these are missing on Android).
   remoteHostStart?(): void;
   remoteHostStop?(): void;
