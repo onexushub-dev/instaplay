@@ -7,12 +7,12 @@ const tx = (id: string, productIdentifier: string) => ({
 });
 
 describe('toSnapshot', () => {
-  it('ignores products that are not the game pass', () => {
+  it('ignores products that are not the session pass', () => {
     const s = toSnapshot({
       entitlements: { active: {} },
-      nonSubscriptionTransactions: [tx('a', 'game_pass'), tx('b', 'other')],
+      nonSubscriptionTransactions: [tx('a', 'session_pass'), tx('b', 'other')],
     });
-    expect(s.passTransactions).toEqual([{ id: 'a', productId: 'game_pass', purchasedAt: 1000 }]);
+    expect(s.passTransactions).toEqual([{ id: 'a', productId: 'session_pass', purchasedAt: 1000 }]);
   });
 
   it('proActive only with the pro entitlement', () => {

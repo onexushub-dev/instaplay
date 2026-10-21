@@ -99,7 +99,7 @@ export function createRepo(kv: KV, files: FileProbe, newId: () => string) {
       return session;
     },
 
-    /** Records the game pass transaction on the game. Undefined if the game does not exist. */
+    /** Records the session pass transaction on the game. Undefined if the game does not exist. */
     setSessionPass(id: string, transactionId: string): Session | undefined {
       const existing = getSession(id);
       if (!existing) return undefined;

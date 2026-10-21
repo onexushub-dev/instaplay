@@ -110,7 +110,7 @@ export const en = {
     postClip: 'Post a clip',
     clipA11y: 'Clip %{number}%{name}, %{duration}, %{source}',
     lockedClips: { one: '%{count} locked clip', other: '%{count} locked clips' },
-    lockedNote: 'Saved, but locked. Unlock with the Game Pass or Pro.',
+    lockedNote: 'Saved, but locked. Unlock with the Session Pass or Pro.',
     unlock: 'Unlock clips',
     lockedTag: 'LOCKED',
     lockedA11y: '%{label}, locked',

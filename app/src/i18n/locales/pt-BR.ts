@@ -108,7 +108,7 @@ export const ptBR: Messages = {
     postClip: 'Postar um clipe',
     clipA11y: 'Clipe %{number}%{name}, %{duration}, %{source}',
     lockedClips: { one: '%{count} clipe bloqueado', other: '%{count} clipes bloqueados' },
-    lockedNote: 'Guardados, mas bloqueados. Libere com o Passe do Jogo ou o Pro.',
+    lockedNote: 'Guardados, mas bloqueados. Libere com o Passe da Sessão ou o Pro.',
     unlock: 'Liberar clipes',
     lockedTag: 'BLOQUEADO',
     lockedA11y: '%{label}, bloqueado',

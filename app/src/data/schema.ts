@@ -29,7 +29,7 @@ export type ModeSettings = {
   quality: '1080p60' | '1080p30';
 };
 
-export type Session = { id: string; sport: Sport; startedAt: number; endedAt?: number; name?: string; /** RevenueCat transaction id of the game pass that unlocked this game; absent = no pass. */ passTransactionId?: string };
+export type Session = { id: string; sport: Sport; startedAt: number; endedAt?: number; name?: string; /** RevenueCat transaction id of the session pass that unlocked this game; absent = no pass. */ passTransactionId?: string };
 
 export const MAX_GAME_NAME = 40;
 export const MAX_CLIP_NAME = 40;

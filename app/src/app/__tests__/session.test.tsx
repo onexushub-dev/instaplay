@@ -162,7 +162,7 @@ describe('locked clipes', () => {
     setup();
     await render(<SessionSummary />);
     expect(screen.getByText('2 clipes bloqueados')).toBeTruthy();
-    expect(screen.getByText('Guardados, mas bloqueados. Libere com o Passe do Jogo ou o Pro.')).toBeTruthy();
+    expect(screen.getByText('Guardados, mas bloqueados. Libere com o Passe da Sessão ou o Pro.')).toBeTruthy();
     await fireEvent.press(screen.getByRole('button', { name: 'Liberar clipes' }));
     expect(payments.showPaywall).toHaveBeenCalledWith('s1');
   });

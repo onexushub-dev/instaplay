@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Cobrar o Passe do Jogo (R$ 4,90) e o Pro (R$ 19,90/mês) pelo RevenueCat sem nunca parar a gravação: do 6º clipe em diante os clipes ficam salvos e bloqueados, e o paywall aparece só fora da gravação.
+**Goal:** Cobrar o Passe da Sessão (R$ 4,90) e o Pro (R$ 19,90/mês) pelo RevenueCat sem nunca parar a gravação: do 6º clipe em diante os clipes ficam salvos e bloqueados, e o paywall aparece só fora da gravação.
 
 **Architecture:** Módulo `app/src/payments/` com regras puras (`rules.ts`), uma interface `PaymentsClient` (RevenueCat real e falso para testes) e um store singleton (`payments`) no mesmo estilo de `repo` (`subscribe`/`version`). `useEntitlement(sessionId?)` lê o store. O bloqueio é gravado em `Clip.locked` no salvamento e é *efetivo* só enquanto o plano do jogo é `free`.
 
@@ -11,7 +11,7 @@
 **Spec:** `docs/superpowers/specs/2026-10-20-payments-revenuecat-design.md` (e a seção 3.5 revisada de `2026-10-17-lance-design.md`).
 
 ## Global Constraints
-- Produtos: `pro_monthly` (assinatura), `game_pass` (consumível). Entitlement: `pro`. Oferta: `default`.
+- Produtos: `pro_monthly` (assinatura), `session_pass` (consumível). Entitlement: `pro`. Oferta: `default`.
 - 5 clipes liberados por jogo (`FREE_CLIPS = 5`). Do 6º em diante `locked: true`.
 - Plano do jogo: `pro` se entitlement ativo; senão `pass` se `session.passTransactionId`; senão `free`. Pro vence Passe.
 - Bloqueio efetivo = `clip.locked && plano do jogo === 'free'`.
@@ -30,7 +30,7 @@ Spec, seção "Passos fora do código": produtos nas lojas, projeto/apps/entitle
 
 ## Review Focus
 1. Fronteira dos 5 clipes: o 5º sai liberado e o 6º bloqueado; desfazer o 5º libera o próximo (Tarefa 6).
-2. Passe do jogo A não libera o jogo B, e uma restauração/compra sem transação nova não liga nada (Tarefas 1 e 3).
+2. Passe da Sessão A não libera a sessão B, e uma restauração/compra sem transação nova não liga nada (Tarefas 1 e 3).
 3. Compra concluída mas falha ao ler o snapshot: o Passe é ligado quando o próximo snapshot chegar, sem cobrar duas vezes (Tarefa 3).
 4. Assinatura Pro acaba: clipes gravados no Pro seguem liberados; clipes bloqueados antes seguem bloqueados (Tarefas 1 e 6).
 5. Abrir um clipe bloqueado direto pela rota `/clip/[id]` não permite exportar (Tarefa 8); duplo toque em "Liberar" não abre dois paywalls (Tarefa 3).
@@ -52,7 +52,7 @@ Spec, seção "Passos fora do código": produtos nas lojas, projeto/apps/entitle
 - Test: `app/src/payments/__tests__/rules.test.ts`
 
 **Interfaces:**
-- Produces (`types.ts`): `type Tier = 'free' | 'pass' | 'pro'`; `type PassTransaction = { id: string; productId: string; purchasedAt: number }`; `type Snapshot = { proActive: boolean; passTransactions: PassTransaction[] }`; `const EMPTY_SNAPSHOT: Snapshot`; constantes `FREE_CLIPS = 5`, `PRO_ENTITLEMENT = 'pro'`, `PASS_PRODUCT_ID = 'game_pass'`.
+- Produces (`types.ts`): `type Tier = 'free' | 'pass' | 'pro'`; `type PassTransaction = { id: string; productId: string; purchasedAt: number }`; `type Snapshot = { proActive: boolean; passTransactions: PassTransaction[] }`; `const EMPTY_SNAPSHOT: Snapshot`; constantes `FREE_CLIPS = 5`, `PRO_ENTITLEMENT = 'pro'`, `PASS_PRODUCT_ID = 'session_pass'`.
 - Produces (`rules.ts`): `tierFor(snapshot: Snapshot, session?: { passTransactionId?: string }): Tier`; `isClipLocked(clip: { locked?: boolean }, tier: Tier): boolean`; `shouldLockOnSave(tier: Tier, unlockedCount: number): boolean`; `detectPurchase(before: Snapshot, after: Snapshot): { pro: boolean; passTransactionId?: string }`.
 
 - [ ] **Step 1: Write the failing tests** em `rules.test.ts`:
@@ -168,7 +168,7 @@ Spec, seção "Passos fora do código": produtos nas lojas, projeto/apps/entitle
   `session.test`: com plano `free` e 2 clipes `locked`, mostra `2 clipes bloqueados` e o botão `Liberar clipes`; tocar nele chama `payments.showPaywall('s1')`; tocar em um clipe bloqueado chama `showPaywall` e **não** navega; clipe liberado navega para `/clip/<id>`; com plano `pass`/`pro` o cartão não aparece e nenhum clipe é tratado como bloqueado; "Postar um clipe" fica desabilitado se todos os clipes estão bloqueados.
   `games.test`: jogo `free` com 2 bloqueados mostra `2 bloqueados`; jogo `pass` não mostra; o botão `Restaurar compras` chama `payments.restore()`.
 - [ ] **Step 2: Run** → FAIL.
-- [ ] **Step 3: Implement** as telas (mock de `../../payments` nos testes; manter os mocks existentes de `mmkv`). Texto do cartão: `Guardados, mas bloqueados. Libere com o Passe do Jogo ou o Pro.` O botão `Restaurar compras` fica no rodapé de `games.tsx` (não há tela de Ajustes ainda).
+- [ ] **Step 3: Implement** as telas (mock de `../../payments` nos testes; manter os mocks existentes de `mmkv`). Texto do cartão: `Guardados, mas bloqueados. Libere com o Passe da Sessão ou o Pro.` O botão `Restaurar compras` fica no rodapé de `games.tsx` (não há tela de Ajustes ainda).
 - [ ] **Step 4: Run** → PASS.
 - [ ] **Step 5: Commit** `feat(payments): unlock entry points in summary and games list`.
 

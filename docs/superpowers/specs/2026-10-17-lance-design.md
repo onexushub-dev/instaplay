@@ -19,7 +19,7 @@ Levar para o celular do praticante o sistema de "replay" que algumas quadras ofe
 | Buffer | Janela móvel de 60s. O que sai da janela é apagado na hora. Só os lances salvos ficam no celular |
 | Corte padrão | Últimos 30s até o gatilho, ajustável depois dentro dos 60s |
 | Dados | Só no celular, sem login. Modelo preparado para login futuro |
-| Receita | Freemium + Passe do Jogo (R$4,90) + Pro (R$19,90/mês). Kit físico de fixação opcional, vendido fora do app |
+| Receita | Freemium + Passe da Sessão (R$4,90, vinculado à sessão — jogo ou treino — em que foi comprado) + Pro (R$19,90/mês). Kit físico de fixação opcional, vendido fora do app |
 | Câmera | Módulo nativo próprio `ReplayCamera` (Expo Modules), sem VisionCamera |
 
 ## 3. Experiência do usuário
@@ -58,8 +58,8 @@ Fluxo: **Boas-vindas → Posicionar câmera → Gravando → Lance salvo (repete
 ### 3.5 Limite grátis e paywall (revisado em 2026-10-20)
 - A gravação nunca para por causa do plano. Do 6º lance em diante os lances são salvos e ficam bloqueados.
 - Durante o jogo: aviso discreto ("Lance #5 salvo · último grátis"; "Lance #6 salvo · libere no fim do jogo"). Nenhum paywall aparece durante a gravação.
-- Depois do jogo: o resumo mostra "N lances guardados · M bloqueados" com as miniaturas e o botão "Liberar", que abre o paywall (Passe do Jogo R$4,90 pré-selecionado ou Pro R$19,90/mês). Tocar em um lance bloqueado ou em um recurso pago também abre o paywall.
-- "Agora não": nada se perde; dá para liberar a qualquer momento com o Passe do jogo.
+- Depois do jogo: o resumo mostra "N lances guardados · M bloqueados" com as miniaturas e o botão "Liberar", que abre o paywall (Passe da Sessão R$4,90 pré-selecionado ou Pro R$19,90/mês). Tocar em um lance bloqueado ou em um recurso pago também abre o paywall.
+- "Agora não": nada se perde; dá para liberar a qualquer momento com o Passe da Sessão.
 - Pagamento pela App Store / Google Play. Detalhes em `2026-10-20-payments-revenuecat-design.md`.
 
 ### 3.6 Relógio (watchOS e Wear OS)
@@ -164,7 +164,7 @@ Preferências   { lente, duraçãoPadrão: 30, gestoAtivo, relógioPareado }
 
 ## 6. Monetização
 
-| Regra | Grátis | Passe do Jogo (R$4,90) | Pro (R$19,90/mês) |
+| Regra | Grátis | Passe da Sessão (R$4,90) | Pro (R$19,90/mês) |
 |---|---|---|---|
 | Lances liberados por jogo | 5 (os seguintes ficam salvos e bloqueados) | Todos | Todos |
 | Exportação | 720p | 1080p 60fps | 1080p 60fps |

@@ -1,7 +1,7 @@
-# Pagamentos com RevenueCat: Passe do Jogo e Pro
+# Pagamentos com RevenueCat: Passe da Sessão e Pro
 
 ## Objetivo
-Ligar a cobrança do spec principal (`2026-10-17-lance-design.md`, seção 6) ao app: plano grátis com 5 lances por jogo, **Passe do Jogo** (R$ 4,90, compra avulsa por jogo) e **Pro** (R$ 19,90/mês). Hoje `useEntitlement()` devolve `'pro'` fixo e tudo está liberado.
+Ligar a cobrança do spec principal (`2026-10-17-lance-design.md`, seção 6) ao app: plano grátis com 5 lances por jogo, **Passe da Sessão** (R$ 4,90, compra avulsa vinculada à sessão (jogo ou treino) em que foi comprada) e **Pro** (R$ 19,90/mês). Hoje `useEntitlement()` devolve `'pro'` fixo e tudo está liberado.
 
 Princípio: **a experiência do usuário vem primeiro. O app nunca para de gravar e nunca perde um lance por causa de pagamento.** Cobra-se pela entrega do lance (ver, exportar), não pela captura.
 
@@ -31,7 +31,7 @@ Login e contas, backend e webhooks, pagamento web (Stripe), link externo, paywal
 
 - **Plano de um jogo** = `pro` se o entitlement `pro` está ativo; senão `pass` se `session.passTransactionId` existe; senão `free`. Pro vale para todos os jogos; o Passe só para o jogo em que foi comprado.
 - **`Clip.locked`** é gravado no salvamento: `true` quando o plano do jogo é `free` e já existem 5 lances liberados nele. Um lance está *efetivamente bloqueado* quando `clip.locked && plano do jogo === 'free'`. Assim comprar o Passe ou assinar o Pro libera tudo sem atualizar lances um a um, e lances gravados no Pro continuam liberados se a assinatura acabar.
-- Produtos: `pro_monthly` (assinatura, entitlement `pro`) e `game_pass` (consumível; não gera entitlement, por isso o Passe é guardado na `Session`).
+- Produtos: `pro_monthly` (assinatura, entitlement `pro`) e `session_pass` (consumível, vinculado à sessão — jogo ou treino — em que foi comprado; não gera entitlement, por isso o Passe é guardado na `Session`).
 
 ## Experiência
 **Durante o jogo (nada bloqueia, nada pausa):**
@@ -41,7 +41,7 @@ Login e contas, backend e webhooks, pagamento web (Stripe), link externo, paywal
 **Depois do jogo:**
 - Resumo: cartão "7 lances guardados · 2 bloqueados" com as miniaturas e o botão "Liberar", que abre o paywall.
 - "Meus jogos": jogos com lances bloqueados mostram o aviso; tocar em um lance bloqueado abre o paywall.
-- Editor: tocar em câmera lenta ou em template pago abre o paywall (o Passe do jogo ou o Pro libera).
+- Editor: tocar em câmera lenta ou em template pago abre o paywall (o Passe da Sessão ou o Pro libera).
 - "Agora não" fecha o paywall sem perda. Pode-se liberar a qualquer momento.
 
 ## Arquitetura (`app/src/payments/`)
@@ -98,7 +98,7 @@ Login e contas, backend e webhooks, pagamento web (Stripe), link externo, paywal
 7. `npm test` e `npm run lint` passam.
 
 ## Passos fora do código (Marcus)
-1. App Store Connect e Play Console: contratos de apps pagos, dados bancários e fiscais; produtos `pro_monthly` (assinatura mensal) e `game_pass` (consumível).
+1. App Store Connect e Play Console: contratos de apps pagos, dados bancários e fiscais; produtos `pro_monthly` (assinatura mensal) e `session_pass` (consumível).
 2. RevenueCat: projeto, apps iOS e Android, Test Store, entitlement `pro`, oferta `default` com os dois pacotes, paywall criado no builder e publicado.
 3. Chaves públicas em `app/.env.local`.
 4. Build de desenvolvimento novo (módulos nativos): `react-native-purchases` e `react-native-purchases-ui` não rodam no Expo Go. Alvo atual do iOS: 16.4 (o paywall pede 15+). Confirmar no plano o `minSdkVersion` do Android (o paywall pede 24+).
