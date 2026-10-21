@@ -30,7 +30,7 @@ enum ClipContent {
   }
 
   /// Mean grey level of the frame, 0 (black) to 255.
-  private static func brightness(of image: CGImage) -> Double {
+  static func brightness(of image: CGImage) -> Double {
     let w = 16, h = 16
     var pixels = [UInt8](repeating: 0, count: w * h)
     guard let context = CGContext(data: &pixels, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w,

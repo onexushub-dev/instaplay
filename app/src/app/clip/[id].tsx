@@ -5,7 +5,10 @@ import { shareAsync } from 'expo-sharing';
 import { useVideoPlayer } from 'expo-video';
 import { type ComponentRef, type ReactNode, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import {
+  ActivityIndicator,
   Alert,
+  Animated,
+  Easing,
   Image,
   PixelRatio,
   Pressable,
@@ -18,6 +21,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { createThumbnail, exportClip, findContentStart } from '../../../modules/replay-camera';
+import { ExportProgress, type ExportJob } from '../../components/ExportProgress';
 import { seconds, timeOfDay } from '../../components/format';
 import {
   BackIcon,
@@ -44,6 +48,13 @@ import { ShareOverlay } from '../../share/ShareOverlay';
 import { ZoomableVideo } from '../../share/ZoomableVideo';
 import { colors, fonts } from '../../theme/tokens';
 
+const SLIDE_MS = 220;
+/** Which side the next clip comes in from; set just before navigating, read by the screen that mounts. */
+let enterFrom: 1 | -1 | 0 = 0;
+
+const SAVED_VISIBLE_MS = 3500;
+// The share sheet is up long before `shareAsync` returns (it waits for the sheet to close), so the card leaves early.
+const SHARE_HANDOFF_MS = 1200;
 const PREPARE_FAILED = 'Não foi possível preparar o vídeo. Tente de novo.';
 
 type Player = ReturnType<typeof useVideoPlayer>;
@@ -84,8 +95,13 @@ function clearOldExports() {
  * One screen to edit, preview and send a lance: cut, speed, sound and zoom on the exact frame that gets exported
  * (9:16 with the app mark), then save to Photos or share. Deleting and renaming live in the top bar.
  */
-export default function ClipEditor() {
+export default function ClipScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  // Keyed by clip: moving to another clip starts the editor from that clip's own state.
+  return <ClipEditor key={id} id={id} />;
+}
+
+function ClipEditor({ id }: { id: string }) {
   const version = useSyncExternalStore(repo.subscribe, repo.version);
   // eslint-disable-next-line react-hooks/exhaustive-deps -- version is the change signal
   const clip = useMemo(() => repo.getClip(id), [id, version]);
@@ -93,6 +109,11 @@ export default function ClipEditor() {
     () => (clip ? repo.listClips(clip.sessionId).findIndex((c) => c.id === id) + 1 : 0),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- version is the change signal
     [clip, id, version],
+  );
+  const siblings = useMemo(
+    () => (clip ? repo.listClips(clip.sessionId) : []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- version is the change signal
+    [clip, version],
   );
   const session = clip ? repo.getSession(clip.sessionId) : undefined;
   const maxMs = session ? effectiveSettings(session.sport, repo.getPrefs()).bufferSeconds * 1000 : undefined;
@@ -115,7 +136,28 @@ export default function ClipEditor() {
   // Exports wait for the real shape: a portrait clip exported with the landscape default gets wrong bands.
   const [sizeKnown, setSizeKnown] = useState(false);
   const [busy, setBusy] = useState(false);
+  // What is being made right now, so the screen can say what for and for how long.
+  const [job, setJob] = useState<ExportJob>();
+  // Like the Photos app: the clip leaves to one side while the next one comes in from the other.
+  const [slide] = useState(() => new Animated.Value(enterFrom * window.width));
+  useEffect(() => {
+    if (enterFrom === 0) return;
+    enterFrom = 0;
+    Animated.timing(slide, {
+      toValue: 0,
+      duration: SLIDE_MS,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [slide]);
   const [notice, setNotice] = useState<string>();
+  // The "saved" confirmation stays long enough to be read.
+  const [saved, setSaved] = useState(false);
+  useEffect(() => {
+    if (!saved) return;
+    const timer = setTimeout(() => setSaved(false), SAVED_VISIBLE_MS);
+    return () => clearTimeout(timer);
+  }, [saved]);
   const exporting = useRef(false);
   const exported = useRef<{ key: string; path: string } | undefined>(undefined);
   const made = useRef<string[]>([]);
@@ -201,6 +243,22 @@ export default function ClipEditor() {
     );
   }
 
+  /** Swipe like the Photos app: left shows the next clip, right the previous one. */
+  function goBy(step: 1 | -1) {
+    const at = siblings.findIndex((c) => c.id === id);
+    const target = siblings[at + step];
+    if (!target) return;
+    Animated.timing(slide, {
+      toValue: -step * window.width,
+      duration: SLIDE_MS,
+      easing: Easing.in(Easing.cubic),
+      useNativeDriver: true,
+    }).start(() => {
+      enterFrom = step;
+      router.setParams({ id: target.id });
+    });
+  }
+
   function setEdit(patch: Partial<ReturnType<typeof readEdit>>) {
     const next = { ...edit, ...patch };
     repo.updateClip(id, {
@@ -269,9 +327,15 @@ export default function ClipEditor() {
         text: 'Apagar',
         style: 'destructive',
         onPress: () => {
+          const at = siblings.findIndex((c) => c.id === id);
+          const next = siblings[at + 1] ?? siblings[at - 1];
           removeFile(clip!.path);
           repo.deleteClip(id);
-          router.back();
+          if (next) {
+            enterFrom = siblings[at + 1] ? 1 : -1;
+            router.setParams({ id: next.id });
+          }
+          else router.back();
         },
       },
     ]);
@@ -293,31 +357,42 @@ export default function ClipEditor() {
     return result.path;
   }
 
-  async function run(action: (path: string) => Promise<void>) {
+  async function run(kind: ExportJob['kind'], action: (path: string) => Promise<void>) {
     if (exporting.current || !sizeKnown) return;
     exporting.current = true;
     saveName(); // a name typed without closing the keyboard still counts
     setBusy(true);
     setNotice(undefined);
+    setJob({ kind, stage: 'preparing' });
     try {
-      await action(await ensureExport());
+      const path = await ensureExport();
+      setJob({ kind, stage: 'delivering' });
+      if (kind === 'share') {
+        setTimeout(() => setJob((j) => (j && j.kind === 'share' ? undefined : j)), SHARE_HANDOFF_MS);
+      }
+      await action(path);
     } catch {
       setNotice(PREPARE_FAILED);
     } finally {
       exporting.current = false;
       setBusy(false);
+      setJob(undefined);
     }
   }
 
   const save = () =>
-    run(async (path) => {
+    run('save', async (path) => {
       const { granted } = await requestPermissionsAsync(true, ['video']);
       if (!granted) return setNotice('Sem acesso às fotos. Libere em Ajustes.');
       await Asset.create(`file://${path}`);
-      setNotice('Salvo na galeria.');
+      repo.updateClip(id, { savedAt: Date.now() });
+      setSaved(true);
     });
 
-  const share = () => run((path) => shareAsync(`file://${path}`, { mimeType: 'video/mp4', UTI: 'public.mpeg-4' }));
+  const share = () => run('share', async (path) => {
+      await shareAsync(`file://${path}`, { mimeType: 'video/mp4', UTI: 'public.mpeg-4' });
+      repo.updateClip(id, { sharedAt: Date.now() });
+    });
 
   // Preview: the export's 9:16 frame as large as the whole screen allows; the controls sit over it.
   const previewHeight = Math.min(window.height, (window.width * frame.height) / frame.width);
@@ -338,7 +413,7 @@ export default function ClipEditor() {
     const w = shape.width * fit;
     const h = shape.height * fit;
     return (
-      <View style={styles.full}>
+      <Animated.View style={[styles.full, { transform: [{ translateX: slide }] }]}>
         <ZoomableVideo
           key={zoomKey}
           player={player}
@@ -348,6 +423,7 @@ export default function ClipEditor() {
           rotation={edit.rotation}
           onCommit={commitZoom}
           onTap={togglePlay}
+          onSwipe={goBy}
         />
         {!playing ? (
           <View pointerEvents="none" style={styles.pausedBadge}>
@@ -373,12 +449,12 @@ export default function ClipEditor() {
             <CloseIcon />
           </IconButton>
         </SafeAreaView>
-      </View>
+      </Animated.View>
     );
   }
 
   return (
-    <View style={styles.root}>
+    <Animated.View style={[styles.root, { transform: [{ translateX: slide }] }]}>
       <View style={styles.stage}>
         <View style={[styles.preview, { width: frame.width * scale, height: previewHeight }]}>
           <ZoomableVideo
@@ -390,6 +466,7 @@ export default function ClipEditor() {
             rotation={edit.rotation}
             onCommit={commitZoom}
             onTap={togglePlay}
+            onSwipe={goBy}
           />
           <View pointerEvents="none" style={StyleSheet.absoluteFill}>
             <ShareOverlay frame={frame} layout={layout} scale={scale} />
@@ -431,10 +508,18 @@ export default function ClipEditor() {
           <IconButton label="Apagar clipe" onPress={confirmDelete}>
             <TrashIcon />
           </IconButton>
-          <IconButton label="Salvar na galeria" disabled={busyActions} onPress={() => void save()}>
+          <IconButton
+            label="Salvar na galeria"
+            disabled={busyActions}
+            loading={job !== undefined && job.kind === 'save'}
+            onPress={() => void save()}>
             <DownloadIcon />
           </IconButton>
-          <IconButton label="Compartilhar" disabled={busyActions} onPress={() => void share()}>
+          <IconButton
+            label="Compartilhar"
+            disabled={busyActions}
+            loading={job !== undefined && job.kind === 'share'}
+            onPress={() => void share()}>
             <ShareIcon />
           </IconButton>
         </View>
@@ -470,12 +555,26 @@ export default function ClipEditor() {
         </View>
       </SafeAreaView>
 
+      {saved && !job ? (
+        <Pressable accessibilityRole="alert" onPress={() => setSaved(false)} style={styles.savedWrap}>
+          <View style={styles.savedCard}>
+            <View style={styles.savedCheck}>
+              <Text style={styles.savedCheckMark}>✓</Text>
+            </View>
+            <Text style={styles.savedText}>Salvo na galeria.</Text>
+            <Text style={styles.savedHint}>Está no app Fotos.</Text>
+          </View>
+        </Pressable>
+      ) : null}
+      {job ? <ExportProgress job={job} /> : null}
+
       <SafeAreaView edges={['bottom']} pointerEvents="box-none" style={styles.overBottom}>
         <View style={styles.panel}>
-          {busy ? (
-            <Text style={styles.notice}>Preparando vídeo…</Text>
-          ) : notice ? (
+          {busy ? null : notice ? (
             <Text style={styles.notice}>{notice}</Text>
+          ) : null}
+          {siblings.length > 1 ? (
+            <Text style={styles.position}>{`${number} de ${siblings.length} · deslize para trocar`}</Text>
           ) : null}
           <View style={styles.trimLabels}>
             <Text style={styles.small}>{`-${seconds(clip.durationMs - floor)}`}</Text>
@@ -526,7 +625,7 @@ export default function ClipEditor() {
           </View>
         </View>
       </SafeAreaView>
-    </View>
+    </Animated.View>
   );
 }
 
@@ -534,11 +633,14 @@ function IconButton({
   label,
   onPress,
   disabled,
+  loading,
   children,
 }: {
   label: string;
   onPress: () => void;
   disabled?: boolean;
+  /** Shows a spinner in place of the icon: this is the button whose job is running. */
+  loading?: boolean;
   children: ReactNode;
 }) {
   return (
@@ -547,8 +649,9 @@ function IconButton({
       accessibilityLabel={label}
       disabled={disabled}
       onPress={onPress}
-      style={[styles.icon, disabled && styles.iconOff]}>
-      {children}
+      accessibilityState={{ disabled: !!disabled, busy: !!loading }}
+      style={[styles.icon, disabled && !loading && styles.iconOff]}>
+      {loading ? <ActivityIndicator color={colors.text} /> : children}
     </Pressable>
   );
 }
@@ -651,6 +754,27 @@ const styles = StyleSheet.create({
   },
   zoomText: { fontFamily: fonts.bodyBold, fontSize: 13, color: colors.onAccent },
   offscreen: { position: 'absolute', left: -10000, top: 0 },
+  position: { fontFamily: fonts.body, fontSize: 12, color: colors.text, opacity: 0.8, textAlign: 'center' },
+  savedWrap: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center' },
+  savedCard: {
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 28,
+    paddingVertical: 22,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0,0,0,0.82)',
+  },
+  savedCheck: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.accent,
+  },
+  savedCheckMark: { fontFamily: fonts.bodyBold, fontSize: 24, color: colors.ground },
+  savedText: { fontFamily: fonts.bodyBold, fontSize: 17, color: colors.text },
+  savedHint: { fontFamily: fonts.body, fontSize: 13, color: colors.text, opacity: 0.8 },
   notice: { fontFamily: fonts.bodySemi, fontSize: 13, color: colors.text, textAlign: 'center' },
   trimLabels: { flexDirection: 'row', justifyContent: 'space-between' },
   trimRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },

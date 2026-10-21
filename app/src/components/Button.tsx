@@ -6,7 +6,7 @@ import { colors, fonts, radius } from '../theme/tokens';
 type Props = {
   label: string;
   onPress: () => void;
-  variant?: 'primary' | 'secondary';
+  variant?: 'primary' | 'secondary' | 'danger';
   disabled?: boolean;
   /** Shows a spinner and blocks presses while something is being done; the label should then say what ("Conectando…"). */
   loading?: boolean;
@@ -14,7 +14,7 @@ type Props = {
 };
 
 export function Button({ label, onPress, variant = 'primary', disabled = false, loading = false, icon }: Props) {
-  const primary = variant === 'primary';
+  const primary = variant !== 'secondary';
   const blocked = disabled || loading;
   return (
     <Pressable
@@ -25,7 +25,7 @@ export function Button({ label, onPress, variant = 'primary', disabled = false, 
       onPress={onPress}
       style={({ pressed }) => [
         styles.base,
-        primary ? styles.primary : styles.secondary,
+        primary ? (variant === 'danger' ? styles.danger : styles.primary) : styles.secondary,
         (pressed || blocked) && { opacity: disabled ? 0.4 : 0.85 },
       ]}>
       <View style={styles.row}>
@@ -51,6 +51,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
   },
   primary: { backgroundColor: colors.accent },
+  danger: { backgroundColor: colors.rec },
   secondary: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
   row: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   label: { fontFamily: fonts.bodyBold, fontSize: 17 },

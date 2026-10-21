@@ -24,7 +24,8 @@ export const repo = createRepo(kv, files, randomUUID);
 
 /** Deletes a saved clip's file and its cached thumbnail; files already gone are the goal. */
 export function removeFile(path: string): void {
-  for (const p of [path, thumbnailPath(path)]) {
+  // The last one is where thumbnails were kept before they were checked for being black.
+  for (const p of [path, thumbnailPath(path), path.replace(/\.[^./]+$/, '') + '.jpg']) {
     try {
       new File(`file://${p}`).delete();
     } catch {

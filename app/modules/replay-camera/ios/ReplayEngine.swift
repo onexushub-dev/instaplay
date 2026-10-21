@@ -71,7 +71,7 @@ final class ReplayEngine {
   }
 
   /// No-op when a session is already running.
-  func start(lens: String, maxQuality: String, bufferSeconds: Double = 60) throws {
+  func start(lens: String, zoom: Double? = nil, maxQuality: String, bufferSeconds: Double = 60) throws {
     guard !running else { return }
     guard AVCaptureDevice.authorizationStatus(for: .video) == .authorized else { throw Failure.permission }
     let free = (try? ReplayPaths.buffer.deletingLastPathComponent()
@@ -87,6 +87,7 @@ final class ReplayEngine {
     SegmentRing.purgeOrphans(dir: ReplayPaths.buffer, fileOps: fileOps)
 
     self.lens = lens
+    capture.wantedZoom = zoom // nil = no zoom (the lens decides); a thermal reconfiguration keeps whatever is set here
     let hot = ProcessInfo.processInfo.thermalState.rawValue >= ProcessInfo.ThermalState.serious.rawValue
     degraded = hot
     gesture.degraded = hot

@@ -1,4 +1,5 @@
 import type { ModeId, ModeSettings, Prefs } from '../data/schema';
+import { zoomFromLens } from './zoom';
 
 export type ModeGroup = 'quadra' | 'academia';
 export type Guide = 'court' | 'person' | 'none';
@@ -15,9 +16,9 @@ export type Mode = {
 const COURT: Omit<Mode, 'id' | 'label'> = {
   group: 'quadra',
   guide: 'court',
-  tip: 'Atrás da linha de fundo, na altura do ombro',
+  tip: '',
   defaults: {
-    lens: 'ultraWide',
+    zoom: 0.5,
     gestureEnabled: true,
     voiceEnabled: false,
     bufferSeconds: 60,
@@ -33,7 +34,7 @@ const GYM: Omit<Mode, 'id' | 'label'> = {
   guide: 'person',
   tip: 'No chão ou no tripé, a 2–3 m, de lado para o exercício',
   defaults: {
-    lens: 'wide',
+    zoom: 1,
     gestureEnabled: false,
     voiceEnabled: true,
     bufferSeconds: 120,
@@ -42,14 +43,15 @@ const GYM: Omit<Mode, 'id' | 'label'> = {
   },
 };
 
-/** The modes the app offers. A new mode is a new entry here (plus a guide drawing if it needs one). */
-export const MODES: Mode[] = [
-  { ...COURT, id: 'quadra', label: 'Quadra' },
-  { ...GYM, id: 'academia', label: 'Academia' },
-];
+/**
+ * The modes the app offers. For now there is one, with no drawing over the camera: the player frames the shot freely.
+ * A new mode is a new entry here (plus a guide drawing if it needs one).
+ */
+export const MODES: Mode[] = [{ ...COURT, id: 'quadra', label: 'Livre', guide: 'none' }];
 
-/** Sports offered before the two modes; games saved with them still need a label and settings. */
+/** Modes and sports offered before; games saved with them still need a label and settings. */
 const SAVED_SPORTS: Mode[] = [
+  { ...GYM, id: 'academia', label: 'Academia' },
   { ...COURT, id: 'beachTennis', label: 'Beach tennis' },
   { ...COURT, id: 'futevolei', label: 'Futevôlei' },
   { ...COURT, id: 'voleiPraia', label: 'Vôlei de praia' },
@@ -64,10 +66,9 @@ export function modeById(id: ModeId): Mode {
   return MODES.find((m) => m.id === id) ?? SAVED_SPORTS.find((m) => m.id === id) ?? MODES[0];
 }
 
-/** The offered mode a saved id belongs to: a sport from before the two modes maps to its group. */
-export function offeredMode(id: ModeId): ModeId {
-  const group = modeById(id).group;
-  return MODES.find((m) => m.group === group)!.id;
+/** The offered mode a saved id belongs to. With one mode on offer, everything saved before maps to it. */
+export function offeredMode(_id: ModeId): ModeId {
+  return MODES[0].id;
 }
 
 /**
@@ -79,9 +80,13 @@ export function effectiveSettings(mode: ModeId, prefs: Prefs): ModeSettings {
   const own = offeredMode(mode);
   const legacy: Partial<ModeSettings> =
     m.group === 'quadra'
-      ? { lens: prefs.lens, gestureEnabled: prefs.gestureEnabled, voiceEnabled: prefs.voiceEnabled }
+      ? { zoom: zoomFromLens(prefs.lens), gestureEnabled: prefs.gestureEnabled, voiceEnabled: prefs.voiceEnabled }
       : {};
-  return { ...m.defaults, ...legacy, ...prefs.modeSettings?.[own] };
+  const saved = prefs.modeSettings && prefs.modeSettings[own] ? prefs.modeSettings[own] : {};
+  const { lens: savedLens, ...rest } = saved;
+  // A zoom saved for the mode wins; a lens saved before zoom existed keeps its framing.
+  const savedZoom = rest.zoom !== undefined ? rest.zoom : savedLens !== undefined ? zoomFromLens(savedLens) : undefined;
+  return { ...m.defaults, ...legacy, ...rest, ...(savedZoom !== undefined ? { zoom: savedZoom } : {}) };
 }
 
 /** The prefs patch that records `patch` as the player's change for `mode` only. */

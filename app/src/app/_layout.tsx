@@ -51,6 +51,8 @@ export default function RootLayout() {
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.ground } }}>
         {/* Dragging the trim handles to the right would otherwise count as the swipe back. */}
         <Stack.Screen name="clip/[id]" options={{ gestureEnabled: false }} />
+        {/* Dispositivos: a sheet over the setup screen, closed by swiping down. */}
+        <Stack.Screen name="devices" options={{ presentation: 'modal' }} />
       </Stack>
     </SessionProvider>
   );

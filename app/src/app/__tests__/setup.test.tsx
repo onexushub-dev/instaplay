@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 
 import Setup from '../setup';
+import { clearRemotePress } from '../../devices/remoteTest';
 
 jest.mock('../../../modules/replay-camera', () => {
   const { useEffect } = jest.requireActual('react');
@@ -11,8 +12,10 @@ jest.mock('../../../modules/replay-camera', () => {
     isVoiceSupported: jest.fn(() => true),
     getSpeechPermission: jest.fn(() => 'granted'),
     getWatchStatus: jest.fn(() => 'unsupported'),
+    getZoomRange: jest.fn(() => ({ min: 0.5, max: 5, continuous: true })),
     isRemoteSupported: jest.fn(() => false),
     remoteControllerHost: jest.fn(() => null),
+    remoteControllerForget: jest.fn(),
     remoteHostStart: jest.fn(),
     remoteHostStop: jest.fn(),
     remoteHostControllers: jest.fn(() => 0),
@@ -76,6 +79,7 @@ function session(state: object) {
     prepare: jest.fn(async () => true),
     release: jest.fn(async () => {}),
     trigger: jest.fn(),
+    setZoom: jest.fn(),
     undoLast: jest.fn(),
     stop: jest.fn(async () => 's1'),
   };
@@ -91,8 +95,10 @@ async function openSettings() {
 beforeEach(() => {
   jest.clearAllMocks();
   jest.requireMock('../../data/mmkv').__reset();
+  clearRemotePress();
   const module = jest.requireMock('../../../modules/replay-camera');
   module.isRemoteSupported.mockReturnValue(false);
+  module.getZoomRange.mockReturnValue({ min: 0.5, max: 5, continuous: true });
   module.remoteHostPeers.mockReturnValue([]);
   module.remoteControllerHost.mockReturnValue(null);
 });
@@ -121,27 +127,137 @@ test('turns the camera on for the live preview', async () => {
   expect(s.prepare).toHaveBeenCalledWith('quadra'); // a pre-modes sport opens as Quadra
 });
 
-test('changing the lens reopens the camera with it', async () => {
+const zoomButton = (name: string) => screen.getByRole('button', { name });
+
+test('the zoom button shows only the current zoom, and the two lens buttons are gone', async () => {
+  session({});
+  await render(<Setup />);
+  expect(zoomButton('Zoom 0.5x')).toBeTruthy();
+  expect(screen.queryByRole('button', { name: '1x' })).toBeNull();
+  expect(screen.queryByRole('button', { name: '0.5x' })).toBeNull();
+});
+
+test('the zoom button shows the zoom saved for the mode', async () => {
+  repo.setPrefs({ modeSettings: { quadra: { zoom: 2 } } });
+  session({});
+  await render(<Setup />);
+  expect(zoomButton('Zoom 2x')).toBeTruthy();
+});
+
+test('a lens saved before zoom existed shows as its zoom', async () => {
+  repo.setPrefs({ modeSettings: { quadra: { lens: 'wide' } } });
+  session({});
+  await render(<Setup />);
+  expect(zoomButton('Zoom 1x')).toBeTruthy();
+});
+
+test('each tap goes to the next zoom: 0.5 → 1 → 2 → 5 → 0.5, zooming the camera and saving it for the mode', async () => {
   const s = session({});
   await render(<Setup />);
-  await fireEvent.press(screen.getByRole('button', { name: '1x' }));
-  expect(repo.setPrefs).toHaveBeenCalledWith({ modeSettings: { quadra: { lens: 'wide' } } });
-  expect(s.prepare).toHaveBeenCalledTimes(2); // reopened with the mode's new lens
-  await fireEvent.press(screen.getByRole('button', { name: '0.5x' }));
+  for (const [from, to] of [[0.5, 1], [1, 2], [2, 5], [5, 0.5]] as const) {
+    await fireEvent.press(zoomButton(`Zoom ${from}x`));
+    expect(s.setZoom).toHaveBeenLastCalledWith(to, true);
+    expect(repo.setPrefs).toHaveBeenLastCalledWith({ modeSettings: { quadra: { zoom: to } } });
+    expect(zoomButton(`Zoom ${to}x`)).toBeTruthy();
+  }
+});
+
+test('changing the zoom does not ask the session to reopen the camera when it stays on the same lens', async () => {
+  const s = session({});
+  await render(<Setup />);
+  await fireEvent.press(zoomButton('Zoom 0.5x')); // → 1x: crosses from ultra-wide to wide
+  s.prepare.mockClear();
+  await fireEvent.press(zoomButton('Zoom 1x')); // → 2x: same lens
+  expect(s.prepare).not.toHaveBeenCalled();
+});
+
+test('with two fixed lenses (Android) the button only goes 0.5 ↔ 1 and there is no pinch', async () => {
+  jest.requireMock('../../../modules/replay-camera').getZoomRange.mockReturnValue({ min: 0.5, max: 1, continuous: false });
+  const s = session({});
+  await render(<Setup />);
+  expect(screen.queryByTestId('zoom-pinch')).toBeNull();
+  await fireEvent.press(zoomButton('Zoom 0.5x'));
+  expect(s.setZoom).toHaveBeenLastCalledWith(1, true);
+  await fireEvent.press(zoomButton('Zoom 1x'));
+  expect(s.setZoom).toHaveBeenLastCalledWith(0.5, true);
+});
+
+describe('pinch on the preview', () => {
+  const two = (distance: number) => ({
+    nativeEvent: { touches: [{ pageX: 100, pageY: 300 }, { pageX: 100 + distance, pageY: 300 }] },
+  });
+  const one = { nativeEvent: { touches: [{ pageX: 100, pageY: 300 }] } };
+
+  test('two fingers moving apart zoom in live and the zoom is saved when they lift', async () => {
+    const s = session({});
+    await render(<Setup />);
+    const area = screen.getByTestId('zoom-pinch');
+    await fireEvent(area, 'responderGrant', two(100));
+    await fireEvent(area, 'responderMove', two(200)); // twice as far apart: 0.5x → 1x
+    expect(s.setZoom).toHaveBeenLastCalledWith(1, false);
+    expect(zoomButton('Zoom 1x')).toBeTruthy();
+    expect(repo.setPrefs).not.toHaveBeenCalledWith({ modeSettings: { quadra: { zoom: 1 } } }); // not saved mid-gesture
+    await fireEvent(area, 'responderMove', two(400)); // 4x as far apart: 2x
+    expect(s.setZoom).toHaveBeenLastCalledWith(2, false);
+    await fireEvent(area, 'responderRelease', one);
+    expect(repo.setPrefs).toHaveBeenLastCalledWith({ modeSettings: { quadra: { zoom: 2 } } });
+    expect(zoomButton('Zoom 2x')).toBeTruthy();
+  });
+
+  test('the pinch stays inside the camera range', async () => {
+    const s = session({});
+    await render(<Setup />);
+    const area = screen.getByTestId('zoom-pinch');
+    await fireEvent(area, 'responderGrant', two(100));
+    await fireEvent(area, 'responderMove', two(5000));
+    expect(s.setZoom).toHaveBeenLastCalledWith(5, false);
+    await fireEvent(area, 'responderMove', two(1));
+    expect(s.setZoom).toHaveBeenLastCalledWith(0.5, false);
+  });
+
+  test('a pinch only takes over when two fingers are down', async () => {
+    session({});
+    await render(<Setup />);
+    const area = screen.getByTestId('zoom-pinch');
+    expect(area.props.onMoveShouldSetResponder(two(100))).toBe(true);
+    expect(area.props.onMoveShouldSetResponder(one)).toBe(false);
+    expect(area.props.onStartShouldSetResponder).toBeUndefined();
+  });
+
+  test('a bubble shows the value while pinching and goes away shortly after the fingers lift', async () => {
+    jest.useFakeTimers();
+    session({});
+    await render(<Setup />);
+    expect(screen.queryByTestId('zoom-bubble')).toBeNull();
+    const area = screen.getByTestId('zoom-pinch');
+    await fireEvent(area, 'responderGrant', two(100));
+    await fireEvent(area, 'responderMove', two(300));
+    expect(screen.getByTestId('zoom-bubble')).toBeTruthy();
+    expect(screen.getByTestId('zoom-bubble')).toHaveTextContent('1.5x');
+    await fireEvent(area, 'responderRelease', one);
+    expect(screen.getByTestId('zoom-bubble')).toBeTruthy();
+    await act(async () => jest.advanceTimersByTime(900));
+    expect(screen.queryByTestId('zoom-bubble')).toBeNull();
+    jest.useRealTimers();
+  });
+
+  test('a second pinch starts from where the first one ended', async () => {
+    const s = session({});
+    await render(<Setup />);
+    const area = screen.getByTestId('zoom-pinch');
+    await fireEvent(area, 'responderGrant', two(100));
+    await fireEvent(area, 'responderMove', two(200));
+    await fireEvent(area, 'responderRelease', one);
+    await fireEvent(area, 'responderGrant', two(100));
+    await fireEvent(area, 'responderMove', two(200)); // 1x → 2x
+    expect(s.setZoom).toHaveBeenLastCalledWith(2, false);
+  });
 });
 
 test('shows that the camera is opening', async () => {
   session({ camera: 'starting' });
   await render(<Setup />);
   expect(screen.getByRole('button', { name: 'Abrindo a câmera…' })).toBeDisabled();
-});
-
-test('choosing a mode stores it in prefs', async () => {
-  session({});
-  await render(<Setup />);
-  await openSettings();
-  await fireEvent.press(screen.getByRole('button', { name: 'Academia' }));
-  expect(repo.setPrefs).toHaveBeenCalledWith({ sport: 'academia' });
 });
 
 test('the gesture tile toggles the gesture preference', async () => {
@@ -154,13 +270,11 @@ test('the gesture tile toggles the gesture preference', async () => {
   );
 });
 
-test('Começar a gravar starts with the chosen sport and shows the recording controls on the same screen', async () => {
+test('Começar a gravar starts the one mode and shows the recording controls on the same screen', async () => {
   const s = session({});
   const view = await render(<Setup />);
-  await openSettings();
-  await fireEvent.press(screen.getByRole('button', { name: 'Academia' }));
   await fireEvent.press(screen.getByRole('button', { name: 'Começar a gravar' }));
-  expect(s.start).toHaveBeenCalledWith('academia');
+  expect(s.start).toHaveBeenCalledWith('quadra');
 
   session({ phase: 'recording', sessionId: 's1', startedAt: Date.now() });
   await view.rerender(<Setup />);
@@ -257,36 +371,8 @@ test('Minhas gravações opens the game list, and is hidden during a game', asyn
   expect(screen.queryByRole('button', { name: 'Minhas gravações' })).toBeNull();
 });
 
-test('choosing Academia shows the gym tip and guide and reopens the camera for it', async () => {
-  const s = session({});
-  await render(<Setup />);
-  await openSettings();
-  await fireEvent.press(screen.getByRole('button', { name: 'Academia' }));
-  expect(repo.setPrefs).toHaveBeenCalledWith({ sport: 'academia' });
-  expect(s.prepare).toHaveBeenLastCalledWith('academia');
-  expect(screen.getByText('No chão ou no tripé, a 2–3 m, de lado para o exercício')).toBeTruthy();
-  expect(screen.getByTestId('guide-person', { includeHiddenElements: true })).toBeTruthy();
-});
-
-test('only two modes to pick: Quadra and Academia', async () => {
-  session({});
-  await render(<Setup />);
-  await openSettings();
-  expect(screen.getByRole('button', { name: 'Quadra' })).toBeTruthy();
-  expect(screen.queryByRole('button', { name: 'Futevôlei' })).toBeNull();
-  expect(screen.queryByRole('button', { name: 'Musculação' })).toBeNull();
-});
-
-test('the gesture tile reflects the mode default (off in gym)', async () => {
-  repo.setPrefs({ sport: 'academia' });
-  session({});
-  await render(<Setup />);
-  await openSettings();
-  expect(screen.getByLabelText('Acenar com os braços, Desligado')).toBeTruthy();
-});
-
-test('a gym mode without speech permission shows Toque para permitir', async () => {
-  repo.setPrefs({ sport: 'academia' });
+test('voice on without speech permission shows Toque para permitir', async () => {
+  repo.setPrefs({ modeSettings: { quadra: { voiceEnabled: true } } });
   jest.requireMock('../../../modules/replay-camera').getSpeechPermission.mockReturnValue('undetermined');
   session({});
   await render(<Setup />);
@@ -296,7 +382,7 @@ test('a gym mode without speech permission shows Toque para permitir', async () 
 });
 
 test('a denied speech permission shows the reason without a tap', async () => {
-  repo.setPrefs({ sport: 'academia' });
+  repo.setPrefs({ modeSettings: { quadra: { voiceEnabled: true } } });
   jest.requireMock('../../../modules/replay-camera').getSpeechPermission.mockReturnValue('denied');
   session({});
   await render(<Setup />);
@@ -305,22 +391,24 @@ test('a denied speech permission shows the reason without a tap', async () => {
   jest.requireMock('../../../modules/replay-camera').getSpeechPermission.mockReturnValue('granted');
 });
 
-test('opens collapsed: a summary of the mode and the start button, nothing else over the camera', async () => {
+test('opens collapsed: a summary and the start button, no modes to pick and nothing drawn over the camera', async () => {
   session({});
   await render(<Setup />);
-  expect(screen.getByRole('button', { name: /^Ajustes: Quadra/ })).toBeTruthy();
+  expect(screen.getByRole('button', { name: /^Ajustes: / })).toBeTruthy();
   expect(screen.getByRole('button', { name: 'Começar a gravar' })).toBeEnabled();
-  expect(screen.queryByRole('button', { name: 'Futevôlei' })).toBeNull();
-  expect(screen.queryByText('COMO SALVAR O CLIPE')).toBeNull();
+  expect(screen.queryByText('MODO')).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Academia' })).toBeNull();
+  expect(screen.queryByTestId('guide-person', { includeHiddenElements: true })).toBeNull();
+  expect(screen.queryByLabelText(/^Voz,/)).toBeNull();
 });
 
 test('the summary tells which triggers are on without opening', async () => {
-  repo.setPrefs({ sport: 'academia' });
+  repo.setPrefs({ modeSettings: { quadra: { voiceEnabled: true, gestureEnabled: false } } });
   session({});
   await render(<Setup />);
   expect(
     screen.getByRole('button', {
-      name: 'Ajustes: Academia · voz ligada, acenar com os braços desligado, controle não testado',
+      name: 'Ajustes: voz ligada, acenar com os braços desligado, controle não conectado',
     }),
   ).toBeTruthy();
 });
@@ -332,20 +420,7 @@ test('a remote press while collapsed shows the remote works', async () => {
   const onPress = useVolumeRemote.mock.calls.at(-1)[1];
   const { act } = jest.requireActual('@testing-library/react-native');
   await act(() => onPress());
-  expect(screen.getByRole('button', { name: /controle funcionando$/ })).toBeTruthy();
-});
-
-test('choosing a mode closes the settings; the handle closes them too', async () => {
-  session({});
-  await render(<Setup />);
-  await openSettings();
-  await fireEvent.press(screen.getByRole('button', { name: 'Academia' }));
-  expect(screen.queryByRole('button', { name: 'Quadra' })).toBeNull();
-  expect(screen.getByRole('button', { name: /^Ajustes: Academia/ })).toBeTruthy();
-
-  await openSettings();
-  await fireEvent.press(screen.getByRole('button', { name: 'Fechar ajustes' }));
-  expect(screen.queryByText('COMO SALVAR O CLIPE')).toBeNull();
+  expect(screen.getByRole('button', { name: /controle conectado$/ })).toBeTruthy();
 });
 
 test('the positioning guide fits the camera area above the sheet', async () => {
@@ -411,7 +486,7 @@ test('the Celular tile is hidden where the phone remote is not supported', async
   session({});
   await render(<Setup />);
   await openSettings();
-  expect(screen.queryByLabelText(/^Celular,/)).toBeNull();
+  expect(screen.queryByLabelText(/^Outro celular como controle,/)).toBeNull();
   expect(camera().remoteHostStart).not.toHaveBeenCalled();
 });
 
@@ -420,7 +495,7 @@ test('the Celular tile says that no remote is paired, and opens the pairing shee
   session({});
   await render(<Setup />);
   await openSettings();
-  await fireEvent.press(screen.getByRole('button', { name: 'Celular, Toque para conectar um controle' }));
+  await fireEvent.press(screen.getByRole('button', { name: 'Outro celular como controle, Toque para conectar' }));
   expect(router.push).toHaveBeenCalledWith('/pairing');
 });
 
@@ -429,10 +504,10 @@ test('the Celular tile names the paired remote, and says when it is connected', 
   session({});
   await render(<Setup />);
   await openSettings();
-  expect(screen.getByLabelText('Celular, Pareado: iPhone da Ana')).toBeTruthy();
+  expect(screen.getByLabelText('Outro celular como controle, Pareado: iPhone da Ana')).toBeTruthy();
   const listener = camera().addReplayListener.mock.calls.find((c: any[]) => c[0] === 'onRemoteStatus')[1];
   await act(async () => listener({ link: 'connected', controllers: 1 }));
-  expect(screen.getByLabelText('Celular, Conectado: iPhone da Ana')).toBeTruthy();
+  expect(screen.getByLabelText('Outro celular como controle, Conectado: iPhone da Ana')).toBeTruthy();
 });
 
 test('with several paired remotes the tile counts them', async () => {
@@ -443,7 +518,7 @@ test('with several paired remotes the tile counts them', async () => {
   session({});
   await render(<Setup />);
   await openSettings();
-  expect(screen.getByLabelText('Celular, 2 controles pareados')).toBeTruthy();
+  expect(screen.getByLabelText('Outro celular como controle, 2 controles pareados')).toBeTruthy();
 });
 
 test('the setup screen does not start or stop the host: it lives as long as the app is open (root layout)', async () => {
@@ -461,7 +536,7 @@ test('a remote that connected before this screen opened shows as connected, not 
   session({});
   await render(<Setup />);
   await openSettings();
-  expect(screen.getByLabelText('Celular, Conectado: iPhone da Ana')).toBeTruthy();
+  expect(screen.getByLabelText('Outro celular como controle, Conectado: iPhone da Ana')).toBeTruthy();
 });
 
 test('the entry to the remote is offered only where the phone remote is supported', async () => {
@@ -486,7 +561,49 @@ test('a phone already paired as a remote shows which camera phone it will connec
   camera().remoteControllerHost.mockReturnValue({ id: 'h1', name: 'iPhone XR#1234' });
   await render(<Setup />);
   await openSettings();
-  expect(screen.getByText('Controle de iPhone XR#1234')).toBeTruthy();
-  expect(screen.getByRole('button', { name: 'Conectar ao controle de iPhone XR#1234' })).toBeTruthy();
+  expect(screen.getByText('Controle: iPhone XR#1234')).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Abrir controle' })).toBeTruthy();
 });
 
+test('"Desconectar deste celular" asks first, then forgets the camera phone and goes back to the first state', async () => {
+  session({});
+  camera().isRemoteSupported.mockReturnValue(true);
+  camera().remoteControllerHost.mockReturnValue({ id: 'h1', name: 'iPhone XR#1234' });
+  const alert = jest.spyOn(require('react-native').Alert, 'alert').mockImplementation(() => {});
+  await render(<Setup />);
+  await openSettings();
+  await fireEvent.press(screen.getByRole('button', { name: 'Desconectar deste celular' }));
+  expect(camera().remoteControllerForget).not.toHaveBeenCalled();
+  const buttons = alert.mock.calls[0][2] as { text: string; onPress?: () => void }[];
+  await act(async () => buttons.find((b) => b.text === 'Esquecer')!.onPress!());
+  expect(camera().remoteControllerForget).toHaveBeenCalledTimes(1);
+  expect(screen.getByRole('button', { name: 'Usar este celular como controle' })).toBeTruthy();
+  alert.mockRestore();
+});
+
+test('the Bluetooth remote tile starts as "Toque para conectar" and opens the Dispositivos sheet on the remote', async () => {
+  session({});
+  await render(<Setup />);
+  await openSettings();
+  await fireEvent.press(screen.getByRole('button', { name: 'Controle Bluetooth, Toque para conectar' }));
+  expect(router.push).toHaveBeenCalledWith({ pathname: '/devices', params: { kind: 'remote' } });
+});
+
+test('the Bluetooth remote tile says "Pareado" when the remote was used before, and "Conectado" after a press', async () => {
+  repo.setPrefs({ remoteTestedAt: 123 });
+  session({});
+  await render(<Setup />);
+  await openSettings();
+  expect(screen.getByRole('button', { name: 'Controle Bluetooth, Pareado · aperte um botão' })).toBeTruthy();
+  const { useVolumeRemote } = jest.requireMock('../../triggers/useVolumeRemote');
+  await act(async () => useVolumeRemote.mock.calls.at(-1)[1]());
+  expect(screen.getByRole('button', { name: 'Controle Bluetooth, Conectado' })).toBeTruthy();
+});
+
+test('a press heard in the Dispositivos sheet shows on the tile when coming back', async () => {
+  session({});
+  await render(<Setup />);
+  await openSettings();
+  await act(async () => require('../../devices/remoteTest').markRemotePress());
+  expect(screen.getByRole('button', { name: 'Controle Bluetooth, Conectado' })).toBeTruthy();
+});

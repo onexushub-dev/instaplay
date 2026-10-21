@@ -1,14 +1,11 @@
-import { useEffect, useState } from "react";
-import { Image, Modal, StyleSheet, Text, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { useEffect, useState } from 'react';
+import { Image, Modal, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
-import {
-  addReplayListener,
-  remoteControllerPreview,
-} from "../../modules/replay-camera";
-import { colors, fonts } from "../theme/tokens";
-import { Button } from "./Button";
-import { PulseRing } from "./PulseRing";
+import { addReplayListener, remoteControllerPreview } from '../../modules/replay-camera';
+import { colors, fonts } from '../theme/tokens';
+import { Button } from './Button';
+import { PulseRing } from './PulseRing';
 
 /** The camera phone only keeps sending pictures for a few seconds after the last ask, so the ask is repeated. */
 const ASK_EVERY_MS = 1000;
@@ -23,9 +20,8 @@ export function RemotePreview({ visible, onClose }: Props) {
     <Modal
       animationType="fade"
       onRequestClose={onClose}
-      supportedOrientations={["portrait", "landscape"]}
-      visible={visible}
-    >
+      supportedOrientations={['portrait', 'landscape']}
+      visible={visible}>
       {visible ? <PreviewBody onClose={onClose} /> : null}
     </Modal>
   );
@@ -41,7 +37,7 @@ function PreviewBody({ onClose }: { onClose: () => void }) {
     remoteControllerPreview(true);
     const ask = setInterval(() => remoteControllerPreview(true), ASK_EVERY_MS);
     const clock = setInterval(() => setNow(Date.now()), 1000);
-    const sub = addReplayListener("onRemoteFrame", (e) => {
+    const sub = addReplayListener('onRemoteFrame', (e) => {
       setFrame(e.jpeg);
       setLastAt(Date.now());
       setNow(Date.now());
@@ -71,15 +67,10 @@ function PreviewBody({ onClose }: { onClose: () => void }) {
           <View style={styles.center}>
             <PulseRing color={colors.warning} size={64} />
             <Text style={styles.status}>
-              {frame === null
-                ? "Abrindo a imagem da câmera…"
-                : "Imagem parada. Reconectando…"}
+              {frame === null ? 'Abrindo a imagem da câmera…' : 'Imagem parada. Reconectando…'}
             </Text>
             {frame === null ? (
-              <Text style={styles.hint}>
-                O LANCE precisa estar aberto e com a câmera ligada no outro
-                celular.
-              </Text>
+              <Text style={styles.hint}>O LANCE precisa estar aberto e com a câmera ligada no outro celular.</Text>
             ) : null}
           </View>
         ) : null}
@@ -93,16 +84,16 @@ function PreviewBody({ onClose }: { onClose: () => void }) {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.ground },
-  picture: { flex: 1, backgroundColor: "#000" },
+  picture: { flex: 1, backgroundColor: '#000' },
   stale: { opacity: 0.35 },
   center: {
-    position: "absolute",
+    position: 'absolute',
     top: 0,
     bottom: 0,
     left: 0,
     right: 0,
-    alignItems: "center",
-    justifyContent: "center",
+    alignItems: 'center',
+    justifyContent: 'center',
     gap: 14,
     padding: 24,
   },
@@ -110,14 +101,14 @@ const styles = StyleSheet.create({
     fontFamily: fonts.bodySemi,
     fontSize: 20,
     color: colors.text,
-    textAlign: "center",
+    textAlign: 'center',
   },
   hint: {
     fontFamily: fonts.body,
     fontSize: 15,
     lineHeight: 21,
     color: colors.muted,
-    textAlign: "center",
+    textAlign: 'center',
   },
   bottom: { padding: 16 },
 });

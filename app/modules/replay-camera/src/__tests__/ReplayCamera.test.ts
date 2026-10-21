@@ -16,6 +16,8 @@ jest.mock('expo', () => {
 
 import {
   getWatchStatus,
+  getZoomRange,
+  setZoom,
   isRemoteSupported,
   remoteControllerHost,
   remoteControllerPairWithCode,
@@ -121,4 +123,21 @@ test('with the remote functions on native, the calls pass plain values through',
   } finally {
     Object.keys(remote).forEach((key) => delete mockNative[key]);
   }
+});
+
+test('without native zoom (Android, older builds) the range is the two fixed lenses and setZoom does nothing', () => {
+  expect(getZoomRange()).toEqual({ min: 0.5, max: 1, continuous: false });
+  expect(() => setZoom(2, true)).not.toThrow();
+});
+
+test('with native zoom the range and the zoom calls go to native', () => {
+  mockNative.getZoomRange = jest.fn(() => ({ min: 0.5, max: 5, continuous: true }));
+  mockNative.setZoom = jest.fn();
+  expect(getZoomRange()).toEqual({ min: 0.5, max: 5, continuous: true });
+  setZoom(2, true);
+  expect(mockNative.setZoom).toHaveBeenCalledWith(2, true);
+  setZoom(1.5);
+  expect(mockNative.setZoom).toHaveBeenLastCalledWith(1.5, false);
+  delete mockNative.getZoomRange;
+  delete mockNative.setZoom;
 });

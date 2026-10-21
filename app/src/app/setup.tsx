@@ -1,15 +1,17 @@
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { router, useIsFocused } from 'expo-router';
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Alert, PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
   addReplayListener,
   getSpeechPermission,
   getWatchStatus,
+  getZoomRange,
   isRemoteSupported,
   isVoiceSupported,
+  remoteControllerForget,
   remoteControllerHost,
   remoteHostPeers,
   remoteHostControllers,
@@ -17,18 +19,27 @@ import {
   requestSpeechPermission,
 } from '../../modules/replay-camera';
 import type { RemotePeer, ReplayErrorCode } from '../../modules/replay-camera/src/ReplayCamera.types';
+import { useCameraPinch } from '../camera/useCameraPinch';
 import { Button } from '../components/Button';
 import { Chip } from '../components/Chip';
 import { PositionGuide } from '../components/PositionGuide';
 import { RecordingPanel } from '../components/RecordingPanel';
 import { ArmsUpIcon, MicIcon, PhoneIcon, RemoteIcon, WatchIcon } from '../components/icons';
 import { TriggerTile } from '../components/TriggerTile';
+import { ZoomBubble } from '../components/ZoomBubble';
+import { ZoomButton } from '../components/ZoomButton';
 import { repo } from '../data/mmkv';
-import type { ModeId, ModeSettings, Prefs } from '../data/schema';
-import { effectiveSettings, MODES, modeById, offeredMode, withModeOverride } from '../modes/registry';
+import { remoteDeviceView } from '../devices/remoteDevice';
+import { useRemoteTest } from '../devices/useRemoteTest';
+import type { ModeSettings, Prefs } from '../data/schema';
+import { effectiveSettings, modeById, offeredMode, withModeOverride } from '../modes/registry';
+import { clampZoom, lensFor, nextZoomStep } from '../modes/zoom';
 import { useSession } from '../session/SessionContext';
 import { colors, fonts } from '../theme/tokens';
 import { useVolumeRemote } from '../triggers/useVolumeRemote';
+
+/** How long the zoom value stays over the preview after the last pinch move. */
+const BUBBLE_MS = 800;
 
 const START_ERRORS: Partial<Record<ReplayErrorCode, string>> = {
   LOW_STORAGE: 'Pouco espaço no celular. Libere pelo menos 500 MB para gravar.',
@@ -47,7 +58,44 @@ export default function Setup() {
   const modeId = offeredMode(prefs.sport);
   const settings = effectiveSettings(modeId, prefs);
   const updateMode = (patch: Partial<ModeSettings>) => update(withModeOverride(prefs, modeId, patch));
-  const [remoteWorks, setRemoteWorks] = useState(false);
+  // Zoom: the button goes through the stops, two fingers on the preview zoom freely. Saved per mode when the gesture ends;
+  // while pinching the live value is only shown (and sent to the camera), so the screen does not rewrite the prefs per frame.
+  const [zoomRange] = useState(() => getZoomRange());
+  const savedZoom = clampZoom(settings.zoom, zoomRange);
+  const [liveZoom, setLiveZoom] = useState<number | null>(null);
+  const zoom = liveZoom !== null ? liveZoom : savedZoom;
+  // With two fixed lenses (Android) crossing 1x means opening the other lens; with continuous zoom the session ignores it.
+  const lens = lensFor(savedZoom);
+  const [bubble, setBubble] = useState(false);
+  const bubbleTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const showBubble = () => {
+    setBubble(true);
+    if (bubbleTimer.current !== undefined) clearTimeout(bubbleTimer.current);
+    bubbleTimer.current = setTimeout(() => setBubble(false), BUBBLE_MS);
+  };
+  useEffect(() => () => clearTimeout(bubbleTimer.current), []);
+  const pinch = useCameraPinch({
+    zoom,
+    range: zoomRange,
+    onChange: (next) => {
+      setLiveZoom(next);
+      session.setZoom(next, false);
+      showBubble();
+    },
+    onCommit: (next) => {
+      setLiveZoom(null);
+      if (Math.abs(next - savedZoom) > 1e-6) updateMode({ zoom: next });
+    },
+  });
+  const cycleZoom = () => {
+    const next = nextZoomStep(zoom, zoomRange);
+    session.setZoom(next, true);
+    updateMode({ zoom: next });
+  };
+  // The Bluetooth remote: the app cannot see the iOS pairing, only presses (this launch, or heard before).
+  const remoteTest = useRemoteTest();
+  const remoteView = remoteDeviceView({ pressed: remoteTest.pressed, testedBefore: remoteTest.testedBefore, waitedLong: false });
+  const remoteWorks = remoteView.state === 'connected';
   // The sheet opens collapsed so the camera and its guide stay visible; mode and triggers sit behind the summary.
   const [expanded, setExpanded] = useState(false);
   const [sheetHeight, setSheetHeight] = useState(0);
@@ -76,11 +124,15 @@ export default function Setup() {
   // as long as the app is open (see the root layout); pairing happens on its own sheet (/pairing).
   const [remoteSupported] = useState(() => isRemoteSupported());
   const [remotePeers, setRemotePeers] = useState<RemotePeer[]>(() => (isRemoteSupported() ? remoteHostPeers() : []));
-  const [controlHost, setControlHost] = useState<RemotePeer | null>(() => (isRemoteSupported() ? remoteControllerHost() : null));
+  const [controlHost, setControlHost] = useState<RemotePeer | null>(() =>
+    isRemoteSupported() ? remoteControllerHost() : null,
+  );
   const [remoteLinked, setRemoteLinked] = useState(() => remoteHostControllers());
   useEffect(() => {
     if (!remoteSupported) return;
-    const sub = addReplayListener('onRemoteStatus', (e) => setRemoteLinked(e.controllers === undefined ? 0 : e.controllers));
+    const sub = addReplayListener('onRemoteStatus', (e) =>
+      setRemoteLinked(e.controllers === undefined ? 0 : e.controllers),
+    );
     return () => sub.remove();
   }, [remoteSupported]);
   useEffect(() => {
@@ -89,9 +141,27 @@ export default function Setup() {
     setControlHost(remoteControllerHost()); // it may have been paired or forgotten on the remote screen
     setRemoteLinked(remoteHostControllers()); // the status events of a remote that connected meanwhile were not heard
   }, [remoteSupported, focused]);
+  const disconnectControl = () => {
+    const name = controlHost === null ? '' : controlHost.name;
+    Alert.alert(
+      `Esquecer ${name}?`,
+      'Este celular deixa de ser o controle dessa câmera. Para usar de novo, é preciso parear outra vez.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Esquecer',
+          style: 'destructive',
+          onPress: () => {
+            remoteControllerForget();
+            setControlHost(null);
+          },
+        },
+      ],
+    );
+  };
   const remoteStatus =
     remotePeers.length === 0
-      ? 'Toque para conectar um controle'
+      ? 'Toque para conectar'
       : remoteLinked > 0
         ? remotePeers.length === 1
           ? `Conectado: ${remotePeers[0].name}`
@@ -119,14 +189,10 @@ export default function Setup() {
     if (granted) updateMode({ voiceEnabled: true });
   }
 
-  const chooseMode = (id: ModeId) => {
-    update({ sport: id });
-    setExpanded(false);
-  };
-  const summary = `Ajustes: ${mode.label} · ${[
+  const summary = `Ajustes: ${[
     `voz ${voiceOn ? 'ligada' : 'desligada'}`,
     `acenar com os braços ${settings.gestureEnabled ? 'ligado' : 'desligado'}`,
-    `controle ${remoteWorks ? 'funcionando' : 'não testado'}`,
+    `controle ${remoteView.state === 'connected' ? 'conectado' : remoteView.state === 'offline' ? 'pareado' : 'não conectado'}`,
     ...(watch === 'ready' ? ['relógio pronto'] : []),
   ].join(', ')}`;
 
@@ -137,7 +203,7 @@ export default function Setup() {
   useEffect(() => {
     if (focused) void prepare(modeId);
     else void release();
-  }, [focused, prepare, release, modeId, settings.lens]);
+  }, [focused, prepare, release, modeId, lens]);
 
   useEffect(() => {
     if (!focused) return;
@@ -146,7 +212,7 @@ export default function Setup() {
   }, [focused]);
 
   // A press of the Bluetooth remote here proves it is paired and reaching the app.
-  useVolumeRemote(focused && phase === 'idle', () => setRemoteWorks(true));
+  useVolumeRemote(focused && phase === 'idle', remoteTest.press);
 
   const opening = camera === 'starting';
   const starting = phase === 'starting' || opening;
@@ -169,6 +235,8 @@ export default function Setup() {
   function renderSetupControls() {
     return (
       <>
+        {zoomRange.continuous ? <View testID="zoom-pinch" style={StyleSheet.absoluteFill} {...pinch} /> : null}
+        {bubble ? <ZoomBubble value={zoom} bottom={sheetHeight + 16} /> : null}
         <View testID="guide-area" pointerEvents="none" style={[styles.guideArea, { bottom: sheetHeight }]}>
           <PositionGuide guide={mode.guide} />
         </View>
@@ -182,25 +250,13 @@ export default function Setup() {
               style={[styles.pill, styles.pillButton]}>
               <Text style={styles.pillText}>Minhas gravações</Text>
             </Pressable>
-            <View style={styles.lens}>
-              {(['ultraWide', 'wide'] as const).map((lens) => (
-                <Pressable
-                  key={lens}
-                  accessibilityRole="button"
-                  accessibilityLabel={lens === 'ultraWide' ? '0.5x' : '1x'}
-                  accessibilityState={{ selected: settings.lens === lens }}
-                  onPress={() => updateMode({ lens })}
-                  style={[styles.lensButton, settings.lens === lens && styles.lensOn]}>
-                  <Text style={[styles.lensText, settings.lens === lens && { color: colors.onAccent }]}>
-                    {lens === 'ultraWide' ? '0.5x' : '1x'}
-                  </Text>
-                </Pressable>
-              ))}
+            <ZoomButton value={zoom} onPress={cycleZoom} />
+          </View>
+          {mode.tip.length > 0 ? (
+            <View style={styles.tip}>
+              <Text style={styles.tipText}>{mode.tip}</Text>
             </View>
-          </View>
-          <View style={styles.tip}>
-            <Text style={styles.tipText}>{mode.tip}</Text>
-          </View>
+          ) : null}
         </SafeAreaView>
 
         <View testID="setup-sheet" style={styles.sheet} onLayout={(e) => setSheetHeight(e.nativeEvent.layout.height)}>
@@ -236,12 +292,15 @@ export default function Setup() {
         accessibilityLabel={summary}
         onPress={() => setExpanded(true)}
         style={styles.summary}>
-        <Text style={styles.summaryMode}>{mode.label} ▾</Text>
+        <View style={styles.summaryHead}>
+          <Text style={styles.section}>COMO SALVAR O CLIPE</Text>
+        </View>
         <View style={styles.summaryIcons}>
-          <MicIcon color={iconColor(voiceOn)} />
-          <ArmsUpIcon color={iconColor(settings.gestureEnabled)} size={20} />
-          <RemoteIcon color={iconColor(remoteWorks)} />
-          <WatchIcon color={iconColor(watch === 'ready')} />
+          <MicIcon color={iconColor(voiceOn)} size={32} />
+          <ArmsUpIcon color={iconColor(settings.gestureEnabled)} size={32} />
+          <RemoteIcon color={iconColor(remoteWorks)} size={32} />
+          <WatchIcon color={iconColor(watch === 'ready')} size={32} />
+          {remoteSupported ? <PhoneIcon color={iconColor(remoteLinked > 0)} size={32} /> : null}
         </View>
       </Pressable>
     );
@@ -250,16 +309,7 @@ export default function Setup() {
   function renderSettings() {
     return (
       <>
-        <View style={styles.modeHeader}>
-          <Text style={styles.section}>MODO</Text>
-          <View style={styles.chips}>
-            {MODES.map((m) => (
-              <Chip key={m.id} label={m.label} selected={modeId === m.id} onPress={() => chooseMode(m.id)} />
-            ))}
-          </View>
-        </View>
-
-        <Text style={styles.section}>COMO SALVAR O CLIPE</Text>
+        <Text style={styles.section}>GATILHOS</Text>
         <View style={styles.grid}>
           <View style={styles.gridRow}>
             <TriggerTile
@@ -281,9 +331,10 @@ export default function Setup() {
           <View style={styles.gridRow}>
             <TriggerTile
               icon={<RemoteIcon />}
-              title="Controle"
-              status={remoteWorks ? 'Funcionando' : 'Aperte para testar'}
+              title="Controle Bluetooth"
+              status={remoteView.statusText}
               active={remoteWorks}
+              onPress={() => router.push({ pathname: '/devices', params: { kind: 'remote' } })}
             />
             <TriggerTile
               icon={<WatchIcon />}
@@ -293,18 +344,44 @@ export default function Setup() {
               disabled={watch === 'unsupported'}
             />
           </View>
-          {remoteSupported ? (
-            <View style={styles.gridRow}>
-              <TriggerTile
-                icon={<PhoneIcon />}
-                title="Celular"
-                status={remoteStatus}
-                active={remoteLinked > 0}
-                onPress={() => router.push('/pairing')}
-              />
-            </View>
-          ) : null}
         </View>
+
+        {remoteSupported ? (
+          <>
+            <Text style={styles.section}>SEGUNDO CELULAR</Text>
+            <TriggerTile
+              icon={<PhoneIcon />}
+              title="Outro celular como controle"
+              status={remoteStatus}
+              active={remoteLinked > 0}
+              onPress={() => router.push('/pairing')}
+            />
+            <View style={styles.remoteRow}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={controlHost === null ? 'Usar este celular como controle' : 'Abrir controle'}
+                hitSlop={8}
+                onPress={() => router.push('/remote')}
+                style={styles.remoteMain}>
+                <RemoteIcon color={colors.accent} size={18} />
+                <Text numberOfLines={1} style={[styles.remoteMainText, controlHost === null && styles.remoteUnderline]}>
+                  {controlHost === null ? 'Usar este celular como controle' : `Controle: ${controlHost.name}`}
+                </Text>
+                {controlHost === null ? null : <Text style={styles.remoteAction}>Conectar</Text>}
+              </Pressable>
+              {controlHost !== null ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Desconectar deste celular"
+                  hitSlop={8}
+                  onPress={disconnectControl}
+                  style={styles.remoteLinkBox}>
+                  <Text style={styles.remoteLink}>Desconectar</Text>
+                </Pressable>
+              ) : null}
+            </View>
+          </>
+        ) : null}
 
         {speechDenied ? <Text style={styles.error}>Libere o reconhecimento de fala em Ajustes.</Text> : null}
 
@@ -323,24 +400,6 @@ export default function Setup() {
             />
           </View>
         </View>
-
-        {remoteSupported ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={controlHost === null ? 'Usar este celular como controle' : `Conectar ao controle de ${controlHost.name}`}
-            hitSlop={8}
-            onPress={() => router.push('/remote')}
-            style={styles.remoteEntry}>
-            {controlHost === null ? (
-              <Text style={styles.remoteEntryText}>Usar este celular como controle</Text>
-            ) : (
-              <>
-                <Text style={styles.remoteEntryName}>{`Controle de ${controlHost.name}`}</Text>
-                <Text style={styles.remoteEntryText}>Toque para conectar</Text>
-              </>
-            )}
-          </Pressable>
-        ) : null}
       </>
     );
   }
@@ -361,24 +420,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     borderRadius: 999,
   },
-  pillButton: { minHeight: 44, justifyContent: 'center' },
-  pillText: { fontFamily: fonts.bodySemi, fontSize: 14, color: colors.text },
-  lens: {
-    flexDirection: 'row',
-    backgroundColor: 'rgba(15,16,13,0.75)',
-    borderRadius: 999,
-    padding: 4,
-    gap: 2,
-  },
-  lensButton: {
-    minWidth: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
+  pillButton: {
+    minHeight: 48,
     justifyContent: 'center',
+    paddingHorizontal: 18,
+    backgroundColor: colors.accent,
   },
-  lensOn: { backgroundColor: colors.accent },
-  lensText: { fontFamily: fonts.bodyBold, fontSize: 13, color: colors.text },
+  pillText: {
+    fontFamily: fonts.bodyBold,
+    fontSize: 15,
+    color: colors.onAccent,
+  },
   tip: {
     alignSelf: 'flex-start',
     backgroundColor: 'rgba(15,16,13,0.8)',
@@ -405,10 +457,16 @@ const styles = StyleSheet.create({
     minHeight: 24,
     justifyContent: 'center',
   },
-  handle: { width: 40, height: 5, borderRadius: 3, backgroundColor: colors.muted },
-  summary: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 44 },
-  summaryMode: { fontFamily: fonts.bodyBold, fontSize: 18, color: colors.text },
-  summaryIcons: { flexDirection: 'row', alignItems: 'center', gap: 16 },
+  handle: {
+    width: 40,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: colors.muted,
+  },
+  summary: { gap: 8, minHeight: 44 },
+  summaryHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
+  summaryChevron: { fontSize: 12, color: colors.muted },
+  summaryIcons: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-evenly', minHeight: 48 },
   section: {
     fontFamily: fonts.bodyBold,
     fontSize: 12,
@@ -416,13 +474,41 @@ const styles = StyleSheet.create({
     color: colors.muted,
   },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  remoteEntry: { minHeight: 44, justifyContent: 'center', alignItems: 'center' },
-  remoteEntryName: { fontFamily: fonts.bodyBold, fontSize: 16, color: colors.text },
-  remoteEntryText: { fontFamily: fonts.bodySemi, fontSize: 14, color: colors.soft, textDecorationLine: 'underline' },
+  remoteRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    minHeight: 48,
+  },
+  remoteMain: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    minHeight: 48,
+  },
+  remoteMainText: {
+    flexShrink: 1,
+    fontFamily: fonts.bodySemi,
+    fontSize: 15,
+    color: colors.text,
+  },
+  remoteUnderline: { textDecorationLine: 'underline' },
+  remoteAction: {
+    fontFamily: fonts.bodyBold,
+    fontSize: 15,
+    color: colors.accent,
+  },
+  remoteLinkBox: { minHeight: 48, justifyContent: 'center' },
+  remoteLink: {
+    fontFamily: fonts.bodySemi,
+    fontSize: 14,
+    color: colors.soft,
+    textDecorationLine: 'underline',
+  },
   grid: { gap: 8 },
   gridRow: { flexDirection: 'row', gap: 8 },
   error: { fontFamily: fonts.bodySemi, fontSize: 14, color: colors.warning },
-  modeHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   feedbackRow: {
     flexDirection: 'row',
     alignItems: 'center',
