@@ -36,6 +36,8 @@ export const en = {
     watchReady: 'Ready',
     watchNotInstalled: 'Install the app on your watch',
     watchNone: 'No paired watch',
+    watchProBadge: 'Pro',
+    watchProOnly: 'Available with Pro',
     voiceUnavailable: 'Not available on this phone',
     off: 'Off',
     on: 'On',

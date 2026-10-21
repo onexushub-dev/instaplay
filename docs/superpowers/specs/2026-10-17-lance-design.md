@@ -64,6 +64,7 @@ Fluxo: **Boas-vindas → Posicionar câmera → Gravando → Lance salvo (repete
 
 ### 3.6 Relógio (watchOS e Wear OS)
 - Uma tela só: tempo + número de lances e um botão grande "Salvar lance".
+- O relógio como gatilho é dos planos pagos (Pro, ou jogo já pago com o Passe; na prática, só o Pro antes do jogo). No grátis o botão dá lugar a "Disponível no Pro" e o resto continua. Detalhes em `2026-10-20-payments-revenuecat-design.md`.
 - Vibração quando o lance é confirmado.
 
 ### 3.7 Fim de jogo
@@ -171,6 +172,7 @@ Preferências   { lente, duraçãoPadrão: 30, gestoAtivo, relógioPareado }
 | Selo/marca d'água | Sim | Não | Não |
 | Câmera lenta | Não | Sim | Sim |
 | Templates de Story | 1 | Todos | Todos |
+| Relógio como gatilho | Não | Só se o jogo já foi pago (na prática, não) | Sim |
 | Validade | — | O jogo em que foi comprado, para sempre | Mensal |
 
 - O Passe é uma compra avulsa pela loja, vinculada ao `sessãoId`. Ele continua valendo se o app reiniciar e pode ser comprado depois do jogo.

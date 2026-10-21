@@ -59,6 +59,8 @@ jest.mock('../../data/mmkv', () => {
   };
 });
 jest.mock('../../session/SessionContext', () => ({ useSession: jest.fn() }));
+jest.mock('../../share/entitlement', () => ({ useEntitlement: jest.fn(() => ({ tier: 'pro' })) }));
+jest.mock('../../payments/feedback', () => ({ openProPaywall: jest.fn(async () => {}) }));
 
 const { repo } = jest.requireMock('../../data/mmkv');
 const { useSession } = jest.requireMock('../../session/SessionContext');
@@ -101,6 +103,7 @@ beforeEach(() => {
   module.getZoomRange.mockReturnValue({ min: 0.5, max: 5, continuous: true });
   module.remoteHostPeers.mockReturnValue([]);
   module.remoteControllerHost.mockReturnValue(null);
+  jest.requireMock('../../share/entitlement').useEntitlement.mockReturnValue({ tier: 'pro' });
 });
 
 test('keeps the screen awake while the phone is being positioned', async () => {
@@ -466,6 +469,44 @@ test('the collapsed summary mentions a ready watch, and only then', async () => 
   await act(async () => listener({ status: 'ready' }));
   expect(screen.getByRole('button', { name: /relógio pronto$/ })).toBeTruthy();
   view.unmount();
+});
+
+// ---- The watch trigger is paid (Pro, or a game already paid with the Pass)
+
+function freeTier() {
+  jest.requireMock('../../share/entitlement').useEntitlement.mockReturnValue({ tier: 'free' });
+}
+
+test('on the free tier the Relógio tile shows a Pro badge and opens the Pro-only paywall', async () => {
+  freeTier();
+  camera().getWatchStatus.mockReturnValueOnce('ready');
+  session({});
+  await render(<Setup />);
+  await openSettings();
+  expect(screen.getByText('Pro')).toBeTruthy();
+  const tile = screen.getByRole('button', { name: 'Relógio, Pronto, Disponível no Pro' });
+  await fireEvent.press(tile);
+  const { openProPaywall } = jest.requireMock('../../payments/feedback');
+  expect(openProPaywall).toHaveBeenCalledTimes(1);
+  expect(openProPaywall.mock.calls[0][0]('setup.watchProOnly')).toBe('Disponível no Pro');
+});
+
+test('on the free tier a locked watch is not counted as ready in the summary', async () => {
+  freeTier();
+  camera().getWatchStatus.mockReturnValueOnce('ready');
+  session({});
+  await render(<Setup />);
+  expect(screen.getByRole('button', { name: /^Ajustes:/ }).props.accessibilityLabel).not.toMatch(/relógio/);
+});
+
+test('on Pro the Relógio tile has no badge and no paywall', async () => {
+  camera().getWatchStatus.mockReturnValueOnce('ready');
+  session({});
+  await render(<Setup />);
+  await openSettings();
+  expect(screen.queryByText('Pro')).toBeNull();
+  expect(screen.getByLabelText('Relógio, Pronto')).toBeTruthy();
+  expect(screen.queryByRole('button', { name: /^Relógio/ })).toBeNull();
 });
 
 test('without a watch the other triggers behave as before', async () => {

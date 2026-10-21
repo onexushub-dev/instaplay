@@ -28,9 +28,11 @@ Login e contas, backend e webhooks, pagamento web (Stripe), link externo, paywal
 | Exportação | 720p, com marca | 1080p 60fps, sem marca | 1080p 60fps, sem marca |
 | Câmera lenta | não | sim | sim |
 | Templates de Story | 1 | todos | todos |
+| Relógio como gatilho | não | só se a sessão já foi paga (na prática, não: o Passe é comprado depois do jogo) | sim |
 
 - **Plano de um jogo** = `pro` se o entitlement `pro` está ativo; senão `pass` se `session.passTransactionId` existe; senão `free`. Pro vale para todos os jogos; o Passe só para o jogo em que foi comprado.
 - **`Clip.locked`** é gravado no salvamento: `true` quando o plano do jogo é `free` e já existem 10 lances liberados nele. Um lance está *efetivamente bloqueado* quando `clip.locked && plano do jogo === 'free'`. Assim comprar o Passe ou assinar o Pro libera tudo sem atualizar lances um a um, e lances gravados no Pro continuam liberados se a assinatura acabar.
+- **Relógio como gatilho** (decisão de Marcus, 2026-10-21): disponível nos planos pagos, `watchTriggerAllowed(tier)` = `tier !== 'free'`. Na preparação ainda não há sessão, então vale o plano global: só o Pro libera antes do jogo. A trava é sobre *ligar* o gatilho, nunca sobre um toque durante a gravação: o celular avisa o relógio na hora em que a gravação começa e, até ela acabar, não tira a permissão (um Pro que vence no meio do jogo continua salvando pelo relógio); um toque do relógio que chega durante a gravação sempre vira lance. No grátis, o botão Salvar do relógio dá lugar a "Disponível no Pro" (tempo, contagem, Começar/Parar, câmera e widget continuam funcionando). Os outros gatilhos (voz, gesto, controle Bluetooth, celular controle, tela) continuam grátis. O relógio não entra nos benefícios do paywall compartilhado Passe + Pro.
 - Produtos: `pro_monthly` (assinatura, entitlement `pro`) e `single_pass` (consumível, vinculado à sessão — jogo ou treino — em que foi comprado; não gera entitlement, por isso o Passe é guardado na `Session`).
 
 ## Experiência
@@ -48,11 +50,11 @@ Login e contas, backend e webhooks, pagamento web (Stripe), link externo, paywal
 
 | Unidade | Função |
 |---|---|
-| `client.ts` | Interface `PaymentsClient`: `configure`, `getCustomerInfo`, `onCustomerInfo`, `restore`, `showPaywall`. |
+| `client.ts` | Interface `PaymentsClient`: `configure`, `getCustomerInfo`, `onCustomerInfo`, `restore`, `showPaywall(offering?)` (sem oferta, a `default`; com oferta, aquela, e erro se ela não existir). |
 | `revenuecatClient.ts` | Implementação real com `react-native-purchases` e `react-native-purchases-ui`. Único arquivo que importa o SDK. |
 | `fakeClient.ts` | Cliente falso para Jest e para desenvolvimento sem loja. |
 | `snapshot.ts` | Converte `customerInfo` em `Snapshot { proActive, passTransactions[{id, productId, purchasedAt}] }`. |
-| `rules.ts` | Funções puras: `tierFor(snapshot, session)`, `isClipLocked(clip, tier)`, `shouldLockOnSave(tier, unlockedCount)`, `detectPurchase(before, after)`. |
+| `rules.ts` | Funções puras: `tierFor(snapshot, session)`, `isClipLocked(clip, tier)`, `shouldLockOnSave(tier, unlockedCount)`, `detectPurchase(before, after)`, `watchTriggerAllowed(tier)`. |
 | `PaymentsProvider.tsx` | Configura o SDK uma vez, assina o listener, guarda o snapshot e expõe o cliente. |
 
 - `useEntitlement(sessionId?)` (continua em `src/share/entitlement.ts`) devolve `{ tier }` com `Tier = 'free' | 'pass' | 'pro'`. Sem `sessionId` só reconhece `pro`.
@@ -69,7 +71,8 @@ Login e contas, backend e webhooks, pagamento web (Stripe), link externo, paywal
 2. O paywall (oferta `default`: Passe pré-selecionado + Pro; "Agora não" fecha) faz a compra sozinho. O app não chama `purchasePackage`.
 3. Em `purchased`/`restored`, `detectPurchase(antes, depois)` compara os snapshots: `proActive` novo → Pro; transação nova em `passTransactions` → grava `passTransactionId` em `S`.
 4. O listener `onCustomerInfo` atualiza o snapshot; `tierFor` recalcula e a interface muda. Nada é liberado dentro do callback da compra.
-5. "Restaurar compras": no paywall e em Ajustes (obrigatório no iOS). Restaura o Pro. O Passe é por jogo local e já fica gravado no aparelho; não é restaurado em outro aparelho.
+5. **Paywall só do Pro** (relógio na preparação): o bloco do Relógio, travado com cadeado e selo "Pro", chama `payments.showProPaywall()`, que abre a oferta `pro_only` (só o pacote Pro). Não usa a `default`, porque o Passe não teria sessão a que se ligar. Oferta ausente ou erro: o aviso curto de sempre (`openProPaywall` em `feedback.ts`). A compra muda o plano pelo mesmo listener.
+6. "Restaurar compras": no paywall e em Ajustes (obrigatório no iOS). Restaura o Pro. O Passe é por jogo local e já fica gravado no aparelho; não é restaurado em outro aparelho.
 
 ## Erros e situações-limite
 
@@ -99,7 +102,7 @@ Login e contas, backend e webhooks, pagamento web (Stripe), link externo, paywal
 
 ## Passos fora do código (Marcus)
 1. App Store Connect e Play Console: contratos de apps pagos, dados bancários e fiscais; produtos `pro_monthly` (assinatura mensal) e `single_pass` (consumível).
-2. RevenueCat: projeto, apps iOS e Android, Test Store, entitlement `pro`, oferta `default` com os dois pacotes, paywall criado no builder e publicado.
+2. RevenueCat: projeto, apps iOS e Android, Test Store, entitlement `pro`, oferta `default` com os dois pacotes, oferta `pro_only` só com o pacote Pro (para o relógio), um paywall publicado no builder para cada oferta.
 3. Chaves públicas em `app/.env.local`.
 4. Build de desenvolvimento novo (módulos nativos): `react-native-purchases` e `react-native-purchases-ui` não rodam no Expo Go. Alvo atual do iOS: 16.4 (o paywall pede 15+). Confirmar no plano o `minSdkVersion` do Android (o paywall pede 24+).
 

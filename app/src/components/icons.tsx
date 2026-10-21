@@ -142,6 +142,16 @@ export function WatchIcon({ color = colors.text, size = 20 }: IconProps) {
   );
 }
 
+/** A padlock: a paid feature, opened by a purchase. */
+export function LockIcon({ color = colors.text, size = 12 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" accessibilityElementsHidden>
+      <Rect x={5} y={11} width={14} height={10} rx={2} {...stroke(color)} />
+      <Path d="M8 11V7a4 4 0 0 1 8 0v4" {...stroke(color)} />
+    </Svg>
+  );
+}
+
 export function TapIcon({ color = colors.text, size = 20 }: IconProps) {
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" accessibilityElementsHidden>

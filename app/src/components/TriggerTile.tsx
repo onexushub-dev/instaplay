@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { colors, fonts } from '../theme/tokens';
+import { LockIcon } from './icons';
 
 type Props = {
   icon: ReactNode;
@@ -10,11 +11,14 @@ type Props = {
   status?: string;
   active?: boolean;
   disabled?: boolean;
+  /** A paid trigger the player does not have: a lock and this badge ("Pro"), and `lockedHint` read out after the status. */
+  lockedBadge?: string;
+  lockedHint?: string;
   onPress?: () => void;
 };
 
 /** One way of saving a lance, with its live status (setup screen). */
-export function TriggerTile({ icon, title, status, active = false, disabled = false, onPress }: Props) {
+export function TriggerTile({ icon, title, status, active = false, disabled = false, lockedBadge, lockedHint, onPress }: Props) {
   const body = (
     <>
       {icon}
@@ -24,11 +28,18 @@ export function TriggerTile({ icon, title, status, active = false, disabled = fa
           <Text style={[styles.status, active && { color: colors.accent }]}>{status}</Text>
         )}
       </View>
+      {lockedBadge === undefined ? null : (
+        <View style={styles.badge}>
+          <LockIcon color={colors.onAccent} />
+          <Text style={styles.badgeText}>{lockedBadge}</Text>
+        </View>
+      )}
     </>
   );
+  const label = [title, status, lockedHint].filter((part) => part !== undefined).join(', ');
   if (!onPress) {
     return (
-      <View style={[styles.tile, disabled && styles.disabled]} accessible accessibilityLabel={status === undefined ? title : `${title}, ${status}`}>
+      <View style={[styles.tile, disabled && styles.disabled]} accessible accessibilityLabel={label}>
         {body}
       </View>
     );
@@ -36,7 +47,7 @@ export function TriggerTile({ icon, title, status, active = false, disabled = fa
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={status === undefined ? title : `${title}, ${status}`}
+      accessibilityLabel={label}
       accessibilityState={{ disabled }}
       disabled={disabled}
       onPress={onPress}
@@ -62,4 +73,14 @@ const styles = StyleSheet.create({
   text: { flex: 1 },
   title: { fontFamily: fonts.bodyBold, fontSize: 13, color: colors.text },
   status: { fontFamily: fonts.body, fontSize: 12, color: colors.muted },
+  badge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: colors.accent,
+    borderRadius: 999,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+  },
+  badgeText: { fontFamily: fonts.bodyBold, fontSize: 11, color: colors.onAccent },
 });

@@ -34,6 +34,8 @@ export const ptBR: Messages = {
     watchReady: 'Pronto',
     watchNotInstalled: 'Instale o app no relógio',
     watchNone: 'Sem relógio pareado',
+    watchProBadge: 'Pro',
+    watchProOnly: 'Disponível no Pro',
     voiceUnavailable: 'Indisponível neste celular',
     off: 'Desligado',
     on: 'Ativo',

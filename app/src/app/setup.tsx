@@ -30,6 +30,9 @@ import { TriggerTile } from '../components/TriggerTile';
 import { ZoomBubble } from '../components/ZoomBubble';
 import { ZoomButton } from '../components/ZoomButton';
 import { repo } from '../data/mmkv';
+import { openProPaywall } from '../payments/feedback';
+import { watchTriggerAllowed } from '../payments/rules';
+import { useEntitlement } from '../share/entitlement';
 import { type MessageKey, VOICE_WORDS, voiceLocale } from '../i18n';
 import { useT } from '../i18n/useT';
 import { remoteDeviceView } from '../devices/remoteDevice';
@@ -132,6 +135,11 @@ export default function Setup() {
   }, []);
   const watchStatus =
     watch === 'ready' ? t('setup.watchReady') : watch === 'notInstalled' ? t('setup.watchNotInstalled') : t('setup.watchNone');
+  // The watch trigger is paid. Before a game the tier is the global one, so in practice only Pro opens it; the lock
+  // opens the Pro-only paywall (here, outside any recording; there is no game yet to bind a Pass to).
+  const { tier } = useEntitlement();
+  const watchAllowed = watchTriggerAllowed(tier);
+  const watchOn = watchAllowed && watch === 'ready';
   // The phone remote (a second iPhone that taps Salvar for this one). The camera phone waits for its paired remotes for
   // as long as the app is open (see the root layout); pairing happens on its own sheet (/pairing).
   const [remoteSupported] = useState(() => isRemoteSupported());
@@ -200,7 +208,7 @@ export default function Setup() {
             ? 'setup.summaryRemotePaired'
             : 'setup.summaryRemoteNotConnected',
       ),
-      ...(watch === 'ready' ? [t('setup.summaryWatchReady')] : []),
+      ...(watchOn ? [t('setup.summaryWatchReady')] : []),
     ].join(', '),
   });
 
@@ -315,7 +323,7 @@ export default function Setup() {
           <MicIcon color={iconColor(voiceOn)} size={32} />
           <ArmsUpIcon color={iconColor(settings.gestureEnabled)} size={32} />
           <RemoteIcon color={iconColor(remoteWorks)} size={32} />
-          <WatchIcon color={iconColor(watch === 'ready')} size={32} />
+          <WatchIcon color={iconColor(watchOn)} size={32} />
           {remoteSupported ? <QrIcon color={iconColor(remoteLinked > 0)} size={32} /> : null}
         </View>
       </Pressable>
@@ -356,8 +364,11 @@ export default function Setup() {
               icon={<WatchIcon />}
               title={sourceLabel('watch', locale)}
               status={watchStatus}
-              active={watch === 'ready'}
-              disabled={watch === 'unsupported'}
+              active={watchOn}
+              disabled={watchAllowed && watch === 'unsupported'}
+              lockedBadge={watchAllowed ? undefined : t('setup.watchProBadge')}
+              lockedHint={watchAllowed ? undefined : t('setup.watchProOnly')}
+              onPress={watchAllowed ? undefined : () => void openProPaywall(t)}
             />
           </View>
         </View>
