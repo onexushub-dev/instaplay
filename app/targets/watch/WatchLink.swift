@@ -11,6 +11,8 @@ final class WatchLink: NSObject, ObservableObject, WCSessionDelegate {
   @Published private(set) var previewOn = false
   /// A short confirmation drawn over the screen when the phone says a save ended (true = saved).
   @Published private(set) var confirmation: Bool?
+  /// Whether the phone can be reached right now (Gravar and Parar need it).
+  @Published private(set) var reachable = false
 
   private var confirmationReset: DispatchWorkItem?
 
@@ -22,6 +24,8 @@ final class WatchLink: NSObject, ObservableObject, WCSessionDelegate {
   private var startedAtMs: Double?
   private var lastStateAt = Date.distantPast
   private var lastSaveAt: Double?
+  private var unreachableSince: Date?
+  private let keeper = WorkoutKeeper()
   private var aging: Timer?
 
   override init() {
@@ -45,6 +49,38 @@ final class WatchLink: NSObject, ObservableObject, WCSessionDelegate {
     guard session.isReachable else { return WKInterfaceDevice.current().play(.failure) }
     session.sendMessage(WatchMessage.save.payload, replyHandler: nil) { _ in
       WKInterfaceDevice.current().play(.failure)
+    }
+  }
+
+  /// Starts a new recording on the phone (which ignores it while one is running).
+  func sendStart() {
+    guard WatchModel.canStart(recording: recording, reachable: WCSession.default.isReachable) else {
+      return WKInterfaceDevice.current().play(.failure)
+    }
+    sendCommand(.start)
+  }
+
+  /// Ends the current recording on the phone. The UI asks for a press-and-hold first.
+  func sendStop() {
+    guard WatchModel.canStop(recording: recording, reachable: WCSession.default.isReachable) else {
+      return WKInterfaceDevice.current().play(.failure)
+    }
+    sendCommand(.stop)
+  }
+
+  private func sendCommand(_ message: WatchMessage) {
+    WKInterfaceDevice.current().play(.click)
+    WCSession.default.sendMessage(message.payload, replyHandler: nil) { _ in
+      WKInterfaceDevice.current().play(.failure)
+    }
+  }
+
+  /// Shows the last state the phone left at once (the app was suspended, not gone), instead of waiting for a message.
+  func showCachedState() {
+    guard WCSession.isSupported() else { return }
+    DispatchQueue.main.async {
+      self.refresh()
+      self.apply(WCSession.default.receivedApplicationContext, fresh: false)
     }
   }
 
@@ -75,14 +111,15 @@ final class WatchLink: NSObject, ObservableObject, WCSessionDelegate {
   }
 
   /// WatchConnectivity calls back off the main thread: hop first, so state, haptics and the banner share one thread.
-  private func apply(_ payload: [String: Any]) {
+  /// `fresh` is false for a cached context: it fills the screen, but does not pass for a heartbeat.
+  private func apply(_ payload: [String: Any], fresh: Bool = true) {
     DispatchQueue.main.async {
       switch WatchMessage.decode(payload) {
       case let .state(recording, clipCount, startedAt)?:
         self.recording = recording
         self.clipCount = clipCount
         self.startedAtMs = startedAt
-        self.lastStateAt = Date()
+        if fresh || self.lastStateAt == .distantPast { self.lastStateAt = Date() }
         self.refresh()
       case let .result(saved)?:
         // The confirmation comes from the phone, once the clip is really saved (or the save failed).
@@ -105,9 +142,14 @@ final class WatchLink: NSObject, ObservableObject, WCSessionDelegate {
   /// Main thread only.
   private func refresh() {
     let reachable = WCSession.default.isReachable
+    if self.reachable != reachable { self.reachable = reachable }
+    if reachable { unreachableSince = nil } else if unreachableSince == nil { unreachableSince = Date() }
+    let stateAge = Date().timeIntervalSince(lastStateAt)
     let next = WatchModel.screen(
       recording: recording, reachable: reachable, clipCount: clipCount, startedAtMs: startedAtMs,
-      stateAge: Date().timeIntervalSince(lastStateAt))
+      stateAge: stateAge, unreachableFor: unreachableSince.map { Date().timeIntervalSince($0) } ?? 0)
+    // The workout session lives exactly as long as a fresh recording: it always ends with it.
+    keeper.setActive(WatchModel.workoutWanted(recording: recording, stale: stateAge > WatchModel.staleAfter))
     if screen != next { screen = next }
     // Nothing to look at once the recording is over or the phone is gone.
     var recordingShown = false

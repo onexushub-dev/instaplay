@@ -1,5 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
-  <dict/>
+  <dict>
+    <key>NSHealthShareUsageDescription</key>
+    <string>O LANCE mantém o relógio ativo durante a gravação para você salvar clipes sem perder a conexão.</string>
+    <key>NSHealthUpdateUsageDescription</key>
+    <string>O LANCE mantém o relógio ativo durante a gravação para você salvar clipes sem perder a conexão.</string>
+    <key>UIBackgroundModes</key>
+    <array>
+      <string>workout-processing</string>
+    </array>
+  </dict>
 </plist>

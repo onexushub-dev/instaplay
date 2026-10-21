@@ -5,7 +5,10 @@ module.exports = {
   displayName: 'LANCE',
   bundleIdentifier: '.watch',
   deploymentTarget: '11.0',
-  frameworks: ['SwiftUI', 'WatchConnectivity'],
+  frameworks: ['SwiftUI', 'WatchConnectivity', 'HealthKit'],
+  entitlements: {
+    'com.apple.developer.healthkit': true,
+  },
   colors: {
     $accent: '#D6F23F',
   },

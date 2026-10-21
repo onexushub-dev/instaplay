@@ -11,41 +11,61 @@ struct ContentView: View {
     Group {
       switch link.screen {
       case .idle:
-        Message("Comece a gravar no iPhone")
+        idleView
       case .offline:
-        VStack(spacing: 8) {
+        VStack(spacing: 6) {
           Message("Sem conexão com o iPhone")
-          SaveButton(enabled: false, height: 80, action: link.sendSave)
+          BigButton(title: "Salvar", enabled: false, action: link.sendSave)
         }
       case let .recording(clipCount, startedAt):
         if link.previewOn {
           cameraView(clipCount: clipCount)
         } else {
-          VStack(spacing: 4) {
-            HStack(spacing: 8) {
-              CameraToggle(isOn: false) { link.setPreview(true) }
-              Spacer(minLength: 0)
-              VStack(alignment: .trailing, spacing: 0) {
-                if let startedAt {
-                  TimelineView(.periodic(from: .now, by: 1)) { context in
-                    Text(WatchModel.elapsed(since: startedAt, now: context.date)).monospacedDigit()
-                  }
-                }
-                Text(WatchModel.countLabel(clipCount)).foregroundStyle(accent)
-              }
-              .font(.system(.footnote, design: .rounded).weight(.bold))
-            }
-            SaveButton(enabled: true, action: link.sendSave)
-          }
+          recordingView(clipCount: clipCount, startedAt: startedAt)
         }
       }
     }
-    .padding(.horizontal, link.previewOn ? 0 : 6)
+    // The content runs to the bottom edge; the top stays clear of the clock.
+    .padding(.horizontal, link.previewOn ? 0 : 4)
+    .padding(.bottom, link.previewOn ? 0 : 2)
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+    .ignoresSafeArea(edges: .bottom)
     .background(ground)
     .overlay { if let saved = link.confirmation { Confirmation(saved: saved) } }
     .animation(.easeOut(duration: 0.15), value: link.confirmation)
     // A watch screen that sleeps or an app that leaves the front stops asking for pictures.
-    .onChange(of: scenePhase) { _, phase in if phase != .active { link.setPreview(false) } }
+    .onChange(of: scenePhase) { _, phase in
+      if phase != .active { link.setPreview(false) } else { link.showCachedState() }
+    }
+  }
+
+  /// Nothing is recording: one big Gravar button, or the reason it cannot work.
+  private var idleView: some View {
+    VStack(spacing: 6) {
+      if !link.reachable { Message("Sem conexão com o iPhone") }
+      BigButton(title: "Gravar", enabled: link.reachable, action: link.sendStart)
+    }
+  }
+
+  /// Top to bottom: time and count, the two small controls, then Salvar filling everything that is left.
+  private func recordingView(clipCount: Int, startedAt: Date?) -> some View {
+    VStack(spacing: 6) {
+      HStack(spacing: 8) {
+        if let startedAt {
+          TimelineView(.periodic(from: .now, by: 1)) { context in
+            Text(WatchModel.elapsed(since: startedAt, now: context.date)).monospacedDigit()
+          }
+        }
+        Text(WatchModel.countLabel(clipCount)).foregroundStyle(accent)
+        Spacer(minLength: 0)
+      }
+      .font(.system(.footnote, design: .rounded).weight(.bold))
+      HStack(spacing: 6) {
+        CameraToggle(isOn: false) { link.setPreview(true) }
+        StopButton(action: link.sendStop)
+      }
+      BigButton(title: "Salvar", enabled: true, action: link.sendSave)
+    }
   }
 
   /// The camera fills the screen and there is no Salvar button: a tap anywhere saves. Only the corner
@@ -106,7 +126,8 @@ private struct CameraToggle: View {
     Button(action: action) {
       Image(systemName: isOn ? "xmark" : "camera")
         .font(.system(size: 20, weight: .semibold))
-        .frame(width: 56, height: 44)
+        .frame(width: isOn ? 56 : nil, height: 44)
+        .frame(maxWidth: isOn ? nil : .infinity)
         .background(isOn ? Color.black.opacity(0.6) : Color.white.opacity(0.2), in: Capsule())
         .foregroundStyle(.white)
     }
@@ -124,16 +145,16 @@ private struct Message: View {
   }
 }
 
-/// Fills the width and most of the height: easy to hit without looking, mid-play.
-private struct SaveButton: View {
+/// Takes all the width and all the height left: easy to hit without looking, mid-play.
+private struct BigButton: View {
+  let title: String
   let enabled: Bool
-  var height: CGFloat = 80
   let action: () -> Void
   var body: some View {
     Button(action: action) {
-      Text("Salvar")
-        .font(.system(.title3, design: .rounded).weight(.heavy))
-        .frame(maxWidth: .infinity, minHeight: height)
+      Text(title)
+        .font(.system(.title2, design: .rounded).weight(.heavy))
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
     .buttonStyle(.borderedProminent)
     .tint(accent)
@@ -142,29 +163,56 @@ private struct SaveButton: View {
   }
 }
 
+/// Ends the game only on a press-and-hold, so a mis-tap mid-play cannot; a short tap says how.
+private struct StopButton: View {
+  let action: () -> Void
+  @State private var pressing = false
+  @State private var hint = false
+  var body: some View {
+    Text(hint ? "Segure" : "Parar")
+      .font(.system(.footnote, design: .rounded).weight(.bold))
+      .frame(maxWidth: .infinity, minHeight: 44)
+      .background(pressing ? Color.red : Color.red.opacity(0.35), in: Capsule())
+      .foregroundStyle(.white)
+      .scaleEffect(pressing ? 0.96 : 1)
+      .animation(.easeOut(duration: 0.15), value: pressing)
+      .onLongPressGesture(minimumDuration: 1, maximumDistance: 30, perform: action) { pressing = $0 }
+      .onTapGesture {
+        hint = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { hint = false }
+      }
+      .accessibilityLabel("Parar a gravação")
+      .accessibilityHint("Segure para parar")
+  }
+}
+
 #Preview("Gravando") {
   VStack(spacing: 6) {
     HStack {
       Text("12:34").monospacedDigit()
-      Spacer()
       Text("3 clipes").foregroundStyle(accent)
+      Spacer()
     }
     .font(.system(.footnote, design: .rounded).weight(.bold))
-    SaveButton(enabled: true, action: {})
+    HStack(spacing: 6) {
+      CameraToggle(isOn: false) {}
+      StopButton {}
+    }
+    BigButton(title: "Salvar", enabled: true, action: {})
   }
-  .padding(6)
+  .padding(4)
   .background(ground)
 }
 
 #Preview("Sem conexão") {
-  VStack(spacing: 8) {
+  VStack(spacing: 6) {
     Message("Sem conexão com o iPhone")
-    SaveButton(enabled: false, action: {})
+    BigButton(title: "Gravar", enabled: false, action: {})
   }
-  .padding(6)
+  .padding(4)
   .background(ground)
 }
 
 #Preview("Parado") {
-  Message("Comece a gravar no iPhone").padding(6).background(ground)
+  BigButton(title: "Gravar", enabled: true, action: {}).padding(4).background(ground)
 }
