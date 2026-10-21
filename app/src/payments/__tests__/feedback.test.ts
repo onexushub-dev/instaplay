@@ -1,13 +1,14 @@
 import { Alert } from 'react-native';
 
 import { translate } from '../../i18n';
-import { openPaywall, restorePurchases } from '../feedback';
+import { openPaywall, openProPaywall, restorePurchases } from '../feedback';
 import { payments } from '..';
 
-jest.mock('..', () => ({ payments: { showPaywall: jest.fn(), restore: jest.fn() } }));
+jest.mock('..', () => ({ payments: { showPaywall: jest.fn(), showProPaywall: jest.fn(), restore: jest.fn() } }));
 
 const t = (key: Parameters<typeof translate>[1], params?: Parameters<typeof translate>[2]) => translate('en', key, params);
 const showPaywall = payments.showPaywall as jest.Mock;
+const showProPaywall = payments.showProPaywall as jest.Mock;
 const restore = payments.restore as jest.Mock;
 
 beforeEach(() => {
@@ -25,6 +26,20 @@ describe('openPaywall', () => {
   it.each(['cancelled', 'purchased', 'restored'])('stays silent on %s', async (outcome) => {
     showPaywall.mockResolvedValue(outcome);
     await openPaywall('s1', t);
+    expect(Alert.alert).not.toHaveBeenCalled();
+  });
+});
+
+describe('openProPaywall', () => {
+  it('tells the user when the Pro paywall fails (missing offering included)', async () => {
+    showProPaywall.mockResolvedValue('error');
+    await openProPaywall(t);
+    expect(showProPaywall).toHaveBeenCalledWith();
+    expect(Alert.alert).toHaveBeenCalledWith(t('payments.paywallError'));
+  });
+  it.each(['cancelled', 'purchased', 'restored'])('stays silent on %s', async (outcome) => {
+    showProPaywall.mockResolvedValue(outcome);
+    await openProPaywall(t);
     expect(Alert.alert).not.toHaveBeenCalled();
   });
 });

@@ -104,6 +104,28 @@ describe('createRevenueCatClient', () => {
     expect(await c.showPaywall()).toBe('error');
   });
 
+  it('shows a named offering, loaded from the SDK, with a close button', async () => {
+    setKeys({ test: 'test_x' });
+    const c = createRevenueCatClient();
+    c.configure();
+    const proOnly = { identifier: 'pro_only' };
+    (Purchases.getOfferings as jest.Mock).mockResolvedValueOnce({ current: null, all: { pro_only: proOnly } });
+    (RevenueCatUI.presentPaywall as jest.Mock).mockResolvedValueOnce('PURCHASED');
+    expect(await c.showPaywall('pro_only')).toBe('purchased');
+    expect(RevenueCatUI.presentPaywall).toHaveBeenCalledWith({ offering: proOnly, displayCloseButton: true });
+  });
+
+  it('a missing or failing named offering is an error, and no paywall opens', async () => {
+    setKeys({ test: 'test_x' });
+    const c = createRevenueCatClient();
+    c.configure();
+    (Purchases.getOfferings as jest.Mock).mockResolvedValueOnce({ current: null, all: {} });
+    expect(await c.showPaywall('pro_only')).toBe('error');
+    (Purchases.getOfferings as jest.Mock).mockRejectedValueOnce(new Error('offline'));
+    expect(await c.showPaywall('pro_only')).toBe('error');
+    expect(RevenueCatUI.presentPaywall).not.toHaveBeenCalled();
+  });
+
   it('removes the exact listener it added', () => {
     setKeys({ test: 'test_x' });
     const c = createRevenueCatClient();

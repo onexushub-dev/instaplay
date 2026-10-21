@@ -55,10 +55,13 @@ export function createRevenueCatClient(): PaymentsClient {
       return () => void Purchases.removeCustomerInfoUpdateListener(listener);
     },
 
-    async showPaywall() {
+    async showPaywall(offeringId) {
       if (!configured) return 'error';
       try {
-        return outcomeFor(await RevenueCatUI.presentPaywall({ displayCloseButton: true }));
+        if (offeringId === undefined) return outcomeFor(await RevenueCatUI.presentPaywall({ displayCloseButton: true }));
+        const offering = (await Purchases.getOfferings()).all[offeringId];
+        if (!offering) return 'error'; // never fall back to the default offering: it may sell what does not apply here
+        return outcomeFor(await RevenueCatUI.presentPaywall({ offering, displayCloseButton: true }));
       } catch {
         return 'error';
       }

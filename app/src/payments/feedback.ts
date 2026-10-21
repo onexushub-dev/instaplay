@@ -9,6 +9,12 @@ export async function openPaywall(sessionId: string, t: TFunction): Promise<void
   if (outcome === 'error') Alert.alert(t('payments.paywallError'));
 }
 
+/** Opens the Pro-only paywall (no game to bind a Pass to); a failure, a missing offering included, gets the same notice. */
+export async function openProPaywall(t: TFunction): Promise<void> {
+  const outcome = await payments.showProPaywall();
+  if (outcome === 'error') Alert.alert(t('payments.paywallError'));
+}
+
 /** Restores purchases and says what happened. */
 export async function restorePurchases(t: TFunction): Promise<void> {
   const restored = await payments.restore();

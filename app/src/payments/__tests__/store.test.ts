@@ -322,4 +322,46 @@ describe('payments store', () => {
     client.emit(snap({ passTransactions: [tx('tx-1'), tx('tx-2', 2), tx('tx-3', 3)] }));
     expect(repo.setSessionPass.mock.calls).toEqual([['s2', 'tx-2']]);
   });
+
+  describe('showProPaywall', () => {
+    it('opens the Pro-only offering, never the default one', async () => {
+      const { client, store } = await setup();
+      const spy = jest.spyOn(client, 'showPaywall');
+      await expect(store.showProPaywall()).resolves.toBe('cancelled');
+      expect(spy).toHaveBeenCalledWith('pro_only');
+    });
+
+    it('a Pro purchase updates the global tier and binds no pass', async () => {
+      const { client, repo, store } = await setup();
+      client.nextOutcome = 'purchased';
+      client.snapshot = snap({ proActive: true });
+      await expect(store.showProPaywall()).resolves.toBe('purchased');
+      expect(store.tierFor()).toBe('pro');
+      expect(repo.setSessionPass).not.toHaveBeenCalled();
+    });
+
+    it('the listener alone also turns the tier to Pro', async () => {
+      const { client, store } = await setup();
+      client.emit(snap({ proActive: true }));
+      expect(store.tierFor()).toBe('pro');
+    });
+
+    it('a throwing paywall maps to error and releases the guard', async () => {
+      const { client, store } = await setup();
+      client.failPaywall = true;
+      await expect(store.showProPaywall()).resolves.toBe('error');
+      client.failPaywall = false;
+      await expect(store.showProPaywall()).resolves.toBe('cancelled');
+    });
+
+    it('does not open over another paywall', async () => {
+      const { client, store } = await setup();
+      let release!: () => void;
+      client.paywallGate = new Promise<void>((r) => (release = r));
+      const first = store.showPaywall('s1');
+      await expect(store.showProPaywall()).resolves.toBe('cancelled');
+      release();
+      await first;
+    });
+  });
 });

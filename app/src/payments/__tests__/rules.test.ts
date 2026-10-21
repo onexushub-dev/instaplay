@@ -1,4 +1,4 @@
-import { detectPurchase, isClipLocked, shouldLockOnSave, tierFor } from '../rules';
+import { detectPurchase, isClipLocked, shouldLockOnSave, tierFor, watchTriggerAllowed } from '../rules';
 import { EMPTY_SNAPSHOT, type PassTransaction, type Snapshot } from '../types';
 
 const tx = (id: string, purchasedAt: number): PassTransaction => ({ id, productId: 'single_pass', purchasedAt });
@@ -37,4 +37,10 @@ test('detectPurchase', () => {
   expect('passTransactionId' in same).toBe(false);
   expect(detectPurchase(snap(true), snap(true)).pro).toBe(false);
   expect(detectPurchase(EMPTY_SNAPSHOT, snap(false, [tx('X', 5), tx('Y', 9), tx('Z', 7)])).passTransactionId).toBe('Y');
+});
+
+test('watchTriggerAllowed: the watch saves clips on a paid tier only', () => {
+  expect(watchTriggerAllowed('pro')).toBe(true);
+  expect(watchTriggerAllowed('pass')).toBe(true);
+  expect(watchTriggerAllowed('free')).toBe(false);
 });

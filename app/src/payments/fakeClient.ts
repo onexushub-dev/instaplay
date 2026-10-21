@@ -20,7 +20,7 @@ export function createFakeClient() {
       listeners.add(fn);
       return () => void listeners.delete(fn);
     },
-    async showPaywall(): Promise<PaywallOutcome> {
+    async showPaywall(_offering?: string): Promise<PaywallOutcome> {
       if (fake.failPaywall) throw new Error('paywall crashed');
       if (fake.paywallGate) await fake.paywallGate;
       return fake.nextOutcome;

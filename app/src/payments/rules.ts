@@ -14,6 +14,11 @@ export function shouldLockOnSave(tier: Tier, unlockedCount: number): boolean {
   return tier === 'free' && unlockedCount >= FREE_CLIPS;
 }
 
+/** The watch as a save trigger is paid (Pro, or a game already paid with the Pass). Gates turning it on, never a tap mid-game. */
+export function watchTriggerAllowed(tier: Tier): boolean {
+  return tier !== 'free';
+}
+
 export function detectPurchase(before: Snapshot, after: Snapshot): { pro: boolean; passTransactionId?: string } {
   const pro = !before.proActive && after.proActive;
   const known = new Set(before.passTransactions.map((t) => t.id));

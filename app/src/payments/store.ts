@@ -1,7 +1,7 @@
 import type { Repo } from '../data/repo';
 import type { PaymentsClient, PaywallOutcome } from './client';
 import { detectPurchase, tierFor as ruleTier } from './rules';
-import { EMPTY_SNAPSHOT, type Snapshot, type Tier } from './types';
+import { EMPTY_SNAPSHOT, PRO_ONLY_OFFERING, type Snapshot, type Tier } from './types';
 
 type Pending = { sessionId: string; before: Snapshot };
 
@@ -117,6 +117,30 @@ export function createPaymentsStore(client: PaymentsClient, repo: Pick<Repo, 'ge
             resolvePending(current);
           }
           notify();
+        }
+        return outcome;
+      } finally {
+        open = false;
+      }
+    },
+
+    /**
+     * Pro only (the `pro_only` offering), for a feature with no game yet to bind a Pass to (the watch trigger, at setup).
+     * A purchase reaches the tier through the customerInfo listener; a fresh read here covers SDK lag.
+     */
+    async showProPaywall(): Promise<PaywallOutcome> {
+      if (open) return 'cancelled';
+      open = true;
+      try {
+        let outcome: PaywallOutcome;
+        try {
+          outcome = await client.showPaywall(PRO_ONLY_OFFERING);
+        } catch {
+          return 'error';
+        }
+        if (outcome === 'purchased' || outcome === 'restored') {
+          const after = await read(() => client.getSnapshot());
+          if (after) apply(after);
         }
         return outcome;
       } finally {
