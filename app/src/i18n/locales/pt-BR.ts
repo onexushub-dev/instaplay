@@ -107,11 +107,18 @@ export const ptBR: Messages = {
     newRecording: 'Nova gravação',
     postClip: 'Postar um clipe',
     clipA11y: 'Clipe %{number}%{name}, %{duration}, %{source}',
+    lockedClips: { one: '%{count} clipe bloqueado', other: '%{count} clipes bloqueados' },
+    lockedNote: 'Guardados, mas bloqueados. Libere com o Passe do Jogo ou o Pro.',
+    unlock: 'Liberar clipes',
+    lockedTag: 'BLOQUEADO',
+    lockedA11y: '%{label}, bloqueado',
   },
   games: {
     title: 'MINHAS GRAVAÇÕES',
     empty: 'Nenhuma gravação com clipes ainda.',
     detail: '%{clips} · %{time}',
+    lockedDetail: '%{detail} · %{count} bloqueados',
+    restore: 'Restaurar compras',
   },
   pairing: {
     roleCamera: 'ESTE IPHONE É A CÂMERA',

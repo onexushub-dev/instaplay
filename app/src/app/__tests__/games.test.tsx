@@ -5,16 +5,24 @@ import Games from '../games';
 
 jest.mock('expo-router', () => ({ router: { push: jest.fn(), back: jest.fn() } }));
 jest.mock('../../components/useClipThumbnail', () => ({ useClipThumbnail: () => undefined }));
+jest.mock('../../payments', () => ({
+  payments: { subscribe: () => () => {}, version: () => 0, tierFor: jest.fn(() => 'free'), restore: jest.fn() },
+}));
 jest.mock('../../data/mmkv', () => ({
-  repo: { listSessions: jest.fn(), sessionStats: jest.fn(), subscribe: () => () => {}, version: () => 0 },
+  repo: { lockedCount: jest.fn(() => 0), listSessions: jest.fn(), sessionStats: jest.fn(), subscribe: () => () => {}, version: () => 0 },
 }));
 
 const { repo } = jest.requireMock('../../data/mmkv');
+const { payments } = jest.requireMock('../../payments');
 const { router } = jest.requireMock('expo-router');
 
 const clip = { id: 'c1', sessionId: 's1', createdAt: 1, source: 'screen', path: '/c1.mp4', durationMs: 1, trim: { startMs: 0, endMs: 1 } };
 
-beforeEach(() => jest.clearAllMocks());
+beforeEach(() => {
+  jest.clearAllMocks();
+  payments.tierFor.mockReturnValue('free');
+  repo.lockedCount.mockReturnValue(0);
+});
 
 test('lists games with their label and clipe count', async () => {
   repo.listSessions.mockReturnValue([
@@ -54,4 +62,31 @@ test('an English phone sees the list in English', async () => {
   } finally {
     setLocale('pt-BR');
   }
+});
+
+const oneGame = () => {
+  repo.listSessions.mockReturnValue([{ session: { id: 's1', sport: 'outro', startedAt: 0 }, clips: 7, firstClip: clip }]);
+  repo.sessionStats.mockReturnValue({ clips: 7, bytes: 1, recordedMs: 60_000 });
+};
+
+test('a free game shows how many clipes are locked', async () => {
+  oneGame();
+  repo.lockedCount.mockReturnValue(2);
+  await render(<Games />);
+  expect(screen.getByText(/ · 2 bloqueados$/)).toBeTruthy();
+});
+
+test('a pass game does not show locked clipes', async () => {
+  oneGame();
+  repo.lockedCount.mockReturnValue(2);
+  payments.tierFor.mockReturnValue('pass');
+  await render(<Games />);
+  expect(screen.queryByText(/bloqueados/)).toBeNull();
+});
+
+test('Restaurar compras restores purchases', async () => {
+  repo.listSessions.mockReturnValue([]);
+  await render(<Games />);
+  await fireEvent.press(screen.getByRole('button', { name: 'Restaurar compras' }));
+  expect(payments.restore).toHaveBeenCalled();
 });

@@ -7,6 +7,9 @@ jest.mock('expo-router', () => ({
   useLocalSearchParams: () => ({ id: 's1' }),
 }));
 jest.mock('../../components/useClipThumbnail', () => ({ useClipThumbnail: () => undefined }));
+jest.mock('../../payments', () => ({
+  payments: { subscribe: () => () => {}, version: () => 0, tierFor: jest.fn(() => 'pro'), showPaywall: jest.fn() },
+}));
 jest.mock('../../session/SessionContext', () => ({ useSession: jest.fn() }));
 jest.mock('../../data/mmkv', () => {
   const listeners = new Set<() => void>();
@@ -32,6 +35,7 @@ jest.mock('../../data/mmkv', () => {
 
 const { repo } = jest.requireMock('../../data/mmkv');
 const { router } = jest.requireMock('expo-router');
+const { payments } = jest.requireMock('../../payments');
 const { useSession } = jest.requireMock('../../session/SessionContext');
 
 const clip = (id: string, source: string, createdAt: number) => ({
@@ -46,6 +50,7 @@ const clip = (id: string, source: string, createdAt: number) => ({
 
 beforeEach(() => {
   jest.clearAllMocks();
+  payments.tierFor.mockReturnValue('pro');
   useSession.mockReturnValue({ reset: jest.fn(), state: {} });
   repo.getSession.mockReturnValue({ id: 's1', sport: 'futevolei', startedAt: new Date(2026, 9, 17, 18, 40).getTime() });
 });
@@ -143,4 +148,64 @@ test('a named clip is identified by its name in the recording', async () => {
   expect(screen.getByText('Ace no fundo')).toBeTruthy();
   expect(screen.getByRole('button', { name: /^Clipe 1 · Ace no fundo/ })).toBeTruthy();
   expect(screen.getByRole('button', { name: /^Clipe 2,/ })).toBeTruthy();
+});
+
+describe('locked clipes', () => {
+  const lockedClip = (id: string, createdAt: number) => ({ ...clip(id, 'screen', createdAt), locked: true });
+  const setup = () => {
+    payments.tierFor.mockReturnValue('free');
+    repo.listClips.mockReturnValue([clip('a', 'gesture', 1), lockedClip('b', 2), lockedClip('c', 3)]);
+    repo.sessionStats.mockReturnValue({ clips: 3, bytes: 1, recordedMs: 1 });
+  };
+
+  test('the free plan shows the locked card and the unlock button', async () => {
+    setup();
+    await render(<SessionSummary />);
+    expect(screen.getByText('2 clipes bloqueados')).toBeTruthy();
+    expect(screen.getByText('Guardados, mas bloqueados. Libere com o Passe do Jogo ou o Pro.')).toBeTruthy();
+    await fireEvent.press(screen.getByRole('button', { name: 'Liberar clipes' }));
+    expect(payments.showPaywall).toHaveBeenCalledWith('s1');
+  });
+
+  test('tapping a locked clipe opens the paywall and does not navigate', async () => {
+    setup();
+    await render(<SessionSummary />);
+    await fireEvent.press(screen.getByRole('button', { name: /^Clipe 2,.*, bloqueado$/ }));
+    expect(payments.showPaywall).toHaveBeenCalledWith('s1');
+    expect(router.push).not.toHaveBeenCalled();
+  });
+
+  test('an unlocked clipe still navigates', async () => {
+    setup();
+    await render(<SessionSummary />);
+    await fireEvent.press(screen.getByRole('button', { name: /^Clipe 1,/ }));
+    expect(router.push).toHaveBeenCalledWith('/clip/a');
+  });
+
+  test('Postar um clipe opens the newest unlocked clipe', async () => {
+    setup();
+    await render(<SessionSummary />);
+    await fireEvent.press(screen.getByRole('button', { name: 'Postar um clipe' }));
+    expect(router.push).toHaveBeenCalledWith('/clip/a');
+  });
+
+  test('Postar um clipe is disabled when every clipe is locked', async () => {
+    payments.tierFor.mockReturnValue('free');
+    repo.listClips.mockReturnValue([lockedClip('b', 2)]);
+    repo.sessionStats.mockReturnValue({ clips: 1, bytes: 1, recordedMs: 1 });
+    await render(<SessionSummary />);
+    await fireEvent.press(screen.getByRole('button', { name: 'Postar um clipe' }));
+    expect(router.push).not.toHaveBeenCalled();
+  });
+
+  test.each(['pass', 'pro'])('on the %s plan nothing is locked', async (tier) => {
+    payments.tierFor.mockReturnValue(tier);
+    repo.listClips.mockReturnValue([clip('a', 'gesture', 1), lockedClip('b', 2)]);
+    repo.sessionStats.mockReturnValue({ clips: 2, bytes: 1, recordedMs: 1 });
+    await render(<SessionSummary />);
+    expect(screen.queryByText('Liberar clipes')).toBeNull();
+    expect(screen.queryByText(/bloqueado/)).toBeNull();
+    await fireEvent.press(screen.getByRole('button', { name: /^Clipe 2,/ }));
+    expect(router.push).toHaveBeenCalledWith('/clip/b');
+  });
 });

@@ -109,11 +109,18 @@ export const en = {
     newRecording: 'New recording',
     postClip: 'Post a clip',
     clipA11y: 'Clip %{number}%{name}, %{duration}, %{source}',
+    lockedClips: { one: '%{count} locked clip', other: '%{count} locked clips' },
+    lockedNote: 'Saved, but locked. Unlock with the Game Pass or Pro.',
+    unlock: 'Unlock clips',
+    lockedTag: 'LOCKED',
+    lockedA11y: '%{label}, locked',
   },
   games: {
     title: 'MY RECORDINGS',
     empty: 'No recordings with clips yet.',
     detail: '%{clips} · %{time}',
+    lockedDetail: '%{detail} · %{count} locked',
+    restore: 'Restore purchases',
   },
   pairing: {
     roleCamera: 'THIS IPHONE IS THE CAMERA',
