@@ -6,6 +6,6 @@ export type Snapshot = { proActive: boolean; passTransactions: PassTransaction[]
 
 export const EMPTY_SNAPSHOT: Snapshot = { proActive: false, passTransactions: [] };
 
-export const FREE_CLIPS = 5;
+export const FREE_CLIPS = 10;
 export const PRO_ENTITLEMENT = 'pro';
-export const PASS_PRODUCT_ID = 'session_pass';
+export const PASS_PRODUCT_ID = 'single_pass';

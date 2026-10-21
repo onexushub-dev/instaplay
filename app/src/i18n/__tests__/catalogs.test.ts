@@ -63,11 +63,19 @@ test('interpolation fills %{name}', () => {
   expect(translate('pt-BR', 'remote.connectingTo', { name: 'iPhone 15' })).toBe('Conectando a iPhone 15…');
 });
 
-test('the payments notes the paywall tasks will use', () => {
-  expect(translate('en', 'payments.lastFreeNote')).toBe('Last free clip of this game.');
-  expect(translate('pt-BR', 'payments.lastFreeNote')).toBe('Último clipe grátis deste jogo.');
-  expect(translate('en', 'payments.lockedNote')).toBe('Saved. Unlock it after the game.');
-  expect(translate('pt-BR', 'payments.lockedNote')).toBe('Guardado. Libere no fim do jogo.');
+test('the payments notes name the game or the workout', () => {
+  const g = { what: translate('en', 'modes.what.quadra') };
+  const w = { what: translate('en', 'modes.what.academia') };
+  expect(translate('en', 'payments.lastFreeNote', g)).toBe('Last free clip of this game.');
+  expect(translate('en', 'payments.lastFreeNote', w)).toBe('Last free clip of this workout.');
+  expect(translate('en', 'payments.lockedNote', g)).toBe('Saved. Unlock it after the game.');
+  expect(translate('en', 'payments.lockedNote', w)).toBe('Saved. Unlock it after the workout.');
+  const pg = { what: translate('pt-BR', 'modes.what.quadra') };
+  const pw = { what: translate('pt-BR', 'modes.what.academia') };
+  expect(translate('pt-BR', 'payments.lastFreeNote', pg)).toBe('Último clipe grátis deste jogo.');
+  expect(translate('pt-BR', 'payments.lastFreeNote', pw)).toBe('Último clipe grátis deste treino.');
+  expect(translate('pt-BR', 'payments.lockedNote', pg)).toBe('Guardado. Libere no fim do jogo.');
+  expect(translate('pt-BR', 'payments.lockedNote', pw)).toBe('Guardado. Libere no fim do treino.');
 });
 
 test('tests run on a pt-BR phone; setLocale switches the plain t', () => {

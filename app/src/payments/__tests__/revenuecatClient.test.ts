@@ -9,7 +9,7 @@ import { EMPTY_SNAPSHOT } from '../types';
 const info = {
   entitlements: { active: { pro: {} } },
   nonSubscriptionTransactions: [
-    { transactionIdentifier: 't1', productIdentifier: 'session_pass', purchaseDate: '1970-01-01T00:00:02.000Z' },
+    { transactionIdentifier: 't1', productIdentifier: 'single_pass', purchaseDate: '1970-01-01T00:00:02.000Z' },
   ],
 };
 
@@ -89,7 +89,7 @@ describe('createRevenueCatClient', () => {
     expect(Purchases.configure).toHaveBeenCalledWith({ apiKey: 'test_x' });
     expect(await c.getSnapshot()).toEqual({
       proActive: true,
-      passTransactions: [{ id: 't1', productId: 'session_pass', purchasedAt: 2000 }],
+      passTransactions: [{ id: 't1', productId: 'single_pass', purchasedAt: 2000 }],
     });
   });
 

@@ -32,14 +32,21 @@ jest.mock('../../components/TrimBar', () => {
   const props: { last?: any } = {};
   return { __props: props, TrimBar: (p: any) => ((props.last = p), null) };
 });
+jest.mock('../../share/ZoomableVideo', () => {
+  const props: { last?: any } = {};
+  const actual = jest.requireActual('../../share/ZoomableVideo');
+  return { __props: props, ZoomableVideo: (p: any) => ((props.last = p), actual.ZoomableVideo(p)) };
+});
 jest.mock('../../data/mmkv', () => {
   let clip: any;
+  let others: any[] | undefined;
   return {
     __setClip: (c: any) => (clip = c),
+    __setOthers: (o?: any[]) => (others = o),
     removeFile: jest.fn(),
     repo: {
       getClip: () => clip,
-      listClips: () => (clip ? [{ id: 'c0' }, clip] : []),
+      listClips: () => (clip ? (others ? [others[0], clip, ...others.slice(1)] : [{ id: 'c0' }, clip]) : []),
       getPrefs: () => jest.requireActual('../../data/schema').DEFAULT_PREFS,
       getSession: () => ({ id: 's1', sport: clip?.durationMs > 60000 ? 'musculacao' : 'beachTennis', startedAt: 0 }),
       updateClip: jest.fn((id: string, patch: object) => (clip = { ...clip, ...patch })),
@@ -52,7 +59,7 @@ jest.mock('../../data/mmkv', () => {
 });
 
 const { payments } = jest.requireMock('../../payments');
-const { repo, __setClip, removeFile } = jest.requireMock('../../data/mmkv');
+const { repo, __setClip, __setOthers, removeFile } = jest.requireMock('../../data/mmkv');
 const { router } = jest.requireMock('expo-router');
 const { __player: player } = jest.requireMock('expo-video');
 const camera = jest.requireMock('../../../modules/replay-camera');
@@ -68,6 +75,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   payments.tierFor.mockImplementation(() => 'pro');
   __setClip({ ...base });
+  __setOthers(undefined);
   // jest-expo's ImageLoader mock predates RN 0.88's promise-based getSize.
   (jest.spyOn(Image, 'getSize') as jest.Mock).mockResolvedValue({ width: 1920, height: 1080 });
 });
@@ -375,6 +383,45 @@ describe('on the free plan', () => {
     expect(screen.getAllByText('feito com LANCE').length).toBe(2); // preview + capture copy
     await pressAction('Compartilhar');
     expect(camera.exportClip).toHaveBeenCalledWith(expect.objectContaining({ watermark: true }));
+  });
+
+  describe('swiping between clips', () => {
+    const { __props: zoomable } = jest.requireMock('../../share/ZoomableVideo');
+    const swipe = (step: 1 | -1) =>
+      act(async () => {
+        zoomable.last.onSwipe(step);
+        await new Promise((r) => setTimeout(r, 400));
+      });
+
+    test('on the free plan a swipe skips locked clips in both directions', async () => {
+      payments.tierFor.mockImplementation(() => 'free');
+      __setOthers([{ id: 'c0', locked: true }, { id: 'c2', locked: true }, { id: 'c3' }]);
+      await open();
+      await swipe(1);
+      expect(router.setParams).toHaveBeenLastCalledWith({ id: 'c3' });
+      router.setParams.mockClear();
+      await swipe(-1);
+      expect(router.setParams).not.toHaveBeenCalled(); // the only clip before is locked, so there is nowhere to go
+    });
+
+    test('on the free plan the previous swipe lands on the unlocked clip behind a locked one', async () => {
+      payments.tierFor.mockImplementation(() => 'free');
+      __setOthers([{ id: 'c-1' }, { id: 'c0', locked: true }, { id: 'c2', locked: true }]);
+      await open();
+      await swipe(-1);
+      expect(router.setParams).toHaveBeenLastCalledWith({ id: 'c-1' });
+      router.setParams.mockClear();
+      await swipe(1);
+      expect(router.setParams).not.toHaveBeenCalled();
+    });
+
+    test('on the pro plan the same swipe reaches the clip that was locked', async () => {
+      payments.tierFor.mockImplementation(() => 'pro');
+      __setOthers([{ id: 'c0', locked: true }, { id: 'c2', locked: true }, { id: 'c3' }]);
+      await open();
+      await swipe(1);
+      expect(router.setParams).toHaveBeenLastCalledWith({ id: 'c2' });
+    });
   });
 
   test('a locked clip shows the lock and Liberar instead of the editor', async () => {

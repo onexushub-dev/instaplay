@@ -505,36 +505,36 @@ async function saveClips(f: ReturnType<typeof fakeDeps>, view: any, n: number) {
 }
 
 describe('free limit', () => {
-  test('the sixth free clip is locked, the first five are not, and recording continues', async () => {
+  test('the eleventh free clip is locked, the first ten are not, and recording continues', async () => {
     const f = fakeDeps('free');
     const view = await renderHook(() => useReplaySession(f.deps));
     await act(() => view.result.current.start('futevolei'));
     const id = view.result.current.state.sessionId!;
-    await saveClips(f, view, 5);
+    await saveClips(f, view, 10);
     expect(f.deps.repo.listClips(id).every((c) => !c.locked)).toBe(true);
     expect(view.result.current.state.lastSaved).toMatchObject({ locked: false, lastFree: true });
     await saveClips(f, view, 1);
-    expect(f.deps.repo.listClips(id)[5].locked).toBe(true);
+    expect(f.deps.repo.listClips(id)[10].locked).toBe(true);
     expect(view.result.current.state.lastSaved).toMatchObject({ locked: true, lastFree: false });
     await saveClips(f, view, 2);
     expect(view.result.current.state.phase).toBe('recording');
-    expect(view.result.current.state.clipCount).toBe(8);
+    expect(view.result.current.state.clipCount).toBe(13);
   });
 
   test('earlier clips are not flagged as the last free one', async () => {
     const f = fakeDeps('free');
     const view = await renderHook(() => useReplaySession(f.deps));
     await act(() => view.result.current.start('futevolei'));
-    await saveClips(f, view, 4);
+    await saveClips(f, view, 9);
     expect(view.result.current.state.lastSaved).toMatchObject({ locked: false, lastFree: false });
   });
 
-  test('undoing the fifth clip and saving again gives an unlocked clip', async () => {
+  test('undoing the tenth clip and saving again gives an unlocked clip', async () => {
     const f = fakeDeps('free');
     const view = await renderHook(() => useReplaySession(f.deps));
     await act(() => view.result.current.start('futevolei'));
     const id = view.result.current.state.sessionId!;
-    await saveClips(f, view, 5);
+    await saveClips(f, view, 10);
     await act(async () => view.result.current.undoLast());
     await saveClips(f, view, 1);
     expect(f.deps.repo.listClips(id).filter((c) => c.locked)).toHaveLength(0);
@@ -546,7 +546,7 @@ describe('free limit', () => {
     const view = await renderHook(() => useReplaySession(f.deps));
     await act(() => view.result.current.start('futevolei'));
     const id = view.result.current.state.sessionId!;
-    await saveClips(f, view, 7);
+    await saveClips(f, view, 12);
     expect(f.deps.repo.listClips(id).some((c) => c.locked)).toBe(false);
     expect(view.result.current.state.lastSaved).toMatchObject({ locked: false, lastFree: false });
     expect(view.result.current.state.phase).toBe('recording');

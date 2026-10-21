@@ -132,14 +132,14 @@ test('a stop asked outside a recording is ignored', async () => {
   expect(s.stop).not.toHaveBeenCalled();
 });
 
-test('the fifth free clip says it was the last free one', async () => {
-  session({ clipCount: 5, lastSaved: { clipId: 'c5', number: 5, source: 'screen', at: Date.now(), locked: false, lastFree: true } });
+test('the tenth free clip says it was the last free one', async () => {
+  session({ clipCount: 10, lastSaved: { clipId: 'c10', number: 10, source: 'screen', at: Date.now(), locked: false, lastFree: true } });
   await render(<Recording />);
   expect(screen.getByText('Último clipe grátis deste jogo.')).toBeTruthy();
 });
 
 test('a locked clip says it is saved and unlocks after the game', async () => {
-  session({ clipCount: 6, lastSaved: { clipId: 'c6', number: 6, source: 'screen', at: Date.now(), locked: true, lastFree: false } });
+  session({ clipCount: 11, lastSaved: { clipId: 'c11', number: 11, source: 'screen', at: Date.now(), locked: true, lastFree: false } });
   await render(<Recording />);
   expect(screen.getByText('Guardado. Libere no fim do jogo.')).toBeTruthy();
 });
@@ -149,4 +149,16 @@ test('before the limit the usual hint stays', async () => {
   await render(<Recording />);
   expect(screen.queryByText('Último clipe grátis deste jogo.')).toBeNull();
   expect(screen.queryByText('Guardado. Libere no fim do jogo.')).toBeNull();
+});
+
+test('in a workout the notes say treino', async () => {
+  session({ clipCount: 10, lastSaved: { clipId: 'c10', number: 10, source: 'screen', at: Date.now(), locked: false, lastFree: true } });
+  await render(<Recording group="academia" />);
+  expect(screen.getByText('Último clipe grátis deste treino.')).toBeTruthy();
+});
+
+test('a locked clip in a workout unlocks after the treino', async () => {
+  session({ clipCount: 11, lastSaved: { clipId: 'c11', number: 11, source: 'screen', at: Date.now(), locked: true, lastFree: false } });
+  await render(<Recording group="academia" />);
+  expect(screen.getByText('Guardado. Libere no fim do treino.')).toBeTruthy();
 });

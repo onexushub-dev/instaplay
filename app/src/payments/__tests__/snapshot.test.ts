@@ -7,12 +7,12 @@ const tx = (id: string, productIdentifier: string) => ({
 });
 
 describe('toSnapshot', () => {
-  it('ignores products that are not the session pass', () => {
+  it('ignores products that are not the single pass', () => {
     const s = toSnapshot({
       entitlements: { active: {} },
-      nonSubscriptionTransactions: [tx('a', 'session_pass'), tx('b', 'other')],
+      nonSubscriptionTransactions: [tx('a', 'single_pass'), tx('b', 'other')],
     });
-    expect(s.passTransactions).toEqual([{ id: 'a', productId: 'session_pass', purchasedAt: 1000 }]);
+    expect(s.passTransactions).toEqual([{ id: 'a', productId: 'single_pass', purchasedAt: 1000 }]);
   });
 
   it('proActive only with the pro entitlement', () => {

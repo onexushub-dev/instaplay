@@ -19,7 +19,7 @@ Levar para o celular do praticante o sistema de "replay" que algumas quadras ofe
 | Buffer | Janela móvel de 60s. O que sai da janela é apagado na hora. Só os lances salvos ficam no celular |
 | Corte padrão | Últimos 30s até o gatilho, ajustável depois dentro dos 60s |
 | Dados | Só no celular, sem login. Modelo preparado para login futuro |
-| Receita | Freemium + Passe da Sessão (R$4,90, vinculado à sessão — jogo ou treino — em que foi comprado) + Pro (R$19,90/mês). Kit físico de fixação opcional, vendido fora do app |
+| Receita | Freemium + Passe Avulso (R$4,90, vinculado à sessão — jogo ou treino — em que foi comprado) + Pro (R$19,90/mês). Kit físico de fixação opcional, vendido fora do app |
 | Câmera | Módulo nativo próprio `ReplayCamera` (Expo Modules), sem VisionCamera |
 
 ## 3. Experiência do usuário
@@ -52,14 +52,14 @@ Fluxo: **Boas-vindas → Posicionar câmera → Gravando → Lance salvo (repete
 ### 3.4 Lance salvo (feedback de ~2s)
 - Borda e flash na cor de destaque, som curto, vibração no relógio.
 - "Lance #N salvo · via <origem> · últimos 30s".
-- Contador de lances grátis (ex.: 4 de 5).
+- Contador de lances grátis (ex.: 9 de 10).
 - Botão "Desfazer".
 
 ### 3.5 Limite grátis e paywall (revisado em 2026-10-20)
-- A gravação nunca para por causa do plano. Do 6º lance em diante os lances são salvos e ficam bloqueados.
-- Durante o jogo: aviso discreto ("Lance #5 salvo · último grátis"; "Lance #6 salvo · libere no fim do jogo"). Nenhum paywall aparece durante a gravação.
-- Depois do jogo: o resumo mostra "N lances guardados · M bloqueados" com as miniaturas e o botão "Liberar", que abre o paywall (Passe da Sessão R$4,90 pré-selecionado ou Pro R$19,90/mês). Tocar em um lance bloqueado ou em um recurso pago também abre o paywall.
-- "Agora não": nada se perde; dá para liberar a qualquer momento com o Passe da Sessão.
+- A gravação nunca para por causa do plano. Do 11º lance em diante os lances são salvos e ficam bloqueados.
+- Durante o jogo: aviso discreto ("Lance #10 salvo · último grátis"; "Lance #11 salvo · libere no fim do jogo"; em treino, "treino" no lugar de "jogo"). Nenhum paywall aparece durante a gravação.
+- Depois do jogo: o resumo mostra "N lances guardados · M bloqueados" com as miniaturas e o botão "Liberar", que abre o paywall (Passe Avulso R$4,90 pré-selecionado ou Pro R$19,90/mês). Tocar em um lance bloqueado ou em um recurso pago também abre o paywall.
+- "Agora não": nada se perde; dá para liberar a qualquer momento com o Passe Avulso.
 - Pagamento pela App Store / Google Play. Detalhes em `2026-10-20-payments-revenuecat-design.md`.
 
 ### 3.6 Relógio (watchOS e Wear OS)
@@ -164,9 +164,9 @@ Preferências   { lente, duraçãoPadrão: 30, gestoAtivo, relógioPareado }
 
 ## 6. Monetização
 
-| Regra | Grátis | Passe da Sessão (R$4,90) | Pro (R$19,90/mês) |
+| Regra | Grátis | Passe Avulso (R$4,90) | Pro (R$19,90/mês) |
 |---|---|---|---|
-| Lances liberados por jogo | 5 (os seguintes ficam salvos e bloqueados) | Todos | Todos |
+| Lances liberados por jogo ou treino | 10 (os mesmos nos dois modos, Quadra e Academia; os seguintes ficam salvos e bloqueados) | Todos | Todos |
 | Exportação | 720p | 1080p 60fps | 1080p 60fps |
 | Selo/marca d'água | Sim | Não | Não |
 | Câmera lenta | Não | Sim | Sim |
@@ -192,7 +192,7 @@ Preferências   { lente, duraçãoPadrão: 30, gestoAtivo, relógioPareado }
 
 ## 8. Testes
 
-- **JS (unitários):** trava de gatilhos, regras do Passe e do Pro, limite de 5 lances, estado da sessão.
+- **JS (unitários):** trava de gatilhos, regras do Passe e do Pro, limite de 10 lances, estado da sessão.
 - **Nativo:** testes do anel de pedaços (descarte e junção), em aparelho real.
 - **Campo:** sessões de 2h ao sol, num iPhone e num Android intermediário.
 

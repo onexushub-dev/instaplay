@@ -105,7 +105,7 @@ export const ptBR: Messages = {
     newRecording: 'Nova gravação',
     clipA11y: 'Clipe %{number}%{name}, %{duration}, %{source}',
     lockedClips: { one: '%{count} clipe bloqueado', other: '%{count} clipes bloqueados' },
-    lockedNote: 'Guardados, mas bloqueados. Libere com o Passe da Sessão ou o Pro.',
+    lockedNote: 'Guardados, mas bloqueados. Libere com o Passe Avulso ou o Pro.',
     unlock: 'Liberar clipes',
     lockedTag: 'BLOQUEADO',
     lockedA11y: '%{label}, bloqueado',
@@ -275,6 +275,7 @@ export const ptBR: Messages = {
       funcional: 'Funcional',
       outroAcademia: 'Outro',
     },
+    what: { quadra: 'jogo', academia: 'treino' },
     tip: {
       quadra: 'Atrás da linha de fundo, na altura do ombro',
       academia: 'No chão ou no tripé, a 2–3 m, de lado para o exercício',
@@ -289,8 +290,8 @@ export const ptBR: Messages = {
     phone: 'Celular',
   },
   payments: {
-    lastFreeNote: 'Último clipe grátis deste jogo.',
-    lockedNote: 'Guardado. Libere no fim do jogo.',
+    lastFreeNote: 'Último clipe grátis deste %{what}.',
+    lockedNote: 'Guardado. Libere no fim do %{what}.',
     paywallError: 'Não deu para abrir a loja. Tente de novo em instantes.',
     restored: 'Compras restauradas.',
     nothingToRestore: 'Nenhuma compra para restaurar.',

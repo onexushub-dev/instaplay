@@ -33,7 +33,7 @@ export type ModeSettings = {
 /** What was saved for a mode: before zoom existed it held `lens` (read, never written). */
 export type StoredModeSettings = Partial<ModeSettings> & { lens?: 'ultraWide' | 'wide' };
 
-export type Session = { id: string; sport: Sport; startedAt: number; endedAt?: number; name?: string; /** RevenueCat transaction id of the session pass that unlocked this game; absent = no pass. */ passTransactionId?: string };
+export type Session = { id: string; sport: Sport; startedAt: number; endedAt?: number; name?: string; /** RevenueCat transaction id of the single pass that unlocked this game; absent = no pass. */ passTransactionId?: string };
 
 export const MAX_GAME_NAME = 40;
 export const MAX_CLIP_NAME = 40;

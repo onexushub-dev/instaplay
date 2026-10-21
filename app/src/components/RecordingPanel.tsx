@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { addReplayListener } from '../../modules/replay-camera';
 import { VOICE_WORDS } from '../i18n';
 import { useT } from '../i18n/useT';
+import type { ModeGroup } from '../modes/registry';
 import { useSession } from '../session/SessionContext';
 import { colors, fonts } from '../theme/tokens';
 import { Button } from './Button';
@@ -31,9 +32,11 @@ type Props = {
   /** Which hands-free triggers are on in this mode. */
   gesture?: boolean;
   voice?: boolean;
+  /** The mode group of this session: names what is being recorded in the payments notes (game or workout). */
+  group?: ModeGroup;
 };
 
-export function RecordingPanel({ bufferSeconds = 60, gesture = true, voice = false }: Props) {
+export function RecordingPanel({ bufferSeconds = 60, gesture = true, voice = false, group = 'quadra' }: Props) {
   const { state, trigger, undoLast, stop } = useSession();
   const { t, locale } = useT();
   const [now, setNow] = useState(() => Date.now());
@@ -86,7 +89,8 @@ export function RecordingPanel({ bufferSeconds = 60, gesture = true, voice = fal
     );
   }
 
-  const note = last?.locked ? t('payments.lockedNote') : last?.lastFree ? t('payments.lastFreeNote') : undefined;
+  const what = t(`modes.what.${group}`);
+  const note = last?.locked ? t('payments.lockedNote', { what }) : last?.lastFree ? t('payments.lastFreeNote', { what }) : undefined;
   const showOverlay = last !== undefined && dismissed !== last.clipId;
   const hintSub = [
     t('recording.lastReady', { seconds: bufferSeconds }),

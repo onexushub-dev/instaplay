@@ -107,7 +107,7 @@ export const en = {
     newRecording: 'New recording',
     clipA11y: 'Clip %{number}%{name}, %{duration}, %{source}',
     lockedClips: { one: '%{count} locked clip', other: '%{count} locked clips' },
-    lockedNote: 'Saved, but locked. Unlock with the Session Pass or Pro.',
+    lockedNote: 'Saved, but locked. Unlock with the Single Pass or Pro.',
     unlock: 'Unlock clips',
     lockedTag: 'LOCKED',
     lockedA11y: '%{label}, locked',
@@ -277,6 +277,7 @@ export const en = {
       funcional: 'Functional training',
       outroAcademia: 'Other',
     },
+    what: { quadra: 'game', academia: 'workout' },
     tip: {
       quadra: 'Behind the baseline, at shoulder height',
       academia: 'On the floor or a tripod, 6–10 ft away, side-on to the exercise',
@@ -291,8 +292,8 @@ export const en = {
     phone: 'Phone',
   },
   payments: {
-    lastFreeNote: 'Last free clip of this game.',
-    lockedNote: 'Saved. Unlock it after the game.',
+    lastFreeNote: 'Last free clip of this %{what}.',
+    lockedNote: 'Saved. Unlock it after the %{what}.',
     paywallError: "Couldn't open the store. Try again in a moment.",
     restored: 'Purchases restored.',
     nothingToRestore: 'No purchases to restore.',

@@ -1,7 +1,7 @@
 import { detectPurchase, isClipLocked, shouldLockOnSave, tierFor } from '../rules';
 import { EMPTY_SNAPSHOT, type PassTransaction, type Snapshot } from '../types';
 
-const tx = (id: string, purchasedAt: number): PassTransaction => ({ id, productId: 'session_pass', purchasedAt });
+const tx = (id: string, purchasedAt: number): PassTransaction => ({ id, productId: 'single_pass', purchasedAt });
 const snap = (proActive: boolean, passTransactions: PassTransaction[] = []): Snapshot => ({ proActive, passTransactions });
 
 test('tierFor: Pro beats pass, pass beats free', () => {
@@ -18,10 +18,10 @@ test('isClipLocked only locks on the free tier', () => {
   expect(isClipLocked({}, 'free')).toBe(false);
 });
 
-test('shouldLockOnSave locks free clips from the sixth on', () => {
-  expect(shouldLockOnSave('free', 4)).toBe(false);
-  expect(shouldLockOnSave('free', 5)).toBe(true);
-  expect(shouldLockOnSave('free', 9)).toBe(true);
+test('shouldLockOnSave locks free clips from the eleventh on', () => {
+  expect(shouldLockOnSave('free', 9)).toBe(false);
+  expect(shouldLockOnSave('free', 10)).toBe(true);
+  expect(shouldLockOnSave('free', 19)).toBe(true);
   expect(shouldLockOnSave('pass', 99)).toBe(false);
   expect(shouldLockOnSave('pro', 99)).toBe(false);
 });
