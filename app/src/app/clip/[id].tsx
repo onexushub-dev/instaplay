@@ -421,7 +421,7 @@ function ClipEditor() {
             onTap={togglePlay}
           />
           <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-            <ShareOverlay frame={frame} layout={layout} scale={scale} />
+            <ShareOverlay frame={frame} layout={layout} scale={scale} watermark={options.watermark} />
           </View>
           {!playing ? (
             <View pointerEvents="none" style={styles.pausedBadge}>
@@ -435,7 +435,7 @@ function ClipEditor() {
 
       {/* Off-screen copy at exactly the export's pixel size, captured to PNG for the video overlay. */}
       <View pointerEvents="none" style={styles.offscreen}>
-        <ShareOverlay ref={captureRefView} frame={frame} layout={layout} scale={1 / pr} />
+        <ShareOverlay ref={captureRefView} frame={frame} layout={layout} scale={1 / pr} watermark={options.watermark} />
       </View>
 
       {/* Everything below floats over the video, on dark translucent backgrounds so it reads in the sun. */}

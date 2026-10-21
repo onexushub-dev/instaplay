@@ -215,6 +215,12 @@ test('Compartilhar exports with the cut, speed, zoom and no app mark (pro), then
   expect(sharing.shareAsync).toHaveBeenCalledWith('file:///exports/e1.mp4', expect.objectContaining({ mimeType: 'video/mp4' }));
 });
 
+test.each(['pass', 'pro'])('on %s the overlay has no app mark', async (tier) => {
+  payments.tierFor.mockImplementation(() => tier);
+  await open();
+  expect(screen.queryByText('feito com LANCE')).toBeNull();
+});
+
 test('Salvar na galeria asks for photo access and saves the export', async () => {
   await open();
   await pressAction('Salvar na galeria');
@@ -341,6 +347,13 @@ describe('a black start', () => {
 
 describe('on the free plan', () => {
   beforeEach(() => payments.tierFor.mockImplementation(() => 'free'));
+
+  test('the export overlay carries the app mark and the export asks for it', async () => {
+    await open();
+    expect(screen.getAllByText('feito com LANCE').length).toBe(2); // preview + capture copy
+    await pressAction('Compartilhar');
+    expect(camera.exportClip).toHaveBeenCalledWith(expect.objectContaining({ watermark: true }));
+  });
 
   test('a locked clip shows the lock and Liberar instead of the editor', async () => {
     __setClip({ ...base, locked: true });

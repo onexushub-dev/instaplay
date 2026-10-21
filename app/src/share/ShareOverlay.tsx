@@ -15,6 +15,8 @@ type Props = {
   layout: { video: Box; top: Box; bottom: Box };
   /** Screen points per frame pixel: 1/PixelRatio for the capture, smaller for the on-screen preview. */
   scale: number;
+  /** Draw the "made with" mark. Free exports carry it; paid ones (pass, pro) do not. Bands and layout are unchanged. */
+  watermark?: boolean;
 };
 
 /**
@@ -23,7 +25,7 @@ type Props = {
  * preview and, captured to PNG, the export overlay.
  */
 export const ShareOverlay = forwardRef<ComponentRef<typeof View>, Props>(function ShareOverlay(
-  { frame, layout, scale },
+  { frame, layout, scale, watermark = true },
   ref,
 ) {
   const { t } = useT();
@@ -58,17 +60,19 @@ export const ShareOverlay = forwardRef<ComponentRef<typeof View>, Props>(functio
         />
       </Svg>
 
-      <View
-        style={[
-          styles.mark,
-          styles.row,
-          { bottom: s(SAFE_BOTTOM - 90), right: s(SIDE), paddingHorizontal: s(20), paddingVertical: s(10), gap: s(10) },
-        ]}>
-        <View style={[styles.dot, { width: s(16), height: s(16), borderRadius: s(8) }]} />
-        <Text allowFontScaling={false} style={[styles.markText, { fontSize: s(28) }]}>
-          {t('share.madeWith')}
-        </Text>
-      </View>
+      {watermark ? (
+        <View
+          style={[
+            styles.mark,
+            styles.row,
+            { bottom: s(SAFE_BOTTOM - 90), right: s(SIDE), paddingHorizontal: s(20), paddingVertical: s(10), gap: s(10) },
+          ]}>
+          <View style={[styles.dot, { width: s(16), height: s(16), borderRadius: s(8) }]} />
+          <Text allowFontScaling={false} style={[styles.markText, { fontSize: s(28) }]}>
+            {t('share.madeWith')}
+          </Text>
+        </View>
+      ) : null}
     </View>
   );
 });

@@ -40,3 +40,9 @@ test('no template text is drawn, only the mark', async () => {
   expect(screen.queryByTestId('story-top-block')).toBeNull();
   expect(screen.queryByTestId('story-bottom-block')).toBeNull();
 });
+
+test('a paid export (watermark off) drops the mark but keeps the bands and video area', async () => {
+  await render(<ShareOverlay frame={frame} layout={layout} scale={1} watermark={false} />);
+  expect(screen.queryByText('feito com LANCE')).toBeNull();
+  expect(screen.getByTestId('share-video-area')).toBeTruthy();
+});
