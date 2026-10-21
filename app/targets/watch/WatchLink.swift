@@ -11,6 +11,13 @@ final class WatchLink: NSObject, ObservableObject, WCSessionDelegate {
   @Published private(set) var previewOn = false
   /// A short confirmation drawn over the screen when the phone says a save ended (true = saved).
   @Published private(set) var confirmation: Bool?
+  /// "Manter ativo": keep the app in front with a workout session while recording. Off by default (battery).
+  @Published var keepActive = UserDefaults.standard.bool(forKey: "keepActive") {
+    didSet {
+      UserDefaults.standard.set(keepActive, forKey: "keepActive")
+      refresh()
+    }
+  }
   /// Whether the phone can be reached right now (Gravar and Parar need it).
   @Published private(set) var reachable = false
 
@@ -149,7 +156,7 @@ final class WatchLink: NSObject, ObservableObject, WCSessionDelegate {
       recording: recording, reachable: reachable, clipCount: clipCount, startedAtMs: startedAtMs,
       stateAge: stateAge, unreachableFor: unreachableSince.map { Date().timeIntervalSince($0) } ?? 0)
     // The workout session lives exactly as long as a fresh recording: it always ends with it.
-    keeper.setActive(WatchModel.workoutWanted(recording: recording, stale: stateAge > WatchModel.staleAfter))
+    keeper.setActive(WatchModel.workoutWanted(recording: recording, stale: stateAge > WatchModel.staleAfter, keepActive: keepActive))
     if screen != next { screen = next }
     // Nothing to look at once the recording is over or the phone is gone.
     var recordingShown = false

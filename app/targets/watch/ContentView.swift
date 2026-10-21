@@ -48,6 +48,9 @@ struct ContentView: View {
     VStack(spacing: 6) {
       if !link.reachable { Message("Sem conexão com o iPhone") }
       BigButton(title: "Gravar", enabled: link.reachable, action: link.sendStart)
+      Toggle("Manter ativo", isOn: $link.keepActive)
+        .font(.system(.footnote, design: .rounded))
+        .tint(accent)
     }
   }
 

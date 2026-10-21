@@ -76,11 +76,12 @@ final class WatchModelTests: XCTestCase {
       .offline)
   }
 
-  func testWorkoutWantedOnlyWhileFreshRecording() {
-    XCTAssertTrue(WatchModel.workoutWanted(recording: true, stale: false))
-    XCTAssertFalse(WatchModel.workoutWanted(recording: true, stale: true))
-    XCTAssertFalse(WatchModel.workoutWanted(recording: false, stale: false))
-    XCTAssertFalse(WatchModel.workoutWanted(recording: false, stale: true))
+  func testWorkoutWantedOnlyWhileFreshRecordingAndOptedIn() {
+    XCTAssertTrue(WatchModel.workoutWanted(recording: true, stale: false, keepActive: true))
+    XCTAssertFalse(WatchModel.workoutWanted(recording: true, stale: true, keepActive: true))
+    XCTAssertFalse(WatchModel.workoutWanted(recording: false, stale: false, keepActive: true))
+    // off by default: no session, no battery cost
+    XCTAssertFalse(WatchModel.workoutWanted(recording: true, stale: false, keepActive: false))
   }
 
   func testCanStartOnlyIdleAndReachable() {

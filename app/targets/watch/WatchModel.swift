@@ -29,8 +29,9 @@ enum WatchModel {
     return .recording(clipCount: clipCount, startedAt: startedAtMs.map { Date(timeIntervalSince1970: $0 / 1000) })
   }
 
-  /// The workout session that keeps the watch app alive runs only while a fresh recording is reported.
-  static func workoutWanted(recording: Bool, stale: Bool) -> Bool { recording && !stale }
+  /// The workout session that keeps the watch app in front runs only while a fresh recording is reported and
+  /// the user opted in (`keepActive`): it costs battery, and the Smart Stack button already saves from a locked watch.
+  static func workoutWanted(recording: Bool, stale: Bool, keepActive: Bool) -> Bool { keepActive && recording && !stale }
 
   /// Start is for an idle phone, Stop for a recording one, and both need the phone within reach.
   static func canStart(recording: Bool, reachable: Bool) -> Bool { !recording && reachable }
