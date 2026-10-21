@@ -11,6 +11,7 @@ import type {
   SessionOptions,
   VoiceLocale,
   WatchStatus,
+  ZoomRange,
 } from './ReplayCamera.types';
 
 declare class ReplayCameraModule extends NativeModule<ReplayCameraModuleEvents> {
@@ -18,6 +19,9 @@ declare class ReplayCameraModule extends NativeModule<ReplayCameraModuleEvents> 
   stopSession(): Promise<void>;
   saveClip(opts: SaveClipOptions): Promise<SavedClip>;
   setGestureEnabled(enabled: boolean): void;
+  // Continuous zoom (iOS only: missing on Android and in older builds).
+  getZoomRange?(): ZoomRange;
+  setZoom?(factor: number, animated: boolean): void;
   requestPermissions(): Promise<boolean>;
   signalSaved(sound: boolean, flash: boolean): void;
   signalSaveFailed(sound: boolean): void;

@@ -219,3 +219,14 @@ test('unlockedClipCount and lockedCount count only existing clips and respect de
   repo.deleteClip(l.id);
   expect(repo.lockedCount(s.id)).toBe(0);
 });
+
+test('deleteSession removes the game, its clips and the index entry, and returns the files to delete', () => {
+  const repo = setup({ '/a.mp4': 1, '/b.mp4': 1 });
+  const s = repo.startSession('beachTennis', 0);
+  repo.addClip({ sessionId: s.id, createdAt: 1, source: 'screen', path: '/a.mp4', durationMs: 1 });
+  repo.addClip({ sessionId: s.id, createdAt: 2, source: 'screen', path: '/b.mp4', durationMs: 1 });
+  expect(repo.deleteSession(s.id)).toEqual(['/a.mp4', '/b.mp4']);
+  expect(repo.getSession(s.id)).toBeUndefined();
+  expect(repo.listClips(s.id)).toEqual([]);
+  expect(repo.listSessions()).toEqual([]);
+});

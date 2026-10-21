@@ -144,7 +144,7 @@ export function createRepo(kv: KV, files: FileProbe, newId: () => string) {
         .sort((a, b) => b.session.startedAt - a.session.startedAt);
     },
 
-    updateClip(id: string, patch: { trim?: Clip['trim']; edit?: Clip['edit']; contentStartMs?: number }): Clip | undefined {
+    updateClip(id: string, patch: { trim?: Clip['trim']; edit?: Clip['edit']; contentStartMs?: number; savedAt?: number; sharedAt?: number }): Clip | undefined {
       const existing = read<Clip>(key.clip(id));
       if (!existing) return undefined; // deleted meanwhile: never resurrect a record without a file
       const clip = { ...existing, ...patch };
@@ -176,6 +176,24 @@ export function createRepo(kv: KV, files: FileProbe, newId: () => string) {
       kv.delete(key.clip(id));
       write(key.clipsOf(clip.sessionId), clipIds(clip.sessionId).filter((c) => c !== id));
       changed();
+    },
+
+    /**
+     * Removes a game and all its clips from the records. Returns the files of those clips, for the caller to delete
+     * (the repo knows nothing about the file system beyond probing).
+     */
+    deleteSession(id: string): string[] {
+      const paths: string[] = [];
+      for (const clipId of clipIds(id)) {
+        const clip = read<Clip>(key.clip(clipId));
+        if (clip) paths.push(clip.path);
+        kv.delete(key.clip(clipId));
+      }
+      kv.delete(key.clipsOf(id));
+      kv.delete(key.session(id));
+      write(key.sessions, sessionIds().filter((s) => s !== id));
+      changed();
+      return paths;
     },
 
     /** Oldest first; clips whose file is gone (OS cleanup, undo race) are left out. */

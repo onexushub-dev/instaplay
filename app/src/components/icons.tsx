@@ -21,6 +21,18 @@ export function PhoneIcon({ color = colors.text, size = 22 }: IconProps) {
   );
 }
 
+/** A QR code: three finder squares and a few modules. It stands for connecting by scanning the pairing code. */
+export function QrIcon({ color = colors.text, size = 22 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" accessibilityElementsHidden>
+      <Rect x={3} y={3} width={7} height={7} rx={1.5} {...stroke(color)} />
+      <Rect x={14} y={3} width={7} height={7} rx={1.5} {...stroke(color)} />
+      <Rect x={3} y={14} width={7} height={7} rx={1.5} {...stroke(color)} />
+      <Path d="M14 14h3v3M21 14v.01M14 21h3M21 17v4" {...stroke(color)} />
+    </Svg>
+  );
+}
+
 /** A player with both arms up, with small motion arcs beside the hands: raise them or wave them to save. */
 export function ArmsUpIcon({ color = colors.text, size = 22 }: IconProps) {
   return (

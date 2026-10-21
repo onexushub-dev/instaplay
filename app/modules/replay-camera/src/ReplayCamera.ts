@@ -10,6 +10,7 @@ import type {
   SessionOptions,
   VoiceLocale,
   WatchStatus,
+  ZoomRange,
 } from './ReplayCamera.types';
 
 // Native rejections carry `code` (a ReplayErrorCode), so callers can branch on it.
@@ -33,6 +34,17 @@ export function saveClip(opts: SaveClipOptions): Promise<SavedClip> {
 
 export function setGestureEnabled(enabled: boolean): void {
   ReplayCameraModule.setGestureEnabled(enabled);
+}
+
+/** What the camera can zoom. Without native zoom there are only the two lenses: 0.5x and 1x, picked when the camera opens. */
+export function getZoomRange(): ZoomRange {
+  if (typeof ReplayCameraModule.getZoomRange === 'function') return ReplayCameraModule.getZoomRange();
+  return { min: 0.5, max: 1, continuous: false };
+}
+
+/** Zooms the running camera (0.5 = ultra-wide, 1 = wide, above 1 is a digital crop). `animated` ramps smoothly, for a button tap. */
+export function setZoom(factor: number, animated: boolean = false): void {
+  if (typeof ReplayCameraModule.setZoom === 'function') ReplayCameraModule.setZoom(factor, animated);
 }
 
 /** Short "saved" chime and/or two blinks of the rear torch, so a player far from the phone knows. */

@@ -20,14 +20,18 @@ export type ModeId =
 /** Kept as the field type name: Session.sport and Prefs.sport hold a mode id. */
 export type Sport = ModeId;
 
+/** 0.5 = the ultra-wide lens, 1 = the wide lens, above 1 a digital crop. */
 export type ModeSettings = {
-  lens: 'ultraWide' | 'wide';
+  zoom: number;
   gestureEnabled: boolean;
   voiceEnabled: boolean;
   bufferSeconds: 60 | 120;
   cutSeconds: number;
   quality: '1080p60' | '1080p30';
 };
+
+/** What was saved for a mode: before zoom existed it held `lens` (read, never written). */
+export type StoredModeSettings = Partial<ModeSettings> & { lens?: 'ultraWide' | 'wide' };
 
 export type Session = { id: string; sport: Sport; startedAt: number; endedAt?: number; name?: string; /** RevenueCat transaction id of the session pass that unlocked this game; absent = no pass. */ passTransactionId?: string };
 
@@ -50,6 +54,9 @@ export type Clip = {
   name?: string;
   /** True when the clip was recorded over the free limit and is locked until the game has a pass. */
   locked?: boolean;
+  /** When the edited video was last saved to Photos / sent through the share sheet (the clip itself stays inside the app). */
+  savedAt?: number;
+  sharedAt?: number;
 };
 
 export type Prefs = {
@@ -62,8 +69,10 @@ export type Prefs = {
   flashOnSave: boolean;
   /** "salvar" / "gravar" by voice (iOS). Off until speech permission is granted. */
   voiceEnabled: boolean;
+  /** When a press of the Bluetooth remote was first heard; the app cannot see the iOS pairing, only presses. */
+  remoteTestedAt?: number;
   /** The player's changes to a mode's defaults, kept per mode. */
-  modeSettings?: Partial<Record<ModeId, Partial<ModeSettings>>>;
+  modeSettings?: Partial<Record<ModeId, StoredModeSettings>>;
 };
 
 export const DEFAULT_PREFS: Prefs = {

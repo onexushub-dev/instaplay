@@ -18,13 +18,15 @@ type Props = {
   rotation: Rotation;
   onCommit: (zoom: Zoom) => void;
   onTap: () => void;
+  /** A clear horizontal flick while not zoomed: 1 for left (next), -1 for right (previous). */
+  onSwipe?: (step: 1 | -1) => void;
 };
 
 /** The video with pinch zoom (around the fingers), drag to move it, and tap. Remount it to start again from `zoom`. */
-export function ZoomableVideo({ player, area, box, zoom, rotation, onCommit, onTap }: Props) {
+export function ZoomableVideo({ player, area, box, zoom, rotation, onCommit, onTap, onSwipe }: Props) {
   const { t } = useT();
   const [live, setLive] = useState<Zoom>(zoom ?? NO_ZOOM);
-  const panHandlers = useZoomGesture({ zoom: live, box, onChange: setLive, onCommit, onTap });
+  const panHandlers = useZoomGesture({ zoom: live, box, onChange: setLive, onCommit, onTap, onSwipe });
 
   return (
     <View {...panHandlers} accessibilityLabel={t('clip.video')} style={[styles.area, area]}>

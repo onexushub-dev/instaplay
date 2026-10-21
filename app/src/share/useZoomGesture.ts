@@ -11,10 +11,12 @@ type Props = {
   onChange: (zoom: Zoom) => void;
   onCommit: (zoom: Zoom) => void;
   onTap: () => void;
+  onSwipe?: (step: 1 | -1) => void;
 };
 
 const TAP_SLOP = 10;
 const TAP_MS = 350;
+const SWIPE_MIN = 60;
 
 /** Two fingers pinch and move the picture, one finger moves it when zoomed in; a short touch without movement is a tap. */
 export function useZoomGesture(props: Props) {
@@ -32,6 +34,8 @@ export function useZoomGesture(props: Props) {
     let startedAt = 0;
     let travelled = 0;
     let multi = false;
+    let totalX = 0;
+    let totalY = 0;
 
     const read = (touches: readonly Touch[]) => {
       const x = touches.reduce((sum, t) => sum + t.pageX, 0) / touches.length;
@@ -48,6 +52,8 @@ export function useZoomGesture(props: Props) {
         previous = read(e.nativeEvent.touches);
         startedAt = Date.now();
         travelled = 0;
+        totalX = 0;
+        totalY = 0;
         multi = previous.count > 1;
         // Where the touch area starts on screen: the touch's page position minus its position inside the area.
         const first = e.nativeEvent.touches[0] as Touch & { locationX?: number; locationY?: number };
@@ -65,6 +71,8 @@ export function useZoomGesture(props: Props) {
           const dx = next.x - previous.x;
           const dy = next.y - previous.y;
           travelled += Math.hypot(dx, dy);
+          totalX += dx;
+          totalY += dy;
           let zoom = current;
           if (next.count > 1 && previous.distance > 0) {
             const focal = { x: (next.x - origin.x - box.left) / width, y: (next.y - origin.y - box.top) / height };
@@ -80,7 +88,10 @@ export function useZoomGesture(props: Props) {
       },
       onPanResponderRelease: () => {
         const tap = !multi && travelled < TAP_SLOP && Date.now() - startedAt < TAP_MS;
+        const swipe =
+          !multi && latest.current.zoom.scale <= 1.01 && Math.abs(totalX) > SWIPE_MIN && Math.abs(totalX) > 2 * Math.abs(totalY);
         if (tap) latest.current.onTap();
+        else if (swipe && latest.current.onSwipe) latest.current.onSwipe(totalX < 0 ? 1 : -1);
         else latest.current.onCommit(current);
       },
       onPanResponderTerminate: () => latest.current.onCommit(current),

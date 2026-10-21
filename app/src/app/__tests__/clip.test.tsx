@@ -3,7 +3,7 @@ import { Alert, Image } from 'react-native';
 
 import ClipEditor from '../clip/[id]';
 
-jest.mock('expo-router', () => ({ router: { push: jest.fn(), back: jest.fn() }, useLocalSearchParams: () => ({ id: 'c1' }) }));
+jest.mock('expo-router', () => ({ router: { push: jest.fn(), back: jest.fn(), setParams: jest.fn() }, useLocalSearchParams: () => ({ id: 'c1' }) }));
 jest.mock('../../payments', () => ({
   payments: {
     subscribe: () => () => {},
@@ -197,7 +197,9 @@ test('deleting asks first, then removes the file and the clip', async () => {
   confirm.onPress!();
   expect(removeFile).toHaveBeenCalledWith('/c1.mp4');
   expect(repo.deleteClip).toHaveBeenCalledWith('c1');
-  expect(router.back).toHaveBeenCalled();
+  // c1 is the last one in the list, so playback continues with the one before it instead of leaving the screen
+  expect(router.setParams).toHaveBeenCalledWith({ id: 'c0' });
+  expect(router.back).not.toHaveBeenCalled();
 });
 
 test('Compartilhar exports with the cut, speed, zoom and no app mark (pro), then opens the share sheet', async () => {
@@ -227,6 +229,13 @@ test('Salvar na galeria asks for photo access and saves the export', async () =>
   expect(media.requestPermissionsAsync).toHaveBeenCalledWith(true, ['video']);
   expect(media.Asset.create).toHaveBeenCalledWith('file:///exports/e1.mp4');
   expect(screen.getByText('Salvo na galeria.')).toBeTruthy();
+  expect(repo.updateClip).toHaveBeenCalledWith('c1', { savedAt: expect.any(Number) });
+});
+
+test('after sharing, the clip is marked as shared', async () => {
+  await open();
+  await pressAction('Compartilhar');
+  expect(repo.updateClip).toHaveBeenCalledWith('c1', { sharedAt: expect.any(Number) });
 });
 
 test('saving then sharing the same look exports only once', async () => {
@@ -245,6 +254,19 @@ test('ignores a second tap while exporting', async () => {
   await act(async () => fireEvent.press(share));
   await act(async () => finish({ path: '/exports/e1.mp4', durationMs: 1 }));
   expect(camera.exportClip).toHaveBeenCalledTimes(1);
+});
+
+test('while the video is made, a card shows only "Preparando o vídeo…"', async () => {
+  let finish: (v: unknown) => void = () => {};
+  camera.exportClip.mockImplementationOnce(() => new Promise((r) => (finish = r)));
+  await open();
+  await act(async () => fireEvent.press(screen.getByRole('button', { name: 'Salvar na galeria' })));
+  expect(screen.getByText('Preparando o vídeo…')).toBeTruthy();
+  expect(screen.queryByText('Para salvar na galeria')).toBeNull();
+  expect(screen.queryByText('0 s')).toBeNull();
+  await act(async () => finish({ path: '/exports/e1.mp4', durationMs: 1 }));
+  expect(screen.queryByText('Preparando o vídeo…')).toBeNull();
+  expect(screen.getByText('Salvo na galeria.')).toBeTruthy();
 });
 
 test('a failed export shows the error and re-enables the buttons', async () => {

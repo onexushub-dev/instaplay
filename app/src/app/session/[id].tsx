@@ -1,12 +1,12 @@
-import { router, useLocalSearchParams } from 'expo-router';
-import { useMemo, useState, useSyncExternalStore } from 'react';
-import { FlatList, StyleSheet, Text, TextInput, View } from 'react-native';
+import { router, useLocalSearchParams, useNavigation } from 'expo-router';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { Alert, FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Button } from '../../components/Button';
 import { ClipCard } from '../../components/ClipCard';
 import { dayAndTime, megabytes, modeLabel, recordedLabel, sessionLabel } from '../../components/format';
-import { repo } from '../../data/mmkv';
+import { removeFile, repo } from '../../data/mmkv';
 import { MAX_GAME_NAME } from '../../data/schema';
 import { openPaywall } from '../../payments/feedback';
 import { isClipLocked } from '../../payments/rules';
@@ -19,28 +19,107 @@ export default function SessionSummary() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { reset, state } = useSession();
   const { t, locale } = useT();
+  const navigation = useNavigation();
   // Re-read whenever the repo changes (a clip deleted on the clip screen, a late save landing).
   const version = useSyncExternalStore(repo.subscribe, repo.version);
   const { session, clips, stats } = useMemo(
     () => ({ session: repo.getSession(id), clips: repo.listClips(id), stats: repo.sessionStats(id) }),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- version is the change signal
-    [id, version]
+    [id, version],
   );
 
   const { tier } = useEntitlement(id);
   const lockedCount = clips.filter((c) => isClipLocked(c, tier)).length;
-  const newestUnlocked = [...clips].reverse().find((c) => !isClipLocked(c, tier));
 
   const [name, setName] = useState(() => session?.name ?? '');
   const saveName = () => {
     if (session && name.trim() !== (session.name ?? '')) repo.renameSession(id, name);
   };
 
+  // Picking clips to delete.
+  const [selecting, setSelecting] = useState(false);
+  const [picked, setPicked] = useState<string[]>([]);
+  const stopSelecting = () => {
+    setSelecting(false);
+    setPicked([]);
+  };
+  const toggle = (clipId: string) =>
+    setPicked((current) => (current.includes(clipId) ? current.filter((c) => c !== clipId) : [...current, clipId]));
+  const pickAll = () => setPicked(picked.length === clips.length ? [] : clips.map((c) => c.id));
+
+  function confirmDeleteClips() {
+    const count = picked.length;
+    Alert.alert(t('summary.deleteClipsTitle', { count }), t('common.cantUndo'), [
+      { text: t('common.cancel'), style: 'cancel' },
+      {
+        text: t('common.delete'),
+        style: 'destructive',
+        onPress: () => {
+          for (const clip of clips) {
+            if (!picked.includes(clip.id)) continue;
+            removeFile(clip.path);
+            repo.deleteClip(clip.id);
+          }
+          stopSelecting();
+        },
+      },
+    ]);
+  }
+
+  function confirmDeleteGame() {
+    const count = clips.length;
+    Alert.alert(
+      t('summary.deleteGameTitle'),
+      count === 0 ? t('summary.deleteGameEmpty') : t('summary.deleteGameBody', { count }),
+      [
+        { text: t('common.cancel'), style: 'cancel' },
+        {
+          text: t('common.delete'),
+          style: 'destructive',
+          onPress: () => {
+            repo.deleteSession(id).forEach((path) => removeFile(path));
+            if (state.sessionId === id) reset();
+            leaveToGames();
+          },
+        },
+      ],
+    );
+  }
+
+  // Minhas gravações must always have the setup screen under it. A game that has just ended got here by replacing the
+  // setup, so /games is not in the stack and dismissTo would leave it as the only screen, with nowhere to go back to.
+  function leaveToGames() {
+    const state = navigation.getState();
+    const inStack = state === undefined || state.routes.some((route) => route.name === 'games');
+    if (inStack) {
+      router.dismissTo('/games');
+      return;
+    }
+    router.dismissTo('/setup');
+    router.push('/games');
+  }
+
   function newGame() {
     // Only the game that just ended resets the live session; from Minhas gravações, setup is already under us.
     if (state.sessionId === id) reset();
     router.dismissTo('/setup');
   }
+
+  // A game whose last clip was just deleted (here or on the clip screen) has nothing left to show: remove it too and go
+  // back to the list. A game that was recorded without any clip still opens as an empty summary.
+  const hadClips = useRef(clips.length > 0);
+  useEffect(() => {
+    if (clips.length > 0) {
+      hadClips.current = true;
+      return;
+    }
+    if (!hadClips.current || !session) return;
+    hadClips.current = false;
+    repo.deleteSession(id).forEach((path) => removeFile(path));
+    if (state.sessionId === id) reset();
+    leaveToGames();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs when the clip list changes
+  }, [clips.length, session]);
 
   return (
     <SafeAreaView style={styles.root}>
@@ -70,6 +149,40 @@ export default function SessionSummary() {
         ) : null}
       </View>
 
+      {clips.length > 0 ? (
+        <View style={styles.pickBar}>
+          {selecting ? (
+            <>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={t('summary.cancelSelection')}
+                hitSlop={8}
+                onPress={stopSelecting}>
+                <Text style={styles.pickLink}>{t('common.cancel')}</Text>
+              </Pressable>
+              <Text style={styles.pickCount}>
+                {picked.length === 0 ? t('summary.tapClips') : t('summary.selected', { count: picked.length })}
+              </Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={picked.length === clips.length ? t('summary.clearSelection') : t('summary.selectAll')}
+                hitSlop={8}
+                onPress={pickAll}>
+                <Text style={styles.pickLink}>{picked.length === clips.length ? t('summary.clear') : t('summary.all')}</Text>
+              </Pressable>
+            </>
+          ) : (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={t('summary.selectClips')}
+              hitSlop={8}
+              onPress={() => setSelecting(true)}>
+              <Text style={styles.pickLink}>{t('summary.selectClips')}</Text>
+            </Pressable>
+          )}
+        </View>
+      ) : null}
+
       <View style={styles.stats}>
         <Stat value={recordedLabel(stats.recordedMs, locale)} label={t('summary.recorded')} />
         <Stat value={String(stats.clips)} label={t('summary.clipsStat', { count: stats.clips })} accent />
@@ -92,29 +205,56 @@ export default function SessionSummary() {
         columnWrapperStyle={styles.gridRow}
         contentContainerStyle={styles.grid}
         ListEmptyComponent={<Text style={styles.empty}>{t('summary.empty')}</Text>}
+        extraData={[selecting, picked, tier]}
         renderItem={({ item, index }) => (
           <ClipCard
             clip={item}
             number={index + 1}
             locked={isClipLocked(item, tier)}
-            onPress={() => (isClipLocked(item, tier) ? void openPaywall(id, t) : router.push(`/clip/${item.id}`))}
+            selecting={selecting}
+            selected={picked.includes(item.id)}
+            onPress={() =>
+              selecting
+                ? toggle(item.id)
+                : isClipLocked(item, tier)
+                  ? void openPaywall(id, t)
+                  : router.push(`/clip/${item.id}`)
+            }
+            onLongPress={
+              selecting
+                ? undefined
+                : () => {
+                    setSelecting(true);
+                    setPicked([item.id]);
+                  }
+            }
           />
         )}
       />
 
       <View style={styles.footer}>
-        <View style={styles.buttons}>
-          <View style={{ flex: 1 }}>
-            <Button label={t('summary.newRecording')} variant="secondary" onPress={newGame} />
-          </View>
-          <View style={{ flex: 1.4 }}>
-            <Button
-              label={t('summary.postClip')}
-              disabled={!newestUnlocked}
-              onPress={() => newestUnlocked && router.push(`/clip/${newestUnlocked.id}`)}
-            />
-          </View>
-        </View>
+        {selecting ? (
+          <Button
+            label={picked.length === 0 ? t('common.delete') : t('summary.deleteClips', { count: picked.length })}
+            variant="danger"
+            disabled={picked.length === 0}
+            onPress={confirmDeleteClips}
+          />
+        ) : (
+          <>
+            <Button label={t('summary.newRecording')} onPress={newGame} />
+            {session ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={t('games.deleteRecording')}
+                hitSlop={8}
+                onPress={confirmDeleteGame}
+                style={styles.deleteGame}>
+                <Text style={styles.deleteGameText}>{t('games.deleteRecording')}</Text>
+              </Pressable>
+            ) : null}
+          </>
+        )}
       </View>
     </SafeAreaView>
   );
@@ -160,5 +300,10 @@ const styles = StyleSheet.create({
   empty: { fontFamily: fonts.body, fontSize: 15, color: colors.soft, textAlign: 'center', marginTop: 40 },
   footer: { gap: 8, paddingBottom: 12 },
   caption: { fontFamily: fonts.body, fontSize: 12, color: colors.muted, textAlign: 'center' },
+  pickBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 32 },
+  pickLink: { fontFamily: fonts.bodyBold, fontSize: 15, color: colors.accent },
+  pickCount: { fontFamily: fonts.bodySemi, fontSize: 15, color: colors.text },
+  deleteGame: { minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+  deleteGameText: { fontFamily: fonts.bodySemi, fontSize: 14, color: colors.rec },
   buttons: { flexDirection: 'row', gap: 10 },
 });

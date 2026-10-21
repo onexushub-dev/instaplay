@@ -6,7 +6,8 @@ import { colors, fonts } from '../theme/tokens';
 type Props = {
   icon: ReactNode;
   title: string;
-  status: string;
+  /** Optional second line; without it the title carries the whole action and turns accent when active. */
+  status?: string;
   active?: boolean;
   disabled?: boolean;
   onPress?: () => void;
@@ -18,14 +19,16 @@ export function TriggerTile({ icon, title, status, active = false, disabled = fa
     <>
       {icon}
       <View style={styles.text}>
-        <Text style={styles.title}>{title}</Text>
-        <Text style={[styles.status, active && { color: colors.accent }]}>{status}</Text>
+        <Text style={[styles.title, status === undefined && active && { color: colors.accent }]}>{title}</Text>
+        {status === undefined ? null : (
+          <Text style={[styles.status, active && { color: colors.accent }]}>{status}</Text>
+        )}
       </View>
     </>
   );
   if (!onPress) {
     return (
-      <View style={[styles.tile, disabled && styles.disabled]} accessible accessibilityLabel={`${title}, ${status}`}>
+      <View style={[styles.tile, disabled && styles.disabled]} accessible accessibilityLabel={status === undefined ? title : `${title}, ${status}`}>
         {body}
       </View>
     );
@@ -33,7 +36,7 @@ export function TriggerTile({ icon, title, status, active = false, disabled = fa
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`${title}, ${status}`}
+      accessibilityLabel={status === undefined ? title : `${title}, ${status}`}
       accessibilityState={{ disabled }}
       disabled={disabled}
       onPress={onPress}

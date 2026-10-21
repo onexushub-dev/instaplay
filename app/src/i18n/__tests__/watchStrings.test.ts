@@ -21,7 +21,7 @@ function usedKeys(source: string): string[] {
 test('every text the watch shows is in the catalog, in English and Portuguese', () => {
   const keys = usedKeys(view);
   expect(keys).toEqual(
-    expect.arrayContaining(['%lld clips', 'No connection to your iPhone', 'Save', 'Start recording on your iPhone']),
+    expect.arrayContaining(['%lld clips', 'No connection', 'Open LANCE on your iPhone', 'Save', 'Start recording', 'Stop']),
   );
   expect(catalog.sourceLanguage).toBe('en');
   for (const key of keys) {
@@ -46,8 +46,13 @@ test('the clip count is a plural in both languages', () => {
 test('the Portuguese copy is what the watch said before', () => {
   const pt = (key: string) => (catalog.strings[key].localizations['pt-BR'] as Unit).stringUnit.value;
   expect(pt('Save')).toBe('Salvar');
-  expect(pt('Start recording on your iPhone')).toBe('Comece a gravar no iPhone');
-  expect(pt('No connection to your iPhone')).toBe('Sem conexão com o iPhone');
+  expect(pt('Start recording')).toBe('Começar gravação');
+  expect(pt('Starting…')).toBe('Começando…');
+  expect(pt('No connection')).toBe('Sem conexão');
+  expect(pt('Open LANCE on your iPhone')).toBe('Abra o LANCE no iPhone');
+  expect(pt('Connecting to your iPhone…')).toBe('Conectando ao iPhone…');
+  expect(pt('Stop')).toBe('Parar');
+  expect(pt('Hold')).toBe('Segure');
   expect(pt('View camera')).toBe('Ver câmera');
   expect(pt('Close camera')).toBe('Fechar câmera');
   expect(pt('Saved')).toBe('Salvo');
@@ -57,4 +62,25 @@ test('the Portuguese copy is what the watch said before', () => {
 test('no Portuguese is left hard-coded in the watch view', () => {
   const literals = [...view.matchAll(/"((?:[^"\\]|\\.)*)"/g)].map((m) => m[1]);
   expect(literals.filter((s) => /[À-ÿ]/.test(s))).toEqual([]);
+});
+
+describe('the watch widget', () => {
+  const WIDGET = path.join(__dirname, '..', '..', '..', 'targets', 'watch-widget');
+  const widget = fs.readFileSync(path.join(WIDGET, 'SaveWidget.swift'), 'utf8');
+  const widgetCatalog = JSON.parse(fs.readFileSync(path.join(WIDGET, 'Localizable.xcstrings'), 'utf8'));
+
+  test('every text it shows is in its own catalog, in English and Portuguese, and nothing more', () => {
+    const keys = usedKeys(widget);
+    expect(keys).toEqual(expect.arrayContaining(['%lld clips', 'Open']));
+    expect(Object.keys(widgetCatalog.strings).sort()).toEqual(keys);
+    for (const key of keys) {
+      expect([key, Object.keys(widgetCatalog.strings[key].localizations).sort()]).toEqual([key, ['en', 'pt-BR']]);
+    }
+    expect((widgetCatalog.strings.Open.localizations['pt-BR'] as Unit).stringUnit.value).toBe('Abrir');
+  });
+
+  test('no Portuguese is left hard-coded in the widget', () => {
+    const literals = [...widget.matchAll(/"((?:[^"\\]|\\.)*)"/g)].map((m) => m[1]);
+    expect(literals.filter((s) => /[À-ÿ]/.test(s))).toEqual([]);
+  });
 });

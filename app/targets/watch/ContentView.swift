@@ -9,46 +9,85 @@ private let accent = Color(red: 0.839, green: 0.949, blue: 0.247) // #D6F23F
 struct ContentView: View {
   @StateObject private var link = WatchLink()
   @Environment(\.scenePhase) private var scenePhase
+  /// Wrist down / Always-On: the screen is dimmed and the app stays on it, so it shows only what matters.
+  @Environment(\.isLuminanceReduced) private var dimmed
 
   var body: some View {
     Group {
       switch link.screen {
       case .idle:
-        Message("Start recording on your iPhone")
+        idleView
+      case .connecting:
+        ConnectingView()
       case .offline:
-        VStack(spacing: 8) {
-          Message("No connection to your iPhone")
-          SaveButton(enabled: false, height: 80, action: link.sendSave)
-        }
+        PhoneClosedView(lostRecording: true)
       case let .recording(clipCount, startedAt):
-        if link.previewOn {
+        if dimmed {
+          dimmedView(clipCount: clipCount)
+        } else if link.previewOn {
           cameraView(clipCount: clipCount)
         } else {
-          VStack(spacing: 4) {
-            HStack(spacing: 8) {
-              CameraToggle(isOn: false) { link.setPreview(true) }
-              Spacer(minLength: 0)
-              VStack(alignment: .trailing, spacing: 0) {
-                if let startedAt {
-                  TimelineView(.periodic(from: .now, by: 1)) { context in
-                    Text(WatchModel.elapsed(since: startedAt, now: context.date)).monospacedDigit()
-                  }
-                }
-                Text("\(clipCount) clips").foregroundStyle(accent)
-              }
-              .font(.system(.footnote, design: .rounded).weight(.bold))
-            }
-            SaveButton(enabled: true, action: link.sendSave)
-          }
+          recordingView(clipCount: clipCount, startedAt: startedAt)
         }
       }
     }
-    .padding(.horizontal, link.previewOn ? 0 : 6)
+    // The content runs to every edge of the screen; the small padding keeps the buttons off the rounded corners,
+    // and the top row shares the line with the system clock.
+    .padding(.horizontal, link.previewOn ? 0 : 3)
+    .padding(.bottom, link.previewOn ? 0 : 3)
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+    .ignoresSafeArea()
     .background(ground)
     .overlay { if let saved = link.confirmation { Confirmation(saved: saved) } }
     .animation(.easeOut(duration: 0.15), value: link.confirmation)
     // A watch screen that sleeps or an app that leaves the front stops asking for pictures.
-    .onChange(of: scenePhase) { _, phase in if phase != .active { link.setPreview(false) } }
+    .onChange(of: scenePhase) { _, phase in
+      if phase != .active { link.setPreview(false) } else { link.showCachedState() }
+    }
+  }
+
+  /// Nothing is recording: one big Start recording button. Without the LANCE app open on the phone it cannot work, so
+  /// the screen says to open it instead: nothing to tap that would go nowhere.
+  @ViewBuilder private var idleView: some View {
+    if !link.reachable || link.startFailed {
+      PhoneClosedView(lostRecording: false).onTapGesture { link.dismissStartFailed() }
+    } else {
+      VStack(spacing: 3) {
+        Header {}
+        BigButton(
+          title: link.starting ? Text("Starting…") : Text("Start recording"), style: .title2, enabled: !link.starting,
+          action: link.sendStart)
+      }
+    }
+  }
+
+  /// Dimmed screen: just the count and Save, nothing else to mis-tap.
+  private func dimmedView(clipCount: Int) -> some View {
+    VStack(spacing: 3) {
+      Header { Text("\(clipCount) clips").foregroundStyle(accent) }
+      BigButton(title: Text("Save"), enabled: true, action: link.sendSave)
+    }
+  }
+
+  /// Top to bottom: time and count, the two small controls, then Save filling everything that is left.
+  private func recordingView(clipCount: Int, startedAt: Date?) -> some View {
+    VStack(spacing: 4) {
+      Header {
+        if let startedAt {
+          TimelineView(.periodic(from: .now, by: 1)) { context in
+            Text(WatchModel.elapsed(since: startedAt, now: context.date)).monospacedDigit()
+          }
+        }
+        Text("\(clipCount) clips").foregroundStyle(accent)
+      }
+      HStack(spacing: 6) {
+        CameraToggle(isOn: false) { link.setPreview(true) }
+        StopButton(action: link.sendStop)
+      }
+      // Room between the small controls and Save, so a thumb aiming at one does not land on the other.
+      BigButton(title: Text("Save"), enabled: true, action: link.sendSave)
+        .padding(.top, 8)
+    }
   }
 
   /// The camera fills the screen and there is no Save button: a tap anywhere saves. Only the corner
@@ -109,7 +148,8 @@ private struct CameraToggle: View {
     Button(action: action) {
       Image(systemName: isOn ? "xmark" : "camera")
         .font(.system(size: 20, weight: .semibold))
-        .frame(width: 56, height: 44)
+        .frame(width: isOn ? 56 : nil, height: 44)
+        .frame(maxWidth: isOn ? nil : .infinity)
         .background(isOn ? Color.black.opacity(0.6) : Color.white.opacity(0.2), in: Capsule())
         .foregroundStyle(.white)
     }
@@ -119,55 +159,153 @@ private struct CameraToggle: View {
 }
 
 
-private struct Message: View {
-  let text: LocalizedStringKey
-  init(_ text: LocalizedStringKey) { self.text = text }
+/// The LANCE app is not open on the phone, so nothing here can record or save: say so, large, and say what to do.
+private struct PhoneClosedView: View {
+  /// A recording that lost its phone, rather than a watch that never had one.
+  let lostRecording: Bool
   var body: some View {
-    Text(text).font(.headline).multilineTextAlignment(.center).foregroundStyle(.white)
+    VStack(spacing: 3) {
+      Header { if lostRecording { Text("No connection").foregroundStyle(.red) } }
+      VStack(spacing: 8) {
+        Image(systemName: "iphone.gen3").font(.system(size: 42, weight: .semibold)).foregroundStyle(accent)
+        Text("Open LANCE on your iPhone")
+          .font(.system(.title3, design: .rounded).weight(.heavy))
+          .multilineTextAlignment(.center)
+          .foregroundStyle(.white)
+        (lostRecording
+          ? Text("The recording lost its connection to the watch.")
+          : Text("Without the app open, you can't record or save clips."))
+          .font(.system(.footnote, design: .rounded))
+          .multilineTextAlignment(.center)
+          .minimumScaleFactor(0.8)
+          .foregroundStyle(.white.opacity(0.7))
+      }
+      .padding(.horizontal, 10)
+      .frame(maxWidth: .infinity, maxHeight: .infinity)
+      .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+    }
   }
 }
 
-/// Fills the width and most of the height: easy to hit without looking, mid-play.
-private struct SaveButton: View {
+/// Just opened and the phone has not spoken yet: a short, neutral wait before deciding anything.
+private struct ConnectingView: View {
+  var body: some View {
+    VStack(spacing: 3) {
+      Header {}
+      VStack(spacing: 10) {
+        ProgressView().tint(accent)
+        Text("Connecting to your iPhone…")
+          .font(.system(.title3, design: .rounded).weight(.heavy))
+          .multilineTextAlignment(.center)
+          .foregroundStyle(.white)
+      }
+      .padding(.horizontal, 10)
+      .frame(maxWidth: .infinity, maxHeight: .infinity)
+      .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+    }
+  }
+}
+
+/// The line at the top, level with the system clock (which owns the right side): text on the left only.
+private struct Header<Content: View>: View {
+  @ViewBuilder let content: Content
+  var body: some View {
+    HStack(spacing: 8) {
+      content
+      Spacer(minLength: 0)
+    }
+    .font(.system(.footnote, design: .rounded).weight(.bold))
+    // The screen curves away at the top corners: the text starts well inside, level with the system clock.
+    .padding(.leading, 22)
+    .frame(height: 28)
+    .padding(.top, 8)
+  }
+}
+
+/// Fills all the width and all the height left, edge to edge: easy to hit without looking, mid-play.
+/// Drawn by hand: the system prominent style adds its own margin and shrinks the target.
+private struct BigButton: View {
+  /// A Text built from a catalog key, so it is shown in the watch's language.
+  let title: Text
+  var style: Font.TextStyle = .title
   let enabled: Bool
-  var height: CGFloat = 80
   let action: () -> Void
   var body: some View {
     Button(action: action) {
-      Text("Save")
-        .font(.system(.title3, design: .rounded).weight(.heavy))
-        .frame(maxWidth: .infinity, minHeight: height)
+      title
+        .font(.system(style, design: .rounded).weight(.heavy))
+        .multilineTextAlignment(.center)
+        .minimumScaleFactor(0.7)
+        .padding(.horizontal, 8)
+        .foregroundStyle(ground)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(enabled ? accent : accent.opacity(0.25), in: RoundedRectangle(cornerRadius: 26, style: .continuous))
     }
-    .buttonStyle(.borderedProminent)
-    .tint(accent)
-    .foregroundStyle(ground)
+    .buttonStyle(PressStyle())
     .disabled(!enabled)
   }
 }
 
+private struct PressStyle: ButtonStyle {
+  func makeBody(configuration: Configuration) -> some View {
+    configuration.label
+      .opacity(configuration.isPressed ? 0.75 : 1)
+      .scaleEffect(configuration.isPressed ? 0.98 : 1)
+  }
+}
+
+/// Ends the game only on a press-and-hold, so a mis-tap mid-play cannot; a short tap says how.
+private struct StopButton: View {
+  let action: () -> Void
+  @State private var pressing = false
+  @State private var hint = false
+  var body: some View {
+    (hint ? Text("Hold") : Text("Stop"))
+      .font(.system(.footnote, design: .rounded).weight(.bold))
+      .frame(maxWidth: .infinity, minHeight: 44)
+      .background(pressing ? Color.red : Color.red.opacity(0.35), in: Capsule())
+      .foregroundStyle(.white)
+      .scaleEffect(pressing ? 0.96 : 1)
+      .animation(.easeOut(duration: 0.15), value: pressing)
+      .onLongPressGesture(minimumDuration: 1, maximumDistance: 30, perform: action) { pressing = $0 }
+      .onTapGesture {
+        hint = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { hint = false }
+      }
+      .accessibilityLabel(Text("Stop recording"))
+      .accessibilityHint(Text("Hold to stop"))
+  }
+}
+
 #Preview("Recording") {
-  VStack(spacing: 6) {
-    HStack {
+  VStack(spacing: 3) {
+    Header {
       Text(verbatim: "12:34").monospacedDigit()
-      Spacer()
       Text("\(3) clips").foregroundStyle(accent)
     }
-    .font(.system(.footnote, design: .rounded).weight(.bold))
-    SaveButton(enabled: true, action: {})
+    HStack(spacing: 3) {
+      CameraToggle(isOn: false) {}
+      StopButton {}
+    }
+    BigButton(title: Text("Save"), enabled: true, action: {})
   }
-  .padding(6)
+  .padding(3)
   .background(ground)
 }
 
-#Preview("Offline") {
-  VStack(spacing: 8) {
-    Message("No connection to your iPhone")
-    SaveButton(enabled: false, action: {})
-  }
-  .padding(6)
-  .background(ground)
+#Preview("Phone closed") {
+  PhoneClosedView(lostRecording: false).padding(3).background(ground)
+}
+
+#Preview("Connecting") {
+  ConnectingView().padding(3).background(ground)
 }
 
 #Preview("Idle") {
-  Message("Start recording on your iPhone").padding(6).background(ground)
+  VStack(spacing: 3) {
+    Header {}
+    BigButton(title: Text("Start recording"), style: .title2, enabled: true, action: {})
+  }
+  .padding(3)
+  .background(ground)
 }

@@ -20,6 +20,9 @@ function fakeDeps(tier: 'free' | 'pro' | 'pass' = 'free') {
       () => new Promise<{ clipPath: string; durationMs: number }>((resolve) => (pendingSave = resolve))
     ),
     setGestureEnabled: jest.fn(),
+    // Two fixed lenses (Android) unless a test says otherwise.
+    getZoomRange: jest.fn((): { min: number; max: number; continuous: boolean } => ({ min: 0.5, max: 1, continuous: false })),
+    setZoom: jest.fn(),
     signalSaved: jest.fn(),
     setVoiceEnabled: jest.fn(),
     getSpeechPermission: jest.fn((): 'granted' | 'denied' | 'undetermined' => 'granted'),
@@ -155,7 +158,7 @@ test('prepare opens the camera with the mode\'s lens, quality and buffer', async
   const f = fakeDeps();
   const view = await renderHook(() => useReplaySession(f.deps));
   await act(() => view.result.current.prepare('musculacao'));
-  expect(f.camera.startSession).toHaveBeenLastCalledWith({ lens: 'wide', maxQuality: '1080p30', bufferSeconds: 120 });
+  expect(f.camera.startSession).toHaveBeenLastCalledWith({ lens: 'wide', zoom: 1, maxQuality: '1080p30', bufferSeconds: 120 });
 });
 
 test('switching mode reapplies lens, buffer and triggers', async () => {
@@ -165,20 +168,87 @@ test('switching mode reapplies lens, buffer and triggers', async () => {
   await act(() => view.result.current.prepare('musculacao'));
 
   expect(f.camera.stopSession).toHaveBeenCalledTimes(1);
-  expect(f.camera.startSession).toHaveBeenLastCalledWith({ lens: 'wide', maxQuality: '1080p30', bufferSeconds: 120 });
+  expect(f.camera.startSession).toHaveBeenLastCalledWith({ lens: 'wide', zoom: 1, maxQuality: '1080p30', bufferSeconds: 120 });
 
   await act(() => view.result.current.start('musculacao'));
   expect(f.camera.setGestureEnabled).toHaveBeenLastCalledWith(false);
   expect(f.camera.setVoiceEnabled).toHaveBeenLastCalledWith(true, 'pt-BR');
 });
 
-test('a lens change saved for the mode reopens the camera', async () => {
+test('with two fixed lenses (Android), a zoom that crosses 1x reopens the camera with the other lens', async () => {
   const f = fakeDeps();
   const view = await renderHook(() => useReplaySession(f.deps));
   await act(() => view.result.current.prepare('quadra'));
-  f.deps.repo.setPrefs({ modeSettings: { quadra: { lens: 'wide' } } });
+  expect(f.camera.startSession).toHaveBeenLastCalledWith({ lens: 'ultraWide', zoom: 0.5, maxQuality: '1080p60', bufferSeconds: 60 });
+  f.deps.repo.setPrefs({ modeSettings: { quadra: { zoom: 1 } } });
   await act(() => view.result.current.prepare('quadra'));
-  expect(f.camera.startSession).toHaveBeenLastCalledWith({ lens: 'wide', maxQuality: '1080p60', bufferSeconds: 60 });
+  expect(f.camera.startSession).toHaveBeenLastCalledWith({ lens: 'wide', zoom: 1, maxQuality: '1080p60', bufferSeconds: 60 });
+  expect(f.camera.startSession).toHaveBeenCalledTimes(2);
+});
+
+test('a lens saved before zoom existed still opens the same lens', async () => {
+  const f = fakeDeps();
+  f.deps.repo.setPrefs({ modeSettings: { quadra: { lens: 'wide' } } });
+  const view = await renderHook(() => useReplaySession(f.deps));
+  await act(() => view.result.current.prepare('quadra'));
+  expect(f.camera.startSession).toHaveBeenLastCalledWith({ lens: 'wide', zoom: 1, maxQuality: '1080p60', bufferSeconds: 60 });
+});
+
+describe('continuous zoom (iOS)', () => {
+  const continuous = { min: 0.5, max: 5, continuous: true };
+
+  test('opens with the saved zoom as the starting zoom', async () => {
+    const f = fakeDeps();
+    f.camera.getZoomRange.mockReturnValue(continuous);
+    f.deps.repo.setPrefs({ modeSettings: { quadra: { zoom: 2 } } });
+    const view = await renderHook(() => useReplaySession(f.deps));
+    await act(() => view.result.current.prepare('quadra'));
+    expect(f.camera.startSession).toHaveBeenLastCalledWith({ lens: 'wide', zoom: 2, maxQuality: '1080p60', bufferSeconds: 60 });
+  });
+
+  test('a zoom saved above the range is clamped when the camera opens', async () => {
+    const f = fakeDeps();
+    f.camera.getZoomRange.mockReturnValue({ min: 1, max: 5, continuous: true });
+    f.deps.repo.setPrefs({ modeSettings: { quadra: { zoom: 0.5 } } });
+    const view = await renderHook(() => useReplaySession(f.deps));
+    await act(() => view.result.current.prepare('quadra'));
+    expect(f.camera.startSession).toHaveBeenLastCalledWith({ lens: 'wide', zoom: 1, maxQuality: '1080p60', bufferSeconds: 60 });
+  });
+
+  test('changing the zoom never reopens the camera', async () => {
+    const f = fakeDeps();
+    f.camera.getZoomRange.mockReturnValue(continuous);
+    const view = await renderHook(() => useReplaySession(f.deps));
+    await act(() => view.result.current.prepare('quadra'));
+    f.deps.repo.setPrefs({ modeSettings: { quadra: { zoom: 2 } } });
+    await act(() => view.result.current.prepare('quadra'));
+    expect(f.camera.startSession).toHaveBeenCalledTimes(1);
+    expect(f.camera.stopSession).not.toHaveBeenCalled();
+  });
+
+  test('a zoom saved meanwhile is applied to the running camera, once', async () => {
+    const f = fakeDeps();
+    f.camera.getZoomRange.mockReturnValue(continuous);
+    const view = await renderHook(() => useReplaySession(f.deps));
+    await act(() => view.result.current.prepare('quadra'));
+    f.deps.repo.setPrefs({ modeSettings: { quadra: { zoom: 2 } } });
+    await act(() => view.result.current.prepare('quadra'));
+    await act(() => view.result.current.prepare('quadra'));
+    expect(f.camera.setZoom).toHaveBeenCalledTimes(1);
+    expect(f.camera.setZoom).toHaveBeenCalledWith(2, false);
+  });
+
+  test('a zoom set through the session is not applied a second time by the next prepare', async () => {
+    const f = fakeDeps();
+    f.camera.getZoomRange.mockReturnValue(continuous);
+    const view = await renderHook(() => useReplaySession(f.deps));
+    await act(() => view.result.current.prepare('quadra'));
+    await act(async () => view.result.current.setZoom(2, true));
+    expect(f.camera.setZoom).toHaveBeenCalledWith(2, true);
+    f.deps.repo.setPrefs({ modeSettings: { quadra: { zoom: 2 } } });
+    await act(() => view.result.current.prepare('quadra'));
+    expect(f.camera.setZoom).toHaveBeenCalledTimes(1);
+  });
 });
 
 test('a camera that fails to open reports its code before any game starts', async () => {

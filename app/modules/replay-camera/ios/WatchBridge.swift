@@ -91,6 +91,9 @@ final class WatchBridge: NSObject, WCSessionDelegate {
   func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
     switch WatchMessage.decode(message) {
     case .save?: emit?("onTrigger", ["source": "watch", "at": Date().timeIntervalSince1970 * 1000])
+    // Same events as the phone remote: JS ignores a start while recording and a stop while idle.
+    case .start?: emit?("onRemoteStart", [:])
+    case .stop?: emit?("onRemoteStop", [:])
     case let .preview(on)?: preview?.ask(on)
     default: break
     }

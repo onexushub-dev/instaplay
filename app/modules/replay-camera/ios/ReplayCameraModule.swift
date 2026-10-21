@@ -3,6 +3,8 @@ import Speech
 
 struct SessionOptions: Record {
   @Field var lens: String = "ultraWide"
+  /// Where zoom is continuous (here) the starting zoom: 0.5 = ultra-wide, 1 = wide. Absent = the lens decides.
+  @Field var zoom: Double?
   @Field var maxQuality: String = "1080p60"
   @Field var bufferSeconds: Double = 60
 }
@@ -80,7 +82,7 @@ public class ReplayCameraModule: Module {
 
     AsyncFunction("startSession") { (opts: SessionOptions) in
       do {
-        try self.engine.start(lens: opts.lens, maxQuality: opts.maxQuality, bufferSeconds: opts.bufferSeconds)
+        try self.engine.start(lens: opts.lens, zoom: opts.zoom, maxQuality: opts.maxQuality, bufferSeconds: opts.bufferSeconds)
       } catch let failure as ReplayEngine.Failure {
         throw ReplayException.from(failure)
       }
@@ -101,6 +103,16 @@ public class ReplayCameraModule: Module {
 
     Function("setGestureEnabled") { (enabled: Bool) in
       self.engine.gesture.enabled = enabled
+    }
+
+    // Continuous zoom: 0.5x (ultra-wide) to 5x, one virtual camera so crossing 1x never restarts the session.
+    Function("getZoomRange") { () -> [String: Any] in
+      let range = CaptureController.zoomRange()
+      return ["min": range.min, "max": range.max, "continuous": true]
+    }
+
+    Function("setZoom") { (factor: Double, animated: Bool) in
+      self.engine.capture.setZoom(factor, animated: animated)
     }
 
     Function("signalSaved") { (sound: Bool, flash: Bool) in

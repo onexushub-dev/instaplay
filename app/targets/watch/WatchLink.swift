@@ -2,6 +2,7 @@ import Foundation
 import WatchConnectivity
 import UIKit
 import WatchKit
+import WidgetKit
 
 /// The watch's side of the link to the iPhone app (messages are `WatchMessage`, shared with the phone).
 final class WatchLink: NSObject, ObservableObject, WCSessionDelegate {
@@ -11,6 +12,12 @@ final class WatchLink: NSObject, ObservableObject, WCSessionDelegate {
   @Published private(set) var previewOn = false
   /// A short confirmation drawn over the screen when the phone says a save ended (true = saved).
   @Published private(set) var confirmation: Bool?
+  /// Whether the phone can be reached right now (Começar gravação and Parar need it).
+  @Published private(set) var reachable = false
+  /// "Começar gravação" was tapped and the phone has not answered yet.
+  @Published private(set) var starting = false
+  /// The phone did not answer a start: the LANCE app is not open on it. Shown as a message, then cleared.
+  @Published private(set) var startFailed = false
 
   private var confirmationReset: DispatchWorkItem?
 
@@ -22,6 +29,13 @@ final class WatchLink: NSObject, ObservableObject, WCSessionDelegate {
   private var startedAtMs: Double?
   private var lastStateAt = Date.distantPast
   private var lastSaveAt: Double?
+  private var unreachableSince: Date?
+  /// When the app last came to the front: what it holds right then may be old (see `WatchModel.connectGrace`).
+  private var activeSince = Date()
+  private var startAskedAt: Double?
+  private var startFailedReset: DispatchWorkItem?
+  /// What the widget was last given, so it is only reloaded when the game changes.
+  private var lastShared: WatchSharedState?
   private var aging: Timer?
 
   override init() {
@@ -45,6 +59,61 @@ final class WatchLink: NSObject, ObservableObject, WCSessionDelegate {
     guard session.isReachable else { return WKInterfaceDevice.current().play(.failure) }
     session.sendMessage(WatchMessage.save.payload, replyHandler: nil) { _ in
       WKInterfaceDevice.current().play(.failure)
+    }
+  }
+
+  /// Starts a new recording on the phone (which ignores it while one is running). The phone answers by reporting a
+  /// recording; if it never does, or cannot be reached, the app is not open there and the screen says so.
+  func sendStart() {
+    guard !recording, !starting else { return }
+    guard WCSession.default.isReachable else { return markStartFailed() }
+    startAskedAt = Date().timeIntervalSince1970
+    starting = true
+    startFailed = false
+    sendCommand(.start) { [weak self] in DispatchQueue.main.async { self?.markStartFailed() } }
+  }
+
+  /// A tap on the message puts the Começar gravação button back.
+  func dismissStartFailed() {
+    startFailedReset?.cancel()
+    startFailed = false
+  }
+
+  private func markStartFailed() {
+    WKInterfaceDevice.current().play(.failure)
+    starting = false
+    startAskedAt = nil
+    startFailed = true
+    startFailedReset?.cancel()
+    let reset = DispatchWorkItem { [weak self] in self?.startFailed = false }
+    startFailedReset = reset
+    DispatchQueue.main.asyncAfter(deadline: .now() + 8, execute: reset)
+  }
+
+  /// Ends the current recording on the phone. The UI asks for a press-and-hold first.
+  func sendStop() {
+    guard WatchModel.canStop(recording: recording, reachable: WCSession.default.isReachable) else {
+      return WKInterfaceDevice.current().play(.failure)
+    }
+    sendCommand(.stop)
+  }
+
+  private func sendCommand(_ message: WatchMessage, onFailure: (() -> Void)? = nil) {
+    WKInterfaceDevice.current().play(.click)
+    WCSession.default.sendMessage(message.payload, replyHandler: nil) { _ in
+      WKInterfaceDevice.current().play(.failure)
+      onFailure?()
+    }
+  }
+
+  /// The app came to the front: fill the screen with the last state the phone left, but as a guess. Until the phone
+  /// speaks again the screen says it is connecting, rather than showing a recording that may be long over.
+  func showCachedState() {
+    guard WCSession.isSupported() else { return }
+    DispatchQueue.main.async {
+      self.activeSince = Date()
+      self.refresh()
+      self.apply(WCSession.default.receivedApplicationContext, fresh: false)
     }
   }
 
@@ -75,14 +144,15 @@ final class WatchLink: NSObject, ObservableObject, WCSessionDelegate {
   }
 
   /// WatchConnectivity calls back off the main thread: hop first, so state, haptics and the banner share one thread.
-  private func apply(_ payload: [String: Any]) {
+  /// `fresh` is false for a cached context: it fills the screen, but does not pass for a heartbeat.
+  private func apply(_ payload: [String: Any], fresh: Bool = true) {
     DispatchQueue.main.async {
       switch WatchMessage.decode(payload) {
       case let .state(recording, clipCount, startedAt)?:
         self.recording = recording
         self.clipCount = clipCount
         self.startedAtMs = startedAt
-        self.lastStateAt = Date()
+        if fresh { self.lastStateAt = Date() }
         self.refresh()
       case let .result(saved)?:
         // The confirmation comes from the phone, once the clip is really saved (or the save failed).
@@ -105,14 +175,42 @@ final class WatchLink: NSObject, ObservableObject, WCSessionDelegate {
   /// Main thread only.
   private func refresh() {
     let reachable = WCSession.default.isReachable
+    if self.reachable != reachable { self.reachable = reachable }
+    if reachable { unreachableSince = nil } else if unreachableSince == nil { unreachableSince = Date() }
+    let stateAge = Date().timeIntervalSince(lastStateAt)
     let next = WatchModel.screen(
       recording: recording, reachable: reachable, clipCount: clipCount, startedAtMs: startedAtMs,
-      stateAge: Date().timeIntervalSince(lastStateAt))
+      stateAge: stateAge, unreachableFor: unreachableSince.map { Date().timeIntervalSince($0) } ?? 0,
+      sinceActive: Date().timeIntervalSince(activeSince))
     if screen != next { screen = next }
     // Nothing to look at once the recording is over or the phone is gone.
     var recordingShown = false
     if case .recording = next { recordingShown = true }
+    if let asked = startAskedAt {
+      switch WatchModel.startOutcome(askedAt: asked, now: Date().timeIntervalSince1970, recording: recordingShown) {
+      case .started:
+        startAskedAt = nil
+        starting = false
+        startFailed = false
+      case .waiting: break
+      case .failed: markStartFailed()
+      }
+    }
     if previewOn, !WatchModel.previewWanted(viewOn: true, reachable: reachable, recording: recordingShown) { setPreview(false) }
+    publishToWidget(next)
+  }
+
+  /// The widget draws the timer and the clip count from this, in the app group both share. Main thread only.
+  private func publishToWidget(_ screen: WatchScreen) {
+    var shared = WatchSharedState(recording: false, clipCount: 0, startedAtMs: nil)
+    if case let .recording(count, started) = screen, let started {
+      shared = WatchSharedState(recording: true, clipCount: count, startedAtMs: started.timeIntervalSince1970 * 1000)
+    }
+    guard shared != lastShared else { return }
+    lastShared = shared
+    let group = WatchSharedState.groupID(forBundleID: Bundle.main.bundleIdentifier ?? "")
+    UserDefaults(suiteName: group)?.set(shared.dictionary, forKey: WatchSharedState.key)
+    WidgetCenter.shared.reloadAllTimelines()
   }
 
   // MARK: WCSessionDelegate

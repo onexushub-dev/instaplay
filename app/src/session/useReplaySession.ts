@@ -7,6 +7,7 @@ import type {
   SavedClip,
   SessionOptions,
   VoiceLocale,
+  ZoomRange,
 } from '../../modules/replay-camera/src/ReplayCamera.types';
 import type { Repo } from '../data/repo';
 import type { ModeId, Sport, TriggerSource } from '../data/schema';
@@ -14,6 +15,7 @@ import { type AppLocale, voiceLocale } from '../i18n/locale';
 import { shouldLockOnSave } from '../payments/rules';
 import { FREE_CLIPS, type Tier } from '../payments/types';
 import { effectiveSettings } from '../modes/registry';
+import { clampZoom, lensFor } from '../modes/zoom';
 import { createTriggerBus } from '../triggers/bus';
 import { initialState, reducer } from './reducer';
 
@@ -24,6 +26,8 @@ export type SessionDeps = {
     stopSession(): Promise<void>;
     saveClip(opts: SaveClipOptions): Promise<SavedClip>;
     setGestureEnabled(enabled: boolean): void;
+    getZoomRange(): ZoomRange;
+    setZoom(factor: number, animated: boolean): void;
     setVoiceEnabled(enabled: boolean, locale: VoiceLocale): void;
     watchSync(state: { recording: boolean; clipCount: number; startedAt?: number }): void;
     watchSignal(saved: boolean): void;
@@ -61,9 +65,11 @@ export function useReplaySession(deps: SessionDeps) {
     stateRef.current = state;
   }, [state]);
   const saving = useRef(false);
-  // Which lens the native camera is running with right now (undefined = off); read synchronously by start().
-  // The camera configuration currently open ("lens|quality|buffer"), undefined when off; read synchronously.
+  // The camera configuration currently open, undefined when off; read synchronously by start().
+  // Continuous zoom (iOS): "quality|buffer", the zoom is changed live. Two fixed lenses (Android): "lens|quality|buffer".
   const cameraLens = useRef<string | undefined>(undefined);
+  // The zoom the running camera was last given, so the same zoom is never sent twice (a repeat would cut a smooth ramp short).
+  const zoomApplied = useRef<number | undefined>(undefined);
   const cameraOpening = useRef<Promise<boolean> | undefined>(undefined);
   const cameraError = useRef<ReplayErrorCode | undefined>(undefined);
   // The mode of the game being played: its default cut applies to every saved clip.
@@ -154,13 +160,24 @@ export function useReplaySession(deps: SessionDeps) {
 
   /**
    * Turns the camera on for `mode` (setup screen) so the preview is live and the game starts instantly.
-   * Reopens it when the mode's lens, quality or buffer differ from what is open. Resolves true when on.
+   * Reopens it when the mode's quality or buffer differ from what is open (and, with two fixed lenses, its lens);
+   * with continuous zoom a different zoom is applied to the running camera instead. Resolves true when on.
    */
   const prepare = useCallback(
     (mode: ModeId): Promise<boolean> => {
-      const { lens, quality, bufferSeconds } = effectiveSettings(mode, deps.repo.getPrefs());
-      const key = `${lens}|${quality}|${bufferSeconds}`;
-      if (cameraLens.current === key) return Promise.resolve(true);
+      const settings = effectiveSettings(mode, deps.repo.getPrefs());
+      const { quality, bufferSeconds } = settings;
+      const range = deps.camera.getZoomRange();
+      const zoom = clampZoom(settings.zoom, range);
+      const lens = lensFor(zoom);
+      const key = range.continuous ? `${quality}|${bufferSeconds}` : `${lens}|${quality}|${bufferSeconds}`;
+      if (cameraLens.current === key) {
+        if (range.continuous && zoomApplied.current !== zoom) {
+          zoomApplied.current = zoom;
+          deps.camera.setZoom(zoom, false);
+        }
+        return Promise.resolve(true);
+      }
       const open = async () => {
         await cameraOpening.current;
         if (cameraLens.current === key) return true;
@@ -172,8 +189,9 @@ export function useReplaySession(deps: SessionDeps) {
           }
           // Body-pose detection is heavy: it only runs once the game starts.
           deps.camera.setGestureEnabled(false);
-          await deps.camera.startSession({ lens, maxQuality: quality, bufferSeconds });
+          await deps.camera.startSession({ lens, zoom, maxQuality: quality, bufferSeconds });
           cameraLens.current = key;
+          zoomApplied.current = zoom;
           dispatch({ type: 'cameraOn' });
           return true;
         } catch (e) {
@@ -241,7 +259,16 @@ export function useReplaySession(deps: SessionDeps) {
 
   const reset = useCallback(() => dispatch({ type: 'reset' }), []);
 
-  return { state, prepare, release, start, stop, trigger, undoLast, reset };
+  /** Zooms the running camera (setup screen only; the zoom is locked while recording). `animated` is for a button tap. */
+  const setZoom = useCallback(
+    (zoom: number, animated: boolean) => {
+      zoomApplied.current = zoom;
+      deps.camera.setZoom(zoom, animated);
+    },
+    [deps],
+  );
+
+  return { state, prepare, release, start, stop, trigger, undoLast, reset, setZoom };
 }
 
 export type ReplaySession = ReturnType<typeof useReplaySession>;

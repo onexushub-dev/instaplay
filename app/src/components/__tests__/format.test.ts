@@ -47,8 +47,8 @@ test('seconds is m:ss in every language', () => {
 });
 
 test('mode names and tips are translated', () => {
-  expect(modeLabel('quadra')).toBe('Quadra');
-  expect(modeLabel('quadra', 'en')).toBe('Court');
+  expect(modeLabel('quadra')).toBe('Gravação');
+  expect(modeLabel('quadra', 'en')).toBe('Recording');
   expect(modeLabel('academia', 'en')).toBe('Gym');
   expect(modeTip('quadra')).toBe('Atrás da linha de fundo, na altura do ombro');
   expect(modeTip('academia', 'en')).toContain('tripod');
