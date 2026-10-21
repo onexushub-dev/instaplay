@@ -15,8 +15,8 @@ struct ContentView: View {
       case .idle:
         idleView
       case .offline:
-        VStack(spacing: 6) {
-          Message("Sem conexão com o iPhone")
+        VStack(spacing: 3) {
+          Header { Text("Sem conexão").foregroundStyle(.red) }
           BigButton(title: "Salvar", enabled: false, action: link.sendSave)
         }
       case let .recording(clipCount, startedAt):
@@ -29,11 +29,12 @@ struct ContentView: View {
         }
       }
     }
-    // The content runs to the bottom edge; the top stays clear of the clock.
-    .padding(.horizontal, link.previewOn ? 0 : 4)
-    .padding(.bottom, link.previewOn ? 0 : 2)
+    // The content runs to every edge of the screen; the small padding keeps the buttons off the rounded corners,
+    // and the top row shares the line with the system clock.
+    .padding(.horizontal, link.previewOn ? 0 : 3)
+    .padding(.bottom, link.previewOn ? 0 : 3)
     .frame(maxWidth: .infinity, maxHeight: .infinity)
-    .ignoresSafeArea(edges: .bottom)
+    .ignoresSafeArea()
     .background(ground)
     .overlay { if let saved = link.confirmation { Confirmation(saved: saved) } }
     .animation(.easeOut(duration: 0.15), value: link.confirmation)
@@ -45,43 +46,38 @@ struct ContentView: View {
 
   /// Nothing is recording: one big Gravar button, or the reason it cannot work.
   private var idleView: some View {
-    VStack(spacing: 6) {
-      if !link.reachable { Message("Sem conexão com o iPhone") }
+    VStack(spacing: 3) {
+      Header { if !link.reachable { Text("Sem conexão").foregroundStyle(.red) } }
       BigButton(title: "Gravar", enabled: link.reachable, action: link.sendStart)
-      Toggle("Manter ativo", isOn: $link.keepActive)
-        .font(.system(.footnote, design: .rounded))
-        .tint(accent)
     }
   }
 
   /// Dimmed screen: just the count and Salvar, nothing else to mis-tap.
   private func dimmedView(clipCount: Int) -> some View {
-    VStack(spacing: 6) {
-      Text(WatchModel.countLabel(clipCount))
-        .font(.system(.footnote, design: .rounded).weight(.bold))
-        .foregroundStyle(accent)
+    VStack(spacing: 3) {
+      Header { Text(WatchModel.countLabel(clipCount)).foregroundStyle(accent) }
       BigButton(title: "Salvar", enabled: true, action: link.sendSave)
     }
   }
 
   /// Top to bottom: time and count, the two small controls, then Salvar filling everything that is left.
   private func recordingView(clipCount: Int, startedAt: Date?) -> some View {
-    VStack(spacing: 6) {
-      HStack(spacing: 8) {
+    VStack(spacing: 4) {
+      Header {
         if let startedAt {
           TimelineView(.periodic(from: .now, by: 1)) { context in
             Text(WatchModel.elapsed(since: startedAt, now: context.date)).monospacedDigit()
           }
         }
         Text(WatchModel.countLabel(clipCount)).foregroundStyle(accent)
-        Spacer(minLength: 0)
       }
-      .font(.system(.footnote, design: .rounded).weight(.bold))
       HStack(spacing: 6) {
         CameraToggle(isOn: false) { link.setPreview(true) }
         StopButton(action: link.sendStop)
       }
+      // Room between the small controls and Salvar, so a thumb aiming at one does not land on the other.
       BigButton(title: "Salvar", enabled: true, action: link.sendSave)
+        .padding(.top, 8)
     }
   }
 
@@ -154,15 +150,24 @@ private struct CameraToggle: View {
 }
 
 
-private struct Message: View {
-  let text: String
-  init(_ text: String) { self.text = text }
+/// The line at the top, level with the system clock (which owns the right side): text on the left only.
+private struct Header<Content: View>: View {
+  @ViewBuilder let content: Content
   var body: some View {
-    Text(text).font(.headline).multilineTextAlignment(.center).foregroundStyle(.white)
+    HStack(spacing: 8) {
+      content
+      Spacer(minLength: 0)
+    }
+    .font(.system(.footnote, design: .rounded).weight(.bold))
+    // The screen curves away at the top corners: the text starts well inside, level with the system clock.
+    .padding(.leading, 22)
+    .frame(height: 28)
+    .padding(.top, 8)
   }
 }
 
-/// Takes all the width and all the height left: easy to hit without looking, mid-play.
+/// Fills all the width and all the height left, edge to edge: easy to hit without looking, mid-play.
+/// Drawn by hand: the system prominent style adds its own margin and shrinks the target.
 private struct BigButton: View {
   let title: String
   let enabled: Bool
@@ -170,13 +175,21 @@ private struct BigButton: View {
   var body: some View {
     Button(action: action) {
       Text(title)
-        .font(.system(.title2, design: .rounded).weight(.heavy))
+        .font(.system(.title, design: .rounded).weight(.heavy))
+        .foregroundStyle(ground)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(enabled ? accent : accent.opacity(0.25), in: RoundedRectangle(cornerRadius: 26, style: .continuous))
     }
-    .buttonStyle(.borderedProminent)
-    .tint(accent)
-    .foregroundStyle(ground)
+    .buttonStyle(PressStyle())
     .disabled(!enabled)
+  }
+}
+
+private struct PressStyle: ButtonStyle {
+  func makeBody(configuration: Configuration) -> some View {
+    configuration.label
+      .opacity(configuration.isPressed ? 0.75 : 1)
+      .scaleEffect(configuration.isPressed ? 0.98 : 1)
   }
 }
 
@@ -204,32 +217,35 @@ private struct StopButton: View {
 }
 
 #Preview("Gravando") {
-  VStack(spacing: 6) {
-    HStack {
+  VStack(spacing: 3) {
+    Header {
       Text("12:34").monospacedDigit()
       Text("3 clipes").foregroundStyle(accent)
-      Spacer()
     }
-    .font(.system(.footnote, design: .rounded).weight(.bold))
-    HStack(spacing: 6) {
+    HStack(spacing: 3) {
       CameraToggle(isOn: false) {}
       StopButton {}
     }
     BigButton(title: "Salvar", enabled: true, action: {})
   }
-  .padding(4)
+  .padding(3)
   .background(ground)
 }
 
 #Preview("Sem conexão") {
-  VStack(spacing: 6) {
-    Message("Sem conexão com o iPhone")
+  VStack(spacing: 3) {
+    Header { Text("Sem conexão").foregroundStyle(.red) }
     BigButton(title: "Gravar", enabled: false, action: {})
   }
-  .padding(4)
+  .padding(3)
   .background(ground)
 }
 
 #Preview("Parado") {
-  BigButton(title: "Gravar", enabled: true, action: {}).padding(4).background(ground)
+  VStack(spacing: 3) {
+    Header {}
+    BigButton(title: "Gravar", enabled: true, action: {})
+  }
+  .padding(3)
+  .background(ground)
 }
