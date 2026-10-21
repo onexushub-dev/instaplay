@@ -119,7 +119,7 @@ export const en = {
     title: 'MY RECORDINGS',
     empty: 'No recordings with clips yet.',
     detail: '%{clips} · %{time}',
-    lockedDetail: '%{detail} · %{count} locked',
+    lockedDetail: { one: '%{detail} · %{count} locked', other: '%{detail} · %{count} locked' },
     restore: 'Restore purchases',
   },
   pairing: {

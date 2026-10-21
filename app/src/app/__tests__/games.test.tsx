@@ -90,3 +90,10 @@ test('Restaurar compras restores purchases', async () => {
   await fireEvent.press(screen.getByRole('button', { name: 'Restaurar compras' }));
   expect(payments.restore).toHaveBeenCalled();
 });
+
+test('a single locked clipe uses the singular', async () => {
+  oneGame();
+  repo.lockedCount.mockReturnValue(1);
+  await render(<Games />);
+  expect(screen.getByText(/ · 1 bloqueado$/)).toBeTruthy();
+});

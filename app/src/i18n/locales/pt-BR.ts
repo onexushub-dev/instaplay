@@ -117,7 +117,7 @@ export const ptBR: Messages = {
     title: 'MINHAS GRAVAÇÕES',
     empty: 'Nenhuma gravação com clipes ainda.',
     detail: '%{clips} · %{time}',
-    lockedDetail: '%{detail} · %{count} bloqueados',
+    lockedDetail: { one: '%{detail} · %{count} bloqueado', other: '%{detail} · %{count} bloqueados' },
     restore: 'Restaurar compras',
   },
   pairing: {
