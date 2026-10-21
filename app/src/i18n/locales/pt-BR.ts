@@ -261,5 +261,8 @@ export const ptBR: Messages = {
   payments: {
     lastFreeNote: 'Último clipe grátis deste jogo.',
     lockedNote: 'Guardado. Libere no fim do jogo.',
+    paywallError: 'Não deu para abrir a loja. Tente de novo em instantes.',
+    restored: 'Compras restauradas.',
+    nothingToRestore: 'Nenhuma compra para restaurar.',
   },
 };

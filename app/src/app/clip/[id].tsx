@@ -38,6 +38,7 @@ import { MAX_CLIP_NAME } from '../../data/schema';
 import type { MessageKey } from '../../i18n';
 import { useT } from '../../i18n/useT';
 import { payments } from '../../payments';
+import { openPaywall } from '../../payments/feedback';
 import { isClipLocked } from '../../payments/rules';
 import { effectiveSettings } from '../../modes/registry';
 import { captureOverlay } from '../../share/captureOverlay';
@@ -102,7 +103,7 @@ function LockedClip({ sessionId }: { sessionId: string }) {
         <BackIcon />
       </IconButton>
       <Text style={styles.missing}>{t('clip.locked')}</Text>
-      <Button label={t('clip.unlock')} onPress={() => void payments.showPaywall(sessionId)} />
+      <Button label={t('clip.unlock')} onPress={() => void openPaywall(sessionId, t)} />
     </SafeAreaView>
   );
 }
@@ -543,7 +544,7 @@ function ClipEditor() {
                 label={`${speed}x`}
                 a11y={t('clip.speed', { speed })}
                 active={edit.speed === speed}
-                onPress={() => (speed < 1 && tier === 'free' ? void payments.showPaywall(clip.sessionId) : setEdit({ speed }))}
+                onPress={() => (speed < 1 && tier === 'free' ? void openPaywall(clip.sessionId, t) : setEdit({ speed }))}
               />
             ))}
             <Tool

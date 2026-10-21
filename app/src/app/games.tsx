@@ -8,6 +8,7 @@ import { GameCard } from '../components/GameCard';
 import { BackIcon } from '../components/icons';
 import { repo } from '../data/mmkv';
 import { payments } from '../payments';
+import { restorePurchases } from '../payments/feedback';
 import { useT } from '../i18n/useT';
 import { colors, fonts } from '../theme/tokens';
 
@@ -54,7 +55,7 @@ export default function Games() {
         )}
       />
       <View style={styles.footer}>
-        <Button label={t('games.restore')} variant="secondary" onPress={() => void payments.restore()} />
+        <Button label={t('games.restore')} variant="secondary" onPress={() => void restorePurchases(t)} />
       </View>
     </SafeAreaView>
   );

@@ -9,6 +9,7 @@ import { dayAndTime, megabytes, modeLabel, recordedLabel, sessionLabel } from '.
 import { repo } from '../../data/mmkv';
 import { MAX_GAME_NAME } from '../../data/schema';
 import { payments } from '../../payments';
+import { openPaywall } from '../../payments/feedback';
 import { isClipLocked } from '../../payments/rules';
 import { useEntitlement } from '../../share/entitlement';
 import { useT } from '../../i18n/useT';
@@ -81,7 +82,7 @@ export default function SessionSummary() {
         <View style={styles.lockedCard}>
           <Text style={styles.lockedTitle}>{t('summary.lockedClips', { count: lockedCount })}</Text>
           <Text style={styles.lockedNote}>{t('summary.lockedNote')}</Text>
-          <Button label={t('summary.unlock')} onPress={() => void payments.showPaywall(id)} />
+          <Button label={t('summary.unlock')} onPress={() => void openPaywall(id, t)} />
         </View>
       ) : null}
 
@@ -97,7 +98,7 @@ export default function SessionSummary() {
             clip={item}
             number={index + 1}
             locked={isClipLocked(item, tier)}
-            onPress={() => (isClipLocked(item, tier) ? void payments.showPaywall(id) : router.push(`/clip/${item.id}`))}
+            onPress={() => (isClipLocked(item, tier) ? void openPaywall(id, t) : router.push(`/clip/${item.id}`))}
           />
         )}
       />

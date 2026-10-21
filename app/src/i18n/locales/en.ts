@@ -263,6 +263,9 @@ export const en = {
   payments: {
     lastFreeNote: 'Last free clip of this game.',
     lockedNote: 'Saved. Unlock it after the game.',
+    paywallError: "Couldn't open the store. Try again in a moment.",
+    restored: 'Purchases restored.',
+    nothingToRestore: 'No purchases to restore.',
   },
 };
 
