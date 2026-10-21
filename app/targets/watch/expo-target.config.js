@@ -3,6 +3,7 @@ module.exports = {
   type: 'watch',
   name: 'LANCE Watch',
   displayName: 'LANCE',
+  icon: '../../assets/images/icon.png',
   bundleIdentifier: '.watch',
   deploymentTarget: '11.0',
   frameworks: ['SwiftUI', 'WatchConnectivity', 'HealthKit'],
