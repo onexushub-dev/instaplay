@@ -13,7 +13,7 @@
  *
  *   LANCE_RC_IOS_KEY=appl_...              iOS key
  *   LANCE_RC_ANDROID_KEY=goog_...          Android key
- *   LANCE_RC_TEST_KEY=test_...             Test Store key, used only in development builds (__DEV__)
+ *   LANCE_RC_TEST_KEY=test_...             Test Store key, used only in development builds (__DEV__); left out of EAS production builds
  *
  * With no key the app runs as free and the paywall reports an error.
  */
@@ -32,11 +32,13 @@ module.exports = ({ config }) => {
     ios.appleTeamId = teamId;
   }
 
+  // The test_ key is development-only (see pickApiKey), so EAS production builds do not carry it at all.
+  const production = process.env.EAS_BUILD_PROFILE === 'production';
   const extra = Object.assign({}, config.extra, {
     revenueCat: {
       ios: process.env.LANCE_RC_IOS_KEY,
       android: process.env.LANCE_RC_ANDROID_KEY,
-      test: process.env.LANCE_RC_TEST_KEY,
+      test: production ? undefined : process.env.LANCE_RC_TEST_KEY,
     },
   });
 
