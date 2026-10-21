@@ -199,7 +199,7 @@ export default function Setup() {
   const { phase, error, camera } = session.state;
   const { prepare, release } = session;
 
-  // Live preview while positioning; the buffer starts filling now, so "Começar a gravar" is instant.
+  // Live preview while positioning; the buffer starts filling now, so "Começar gravação" is instant.
   useEffect(() => {
     if (focused) void prepare(modeId);
     else void release();
@@ -273,7 +273,7 @@ export default function Setup() {
 
             {errorText ? <Text style={styles.error}>{errorText}</Text> : null}
             <Button
-              label={opening ? 'Abrindo a câmera…' : 'Começar a gravar'}
+              label={opening ? 'Abrindo a câmera…' : 'Começar gravação'}
               icon={starting ? <ActivityIndicator color={colors.onAccent} /> : undefined}
               disabled={starting}
               onPress={() => session.start(modeId)}

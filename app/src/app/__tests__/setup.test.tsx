@@ -270,10 +270,10 @@ test('the gesture tile toggles the gesture preference', async () => {
   );
 });
 
-test('Começar a gravar starts the one mode and shows the recording controls on the same screen', async () => {
+test('Começar gravação starts the one mode and shows the recording controls on the same screen', async () => {
   const s = session({});
   const view = await render(<Setup />);
-  await fireEvent.press(screen.getByRole('button', { name: 'Começar a gravar' }));
+  await fireEvent.press(screen.getByRole('button', { name: 'Começar gravação' }));
   expect(s.start).toHaveBeenCalledWith('quadra');
 
   session({ phase: 'recording', sessionId: 's1', startedAt: Date.now() });
@@ -304,13 +304,13 @@ test('a low-storage refusal shows its copy and the button works again', async ()
   session({ phase: 'idle', error: 'LOW_STORAGE' });
   await render(<Setup />);
   expect(screen.getByText('Pouco espaço no celular. Libere pelo menos 500 MB para gravar.')).toBeTruthy();
-  expect(screen.getByRole('button', { name: 'Começar a gravar' })).toBeEnabled();
+  expect(screen.getByRole('button', { name: 'Começar gravação' })).toBeEnabled();
 });
 
 test('the button is disabled while the camera starts', async () => {
   session({ phase: 'starting' });
   await render(<Setup />);
-  expect(screen.getByRole('button', { name: 'Começar a gravar' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Começar gravação' })).toBeDisabled();
 });
 
 test('save feedback toggles: sound and flash', async () => {
@@ -395,7 +395,7 @@ test('opens collapsed: a summary and the start button, no modes to pick and noth
   session({});
   await render(<Setup />);
   expect(screen.getByRole('button', { name: /^Ajustes: / })).toBeTruthy();
-  expect(screen.getByRole('button', { name: 'Começar a gravar' })).toBeEnabled();
+  expect(screen.getByRole('button', { name: 'Começar gravação' })).toBeEnabled();
   expect(screen.queryByText('MODO')).toBeNull();
   expect(screen.queryByRole('button', { name: 'Academia' })).toBeNull();
   expect(screen.queryByTestId('guide-person', { includeHiddenElements: true })).toBeNull();
@@ -472,7 +472,7 @@ test('without a watch the other triggers behave as before', async () => {
   await render(<Setup />);
   await openSettings();
   expect(screen.getByLabelText('Acenar com os braços, Ativo')).toBeTruthy();
-  expect(screen.getByRole('button', { name: 'Começar a gravar' })).toBeEnabled();
+  expect(screen.getByRole('button', { name: 'Começar gravação' })).toBeEnabled();
 });
 
 // ---- Second iPhone as a remote ("Celular" tile)

@@ -4,18 +4,18 @@ import { Button } from '../Button';
 
 test('renders the label and calls onPress', async () => {
   const onPress = jest.fn();
-  await render(<Button label="Começar a gravar" onPress={onPress} />);
+  await render(<Button label="Começar gravação" onPress={onPress} />);
 
-  await fireEvent.press(screen.getByRole('button', { name: 'Começar a gravar' }));
+  await fireEvent.press(screen.getByRole('button', { name: 'Começar gravação' }));
 
   expect(onPress).toHaveBeenCalledTimes(1);
 });
 
 test('disabled button does not call onPress and reports disabled', async () => {
   const onPress = jest.fn();
-  await render(<Button label="Começar a gravar" onPress={onPress} disabled />);
+  await render(<Button label="Começar gravação" onPress={onPress} disabled />);
 
-  const button = screen.getByRole('button', { name: 'Começar a gravar' });
+  const button = screen.getByRole('button', { name: 'Começar gravação' });
   await fireEvent.press(button);
 
   expect(onPress).not.toHaveBeenCalled();
