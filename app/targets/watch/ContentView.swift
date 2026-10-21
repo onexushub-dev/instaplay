@@ -6,6 +6,8 @@ private let accent = Color(red: 0.839, green: 0.949, blue: 0.247) // #D6F23F
 struct ContentView: View {
   @StateObject private var link = WatchLink()
   @Environment(\.scenePhase) private var scenePhase
+  /// Wrist down / Always-On: the screen is dimmed and the app stays on it, so it shows only what matters.
+  @Environment(\.isLuminanceReduced) private var dimmed
 
   var body: some View {
     Group {
@@ -18,7 +20,9 @@ struct ContentView: View {
           BigButton(title: "Salvar", enabled: false, action: link.sendSave)
         }
       case let .recording(clipCount, startedAt):
-        if link.previewOn {
+        if dimmed {
+          dimmedView(clipCount: clipCount)
+        } else if link.previewOn {
           cameraView(clipCount: clipCount)
         } else {
           recordingView(clipCount: clipCount, startedAt: startedAt)
@@ -44,6 +48,16 @@ struct ContentView: View {
     VStack(spacing: 6) {
       if !link.reachable { Message("Sem conexão com o iPhone") }
       BigButton(title: "Gravar", enabled: link.reachable, action: link.sendStart)
+    }
+  }
+
+  /// Dimmed screen: just the count and Salvar, nothing else to mis-tap.
+  private func dimmedView(clipCount: Int) -> some View {
+    VStack(spacing: 6) {
+      Text(WatchModel.countLabel(clipCount))
+        .font(.system(.footnote, design: .rounded).weight(.bold))
+        .foregroundStyle(accent)
+      BigButton(title: "Salvar", enabled: true, action: link.sendSave)
     }
   }
 
