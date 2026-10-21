@@ -203,6 +203,8 @@ export const en = {
   clip: {
     prepareFailed: "Couldn't prepare the video. Try again.",
     missing: 'This clip is no longer on your phone.',
+    locked: 'This clip is locked',
+    unlock: 'Unlock',
     deleteConfirm: 'Delete this clip?',
     delete: 'Delete',
     noPhotos: 'No access to Photos. Allow it in Settings.',

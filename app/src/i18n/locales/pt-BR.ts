@@ -201,6 +201,8 @@ export const ptBR: Messages = {
   clip: {
     prepareFailed: 'Não foi possível preparar o vídeo. Tente de novo.',
     missing: 'Este clipe não está mais no celular.',
+    locked: 'Este clipe está bloqueado',
+    unlock: 'Liberar',
     deleteConfirm: 'Apagar este clipe?',
     delete: 'Apagar',
     noPhotos: 'Sem acesso às fotos. Libere em Ajustes.',

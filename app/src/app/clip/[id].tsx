@@ -30,12 +30,15 @@ import {
   ShareIcon,
   TrashIcon,
 } from '../../components/icons';
+import { Button } from '../../components/Button';
 import { Playhead } from '../../components/Playhead';
 import { TrimBar } from '../../components/TrimBar';
 import { removeFile, repo } from '../../data/mmkv';
 import { MAX_CLIP_NAME } from '../../data/schema';
 import type { MessageKey } from '../../i18n';
 import { useT } from '../../i18n/useT';
+import { payments } from '../../payments';
+import { isClipLocked } from '../../payments/rules';
 import { effectiveSettings } from '../../modes/registry';
 import { captureOverlay } from '../../share/captureOverlay';
 import { contentFloor, nextRotation, outputMs, raiseToFloor, readEdit, SPEEDS, turnedSize } from '../../share/editing';
@@ -80,11 +83,35 @@ function clearOldExports() {
   }
 }
 
+/** The route: a clip locked on the free plan shows the unlock screen, anything else the editor (hooks stay apart). */
+export default function ClipRoute() {
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const version = useSyncExternalStore(repo.subscribe, repo.version);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- version is the change signal
+  const clip = useMemo(() => repo.getClip(id), [id, version]);
+  const { tier } = useEntitlement(clip?.sessionId);
+  if (clip && isClipLocked(clip, tier)) return <LockedClip sessionId={clip.sessionId} />;
+  return <ClipEditor />;
+}
+
+function LockedClip({ sessionId }: { sessionId: string }) {
+  const { t } = useT();
+  return (
+    <SafeAreaView style={styles.missingRoot}>
+      <IconButton label={t('common.back')} onPress={() => router.back()}>
+        <BackIcon />
+      </IconButton>
+      <Text style={styles.missing}>{t('clip.locked')}</Text>
+      <Button label={t('clip.unlock')} onPress={() => void payments.showPaywall(sessionId)} />
+    </SafeAreaView>
+  );
+}
+
 /**
  * One screen to edit, preview and send a lance: cut, speed, sound and zoom on the exact frame that gets exported
  * (9:16 with the app mark), then save to Photos or share. Deleting and renaming live in the top bar.
  */
-export default function ClipEditor() {
+function ClipEditor() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { t, locale } = useT();
   const version = useSyncExternalStore(repo.subscribe, repo.version);
@@ -516,7 +543,7 @@ export default function ClipEditor() {
                 label={`${speed}x`}
                 a11y={t('clip.speed', { speed })}
                 active={edit.speed === speed}
-                onPress={() => setEdit({ speed })}
+                onPress={() => (speed < 1 && tier === 'free' ? void payments.showPaywall(clip.sessionId) : setEdit({ speed }))}
               />
             ))}
             <Tool

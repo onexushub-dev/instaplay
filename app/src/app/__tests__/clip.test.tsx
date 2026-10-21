@@ -5,7 +5,12 @@ import ClipEditor from '../clip/[id]';
 
 jest.mock('expo-router', () => ({ router: { push: jest.fn(), back: jest.fn() }, useLocalSearchParams: () => ({ id: 'c1' }) }));
 jest.mock('../../payments', () => ({
-  payments: { subscribe: () => () => {}, version: () => 0, tierFor: () => 'pro' },
+  payments: {
+    subscribe: () => () => {},
+    version: () => 0,
+    tierFor: jest.fn(() => 'pro'),
+    showPaywall: jest.fn(async () => 'dismissed'),
+  },
 }));
 jest.mock('expo-video', () => {
   const mockPlayer = { addListener: () => ({ remove() {} }), play: jest.fn(), pause: jest.fn(), currentTime: 0, playbackRate: 1, muted: false };
@@ -46,6 +51,7 @@ jest.mock('../../data/mmkv', () => {
   };
 });
 
+const { payments } = jest.requireMock('../../payments');
 const { repo, __setClip, removeFile } = jest.requireMock('../../data/mmkv');
 const { router } = jest.requireMock('expo-router');
 const { __player: player } = jest.requireMock('expo-video');
@@ -60,6 +66,7 @@ const base = {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  payments.tierFor.mockImplementation(() => 'pro');
   __setClip({ ...base });
   // jest-expo's ImageLoader mock predates RN 0.88's promise-based getSize.
   (jest.spyOn(Image, 'getSize') as jest.Mock).mockResolvedValue({ width: 1920, height: 1080 });
@@ -330,4 +337,50 @@ describe('a black start', () => {
     expect(screen.getByText('-0:46')).toBeTruthy();
     expect(jest.requireMock('../../components/TrimBar').__props.last.floorMs).toBe(10750);
   });
+});
+
+describe('on the free plan', () => {
+  beforeEach(() => payments.tierFor.mockImplementation(() => 'free'));
+
+  test('a locked clip shows the lock and Liberar instead of the editor', async () => {
+    __setClip({ ...base, locked: true });
+    await open();
+    expect(screen.getByText('Este clipe está bloqueado')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Compartilhar' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Salvar na galeria' })).toBeNull();
+    await pressAction('Liberar');
+    expect(payments.showPaywall).toHaveBeenCalledWith('s1');
+    expect(camera.exportClip).not.toHaveBeenCalled();
+  });
+
+  test('the same locked clip opens the editor on the pro plan', async () => {
+    payments.tierFor.mockImplementation(() => 'pro');
+    __setClip({ ...base, locked: true });
+    await open();
+    expect(screen.queryByText('Este clipe está bloqueado')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Compartilhar' })).toBeTruthy();
+  });
+
+  test('0.5x opens the paywall and leaves the speed alone', async () => {
+    await open();
+    await fireEvent.press(screen.getByRole('button', { name: 'Velocidade 0.5x' }));
+    expect(payments.showPaywall).toHaveBeenCalledWith('s1');
+    expect(repo.updateClip).not.toHaveBeenCalled();
+  });
+
+  test('1.5x and 2x still work', async () => {
+    await open();
+    await fireEvent.press(screen.getByRole('button', { name: 'Velocidade 1.5x' }));
+    expect(repo.updateClip).toHaveBeenLastCalledWith('c1', { edit: { speed: 1.5, muted: false } });
+    await fireEvent.press(screen.getByRole('button', { name: 'Velocidade 2x' }));
+    expect(repo.updateClip).toHaveBeenLastCalledWith('c1', { edit: { speed: 2, muted: false } });
+    expect(payments.showPaywall).not.toHaveBeenCalled();
+  });
+});
+
+test('on pro, 0.5x changes the speed', async () => {
+  await open();
+  await fireEvent.press(screen.getByRole('button', { name: 'Velocidade 0.5x' }));
+  expect(repo.updateClip).toHaveBeenCalledWith('c1', { edit: { speed: 0.5, muted: false } });
+  expect(payments.showPaywall).not.toHaveBeenCalled();
 });
