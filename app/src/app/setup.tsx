@@ -1,7 +1,7 @@
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { router, useIsFocused } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, AppState, PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
@@ -13,7 +13,6 @@ import {
   isVoiceSupported,
   remoteControllerForget,
   remoteControllerHost,
-  remoteHostPeers,
   remoteHostControllers,
   ReplayCameraView,
   requestSpeechPermission,
@@ -24,13 +23,14 @@ import { Button } from '../components/Button';
 import { Chip } from '../components/Chip';
 import { PositionGuide } from '../components/PositionGuide';
 import { RecordingPanel } from '../components/RecordingPanel';
-import { ArmsUpIcon, MicIcon, PhoneIcon, RemoteIcon, WatchIcon } from '../components/icons';
+import { ArmsUpIcon, MicIcon, QrIcon, RemoteIcon, TapIcon, WatchIcon } from '../components/icons';
 import { TriggerTile } from '../components/TriggerTile';
 import { ZoomBubble } from '../components/ZoomBubble';
 import { ZoomButton } from '../components/ZoomButton';
 import { repo } from '../data/mmkv';
 import { remoteDeviceView } from '../devices/remoteDevice';
-import { useRemoteTest } from '../devices/useRemoteTest';
+import { clearRemotePress } from '../devices/remoteTest';
+import { useRemoteSheetOpen, useRemoteTest } from '../devices/useRemoteTest';
 import type { ModeSettings, Prefs } from '../data/schema';
 import { effectiveSettings, modeById, offeredMode, withModeOverride } from '../modes/registry';
 import { clampZoom, lensFor, nextZoomStep } from '../modes/zoom';
@@ -51,6 +51,9 @@ export default function Setup() {
   // This screen stays mounted under Minhas gravações, the editor and the save screen: only hold the camera,
   // the volume buttons and the screen awake while it is the visible one.
   const focused = useIsFocused();
+  // The Dispositivos sheet over this screen does not take the camera or the volume buttons away: this screen keeps both.
+  const sheetOpen = useRemoteSheetOpen();
+  const live = focused || sheetOpen;
   const [prefs, setPrefsState] = useState<Prefs>(() => repo.getPrefs());
   const update = (patch: Partial<Prefs>) => setPrefsState(repo.setPrefs(patch));
   // What this mode runs with (defaults + the player's changes for this mode).
@@ -123,7 +126,6 @@ export default function Setup() {
   // The phone remote (a second iPhone that taps Salvar for this one). The camera phone waits for its paired remotes for
   // as long as the app is open (see the root layout); pairing happens on its own sheet (/pairing).
   const [remoteSupported] = useState(() => isRemoteSupported());
-  const [remotePeers, setRemotePeers] = useState<RemotePeer[]>(() => (isRemoteSupported() ? remoteHostPeers() : []));
   const [controlHost, setControlHost] = useState<RemotePeer | null>(() =>
     isRemoteSupported() ? remoteControllerHost() : null,
   );
@@ -137,7 +139,6 @@ export default function Setup() {
   }, [remoteSupported]);
   useEffect(() => {
     if (!remoteSupported || !focused) return;
-    setRemotePeers(remoteHostPeers()); // the list may have changed on the pairing sheet
     setControlHost(remoteControllerHost()); // it may have been paired or forgotten on the remote screen
     setRemoteLinked(remoteHostControllers()); // the status events of a remote that connected meanwhile were not heard
   }, [remoteSupported, focused]);
@@ -159,16 +160,6 @@ export default function Setup() {
       ],
     );
   };
-  const remoteStatus =
-    remotePeers.length === 0
-      ? 'Toque para conectar'
-      : remoteLinked > 0
-        ? remotePeers.length === 1
-          ? `Conectado: ${remotePeers[0].name}`
-          : `${remoteLinked} de ${remotePeers.length} conectados`
-        : remotePeers.length === 1
-          ? `Pareado: ${remotePeers[0].name}`
-          : `${remotePeers.length} controles pareados`;
   // Voice counts as on only when this mode wants it and the phone may listen.
   const voiceOn = voiceSupported && settings.voiceEnabled && speechGranted;
   const voiceStatus = !voiceSupported
@@ -201,9 +192,9 @@ export default function Setup() {
 
   // Live preview while positioning; the buffer starts filling now, so "Começar gravação" is instant.
   useEffect(() => {
-    if (focused) void prepare(modeId);
+    if (live) void prepare(modeId);
     else void release();
-  }, [focused, prepare, release, modeId, lens]);
+  }, [live, prepare, release, modeId, lens]);
 
   useEffect(() => {
     if (!focused) return;
@@ -212,7 +203,15 @@ export default function Setup() {
   }, [focused]);
 
   // A press of the Bluetooth remote here proves it is paired and reaching the app.
-  useVolumeRemote(focused && phase === 'idle', remoteTest.press);
+  useVolumeRemote(live && phase === 'idle', remoteTest.press);
+
+  // Coming back from another app, whether the remote is still on is unknown: until it is pressed again it shows as paired.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (next) => {
+      if (next === 'active') clearRemotePress();
+    });
+    return () => sub.remove();
+  }, []);
 
   const opening = camera === 'starting';
   const starting = phase === 'starting' || opening;
@@ -300,7 +299,7 @@ export default function Setup() {
           <ArmsUpIcon color={iconColor(settings.gestureEnabled)} size={32} />
           <RemoteIcon color={iconColor(remoteWorks)} size={32} />
           <WatchIcon color={iconColor(watch === 'ready')} size={32} />
-          {remoteSupported ? <PhoneIcon color={iconColor(remoteLinked > 0)} size={32} /> : null}
+          {remoteSupported ? <QrIcon color={iconColor(remoteLinked > 0)} size={32} /> : null}
         </View>
       </Pressable>
     );
@@ -348,38 +347,31 @@ export default function Setup() {
 
         {remoteSupported ? (
           <>
-            <Text style={styles.section}>SEGUNDO CELULAR</Text>
-            <TriggerTile
-              icon={<PhoneIcon />}
-              title="Outro celular como controle"
-              status={remoteStatus}
-              active={remoteLinked > 0}
-              onPress={() => router.push('/pairing')}
-            />
-            <View style={styles.remoteRow}>
+            <View style={styles.divider} />
+            <View style={styles.gridRow}>
+              <TriggerTile
+                icon={<QrIcon />}
+                title="Conectar um celular controle"
+                active={remoteLinked > 0}
+                onPress={() => router.push('/pairing')}
+              />
+              <TriggerTile
+                icon={<TapIcon />}
+                title="Usar este celular como controle"
+                active={controlHost !== null}
+                onPress={() => router.push('/remote')}
+              />
+            </View>
+            {controlHost !== null ? (
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel={controlHost === null ? 'Usar este celular como controle' : 'Abrir controle'}
+                accessibilityLabel="Desconectar deste celular"
                 hitSlop={8}
-                onPress={() => router.push('/remote')}
-                style={styles.remoteMain}>
-                <RemoteIcon color={colors.accent} size={18} />
-                <Text numberOfLines={1} style={[styles.remoteMainText, controlHost === null && styles.remoteUnderline]}>
-                  {controlHost === null ? 'Usar este celular como controle' : `Controle: ${controlHost.name}`}
-                </Text>
-                {controlHost === null ? null : <Text style={styles.remoteAction}>Conectar</Text>}
+                onPress={disconnectControl}
+                style={styles.remoteLinkBox}>
+                <Text style={styles.remoteLink}>Desconectar deste celular</Text>
               </Pressable>
-              {controlHost !== null ? (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Desconectar deste celular"
-                  hitSlop={8}
-                  onPress={disconnectControl}
-                  style={styles.remoteLinkBox}>
-                  <Text style={styles.remoteLink}>Desconectar</Text>
-                </Pressable>
-              ) : null}
-            </View>
+            ) : null}
           </>
         ) : null}
 
@@ -474,31 +466,6 @@ const styles = StyleSheet.create({
     color: colors.muted,
   },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  remoteRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    minHeight: 48,
-  },
-  remoteMain: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    minHeight: 48,
-  },
-  remoteMainText: {
-    flexShrink: 1,
-    fontFamily: fonts.bodySemi,
-    fontSize: 15,
-    color: colors.text,
-  },
-  remoteUnderline: { textDecorationLine: 'underline' },
-  remoteAction: {
-    fontFamily: fonts.bodyBold,
-    fontSize: 15,
-    color: colors.accent,
-  },
   remoteLinkBox: { minHeight: 48, justifyContent: 'center' },
   remoteLink: {
     fontFamily: fonts.bodySemi,
@@ -506,6 +473,7 @@ const styles = StyleSheet.create({
     color: colors.soft,
     textDecorationLine: 'underline',
   },
+  divider: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border, marginVertical: 4 },
   grid: { gap: 8 },
   gridRow: { flexDirection: 'row', gap: 8 },
   error: { fontFamily: fonts.bodySemi, fontSize: 14, color: colors.warning },

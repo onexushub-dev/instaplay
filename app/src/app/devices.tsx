@@ -9,8 +9,8 @@ import { PulseRing } from '../components/PulseRing';
 import { StatusPill } from '../components/StatusPill';
 import { StepList } from '../components/StepList';
 import { remoteDeviceView } from '../devices/remoteDevice';
+import { setRemoteSheetOpen } from '../devices/remoteTest';
 import { useRemoteTest } from '../devices/useRemoteTest';
-import { useVolumeRemote } from '../triggers/useVolumeRemote';
 import { colors, fonts, radius } from '../theme/tokens';
 
 /** After this long without a press the sheet adds what to check. */
@@ -27,11 +27,15 @@ const FORGET_HELP =
 
 /** The Bluetooth remote's side of the Dispositivos sheet: what to do to connect it, and proof when it works. */
 export default function Devices() {
-  const { pressed, testedBefore, press, forget } = useRemoteTest();
+  const { pressed, testedBefore, forget } = useRemoteTest();
   const [waitedLong, setWaitedLong] = useState(false);
 
-  // The remote presses "volume up": while this sheet is open it owns the volume buttons.
-  useVolumeRemote(true, press);
+  // The remote presses "volume up". The setup screen under this sheet is the one listening (and keeps the camera and
+  // the audio session as they were): two screens taking and handing back the volume buttons raced each other.
+  useEffect(() => {
+    setRemoteSheetOpen(true);
+    return () => setRemoteSheetOpen(false);
+  }, []);
 
   useEffect(() => {
     if (pressed) return;

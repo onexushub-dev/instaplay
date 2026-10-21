@@ -486,39 +486,17 @@ test('the Celular tile is hidden where the phone remote is not supported', async
   session({});
   await render(<Setup />);
   await openSettings();
-  expect(screen.queryByLabelText(/^Outro celular como controle,/)).toBeNull();
+  expect(screen.queryByLabelText(/^Conectar um celular controle/)).toBeNull();
   expect(camera().remoteHostStart).not.toHaveBeenCalled();
 });
 
-test('the Celular tile says that no remote is paired, and opens the pairing sheet', async () => {
+test('"Conectar um celular controle" opens the pairing sheet', async () => {
   enableRemote([]);
   session({});
   await render(<Setup />);
   await openSettings();
-  await fireEvent.press(screen.getByRole('button', { name: 'Outro celular como controle, Toque para conectar' }));
+  await fireEvent.press(screen.getByRole('button', { name: 'Conectar um celular controle' }));
   expect(router.push).toHaveBeenCalledWith('/pairing');
-});
-
-test('the Celular tile names the paired remote, and says when it is connected', async () => {
-  enableRemote([{ id: 'a', name: 'iPhone da Ana' }]);
-  session({});
-  await render(<Setup />);
-  await openSettings();
-  expect(screen.getByLabelText('Outro celular como controle, Pareado: iPhone da Ana')).toBeTruthy();
-  const listener = camera().addReplayListener.mock.calls.find((c: any[]) => c[0] === 'onRemoteStatus')[1];
-  await act(async () => listener({ link: 'connected', controllers: 1 }));
-  expect(screen.getByLabelText('Outro celular como controle, Conectado: iPhone da Ana')).toBeTruthy();
-});
-
-test('with several paired remotes the tile counts them', async () => {
-  enableRemote([
-    { id: 'a', name: 'iPhone da Ana' },
-    { id: 'b', name: 'iPhone do Beto' },
-  ]);
-  session({});
-  await render(<Setup />);
-  await openSettings();
-  expect(screen.getByLabelText('Outro celular como controle, 2 controles pareados')).toBeTruthy();
 });
 
 test('the setup screen does not start or stop the host: it lives as long as the app is open (root layout)', async () => {
@@ -530,20 +508,11 @@ test('the setup screen does not start or stop the host: it lives as long as the 
   expect(camera().remoteHostStop).not.toHaveBeenCalled();
 });
 
-test('a remote that connected before this screen opened shows as connected, not only as paired', async () => {
-  enableRemote([{ id: 'a', name: 'iPhone da Ana' }]);
-  camera().remoteHostControllers.mockReturnValue(1);
-  session({});
-  await render(<Setup />);
-  await openSettings();
-  expect(screen.getByLabelText('Outro celular como controle, Conectado: iPhone da Ana')).toBeTruthy();
-});
-
 test('the entry to the remote is offered only where the phone remote is supported', async () => {
   session({});
   await render(<Setup />);
   await openSettings();
-  expect(screen.queryByRole('button', { name: 'Usar este celular como controle' })).toBeNull();
+  expect(screen.queryByLabelText(/^Usar este celular como controle/)).toBeNull();
 });
 
 test('"Usar este celular como controle" opens the remote screen', async () => {
@@ -561,8 +530,7 @@ test('a phone already paired as a remote shows which camera phone it will connec
   camera().remoteControllerHost.mockReturnValue({ id: 'h1', name: 'iPhone XR#1234' });
   await render(<Setup />);
   await openSettings();
-  expect(screen.getByText('Controle: iPhone XR#1234')).toBeTruthy();
-  expect(screen.getByRole('button', { name: 'Abrir controle' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Usar este celular como controle' })).toBeTruthy();
 });
 
 test('"Desconectar deste celular" asks first, then forgets the camera phone and goes back to the first state', async () => {
@@ -606,4 +574,35 @@ test('a press heard in the Dispositivos sheet shows on the tile when coming back
   await openSettings();
   await act(async () => require('../../devices/remoteTest').markRemotePress());
   expect(screen.getByRole('button', { name: 'Controle Bluetooth, Conectado' })).toBeTruthy();
+});
+
+test('the Dispositivos sheet over the setup keeps the camera and the volume buttons on this screen', async () => {
+  jest.requireMock('expo-router').useIsFocused.mockReturnValue(false);
+  const { useVolumeRemote } = jest.requireMock('../../triggers/useVolumeRemote');
+  const { setRemoteSheetOpen } = require('../../devices/remoteTest');
+  const s = session({});
+  await render(<Setup />);
+  expect(useVolumeRemote).toHaveBeenLastCalledWith(false, expect.any(Function));
+  await act(async () => setRemoteSheetOpen(true));
+  expect(useVolumeRemote).toHaveBeenLastCalledWith(true, expect.any(Function));
+  expect(s.prepare).toHaveBeenCalled();
+  await act(async () => setRemoteSheetOpen(false));
+  expect(useVolumeRemote).toHaveBeenLastCalledWith(false, expect.any(Function));
+  jest.requireMock('expo-router').useIsFocused.mockReturnValue(true);
+});
+
+test('coming back from another app, a remote shown as connected goes back to paired until it is pressed again', async () => {
+  const { markRemotePress } = require('../../devices/remoteTest');
+  const listeners: ((s: string) => void)[] = [];
+  const spy = jest.spyOn(require('react-native').AppState, 'addEventListener').mockImplementation(((_: string, fn: (s: string) => void) => {
+    listeners.push(fn);
+    return { remove: jest.fn() };
+  }) as never);
+  session({});
+  await render(<Setup />);
+  await act(async () => markRemotePress());
+  expect(require('../../devices/remoteTest').hasRemotePress()).toBe(true);
+  await act(async () => listeners.forEach((fn) => fn('active')));
+  expect(require('../../devices/remoteTest').hasRemotePress()).toBe(false);
+  spy.mockRestore();
 });

@@ -1,7 +1,14 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 
 import { repo } from '../data/mmkv';
-import { clearRemotePress, hasRemotePress, markRemotePress, subscribeRemotePress } from './remoteTest';
+import {
+  clearRemotePress,
+  hasRemotePress,
+  isRemoteSheetOpen,
+  markRemotePress,
+  remotePressExpiresIn,
+  subscribeRemotePress,
+} from './remoteTest';
 
 const usedBefore = () => repo.getPrefs().remoteTestedAt !== undefined;
 
@@ -16,8 +23,15 @@ export function useRemoteTest() {
       setTestedBefore(usedBefore());
     };
     sync(); // a press may have been heard between the first render and now
-    return subscribeRemotePress(sync);
-  }, []);
+    const off = subscribeRemotePress(sync);
+    // A press stops counting after a while (the remote may have been switched off): look again then.
+    const left = remotePressExpiresIn();
+    const timer = left === undefined ? undefined : setTimeout(sync, left + 50);
+    return () => {
+      off();
+      if (timer !== undefined) clearTimeout(timer);
+    };
+  }, [pressed]);
 
   /** A press of the remote was heard. */
   const press = useCallback(() => {
@@ -32,4 +46,9 @@ export function useRemoteTest() {
   }, []);
 
   return { pressed, testedBefore, press, forget };
+}
+
+/** Whether the Dispositivos sheet is open over the setup screen. */
+export function useRemoteSheetOpen(): boolean {
+  return useSyncExternalStore(subscribeRemotePress, isRemoteSheetOpen);
 }
