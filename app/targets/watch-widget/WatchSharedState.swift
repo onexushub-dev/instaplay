@@ -1,0 +1,1 @@
+../../modules/replay-camera/ios/Core/Sources/ReplayCore/WatchSharedState.swift

@@ -1,4 +1,3 @@
-import AppIntents
 import SwiftUI
 import WidgetKit
 
@@ -7,48 +6,74 @@ private let accent = Color(red: 0.839, green: 0.949, blue: 0.247) // #D6F23F
 
 struct SaveEntry: TimelineEntry {
   let date: Date
+  let state: WatchSharedState
 }
 
+/// The watch app leaves the game in the shared app group and reloads the widget whenever it changes; the timer
+/// counts by itself from the start.
 struct SaveProvider: TimelineProvider {
-  func placeholder(in context: Context) -> SaveEntry { SaveEntry(date: .now) }
-  func getSnapshot(in context: Context, completion: @escaping (SaveEntry) -> Void) { completion(SaveEntry(date: .now)) }
+  private func current() -> WatchSharedState {
+    let group = WatchSharedState.groupID(forBundleID: Bundle.main.bundleIdentifier ?? "")
+    return WatchSharedState(dictionary: UserDefaults(suiteName: group)?.dictionary(forKey: WatchSharedState.key))
+  }
+  func placeholder(in context: Context) -> SaveEntry {
+    SaveEntry(date: .now, state: WatchSharedState(recording: true, clipCount: 3, startedAtMs: Date().timeIntervalSince1970 * 1000))
+  }
+  func getSnapshot(in context: Context, completion: @escaping (SaveEntry) -> Void) {
+    completion(SaveEntry(date: .now, state: current()))
+  }
   func getTimeline(in context: Context, completion: @escaping (Timeline<SaveEntry>) -> Void) {
-    completion(Timeline(entries: [SaveEntry(date: .now)], policy: .never))
+    completion(Timeline(entries: [SaveEntry(date: .now, state: current())], policy: .never))
   }
 }
 
-/// One big button, nothing else: usable from the Smart Stack on a locked watch.
-struct SaveWidgetView: View {
+/// What the widget draws: the word LANCE (so it is plainly ours) and, while a game runs, its timer and clip count.
+/// Tapping it only opens the app (a widget cannot reach the phone by itself): saving is the big button there.
+struct LanceCard: View {
+  let state: WatchSharedState
   @Environment(\.widgetFamily) private var family
   var body: some View {
-    Button(intent: SaveClipIntent()) {
-      switch family {
-      case .accessoryCircular:
-        Image(systemName: "bookmark.fill").font(.title2)
-      default:
-        HStack {
-          Image(systemName: "bookmark.fill")
-          Text("Salvar").font(.system(.title3, design: .rounded).weight(.heavy))
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    switch family {
+    case .accessoryCircular:
+      VStack(spacing: 0) {
+        Image(systemName: state.recording ? "record.circle" : "bookmark.fill").font(.title3)
+        Text("LANCE").font(.system(size: 9, weight: .heavy, design: .rounded))
       }
+    default:
+      VStack(alignment: .leading, spacing: 1) {
+        HStack {
+          Text("LANCE").font(.system(.caption, design: .rounded).weight(.heavy)).widgetAccentable()
+          Spacer(minLength: 4)
+          if state.recording, let start = state.startedAtMs {
+            Text(Date(timeIntervalSince1970: start / 1000), style: .timer)
+              .font(.system(.caption, design: .rounded).weight(.bold))
+              .monospacedDigit()
+              .multilineTextAlignment(.trailing)
+              .frame(maxWidth: 56, alignment: .trailing)
+          }
+        }
+        Text(state.recording ? WatchSharedState.clipLabel(state.clipCount) : "Abrir")
+          .font(.system(.title3, design: .rounded).weight(.heavy))
+      }
+      .frame(maxWidth: .infinity, alignment: .leading)
     }
-    .buttonStyle(.plain)
-    .foregroundStyle(family == .accessoryRectangular ? ground : accent)
-    .containerBackground(accent, for: .widget)
   }
 }
 
-struct SaveWidget: Widget {
+struct LanceWidget: Widget {
   var body: some WidgetConfiguration {
-    StaticConfiguration(kind: "LanceSave", provider: SaveProvider()) { _ in SaveWidgetView() }
-      .configurationDisplayName("Salvar clipe")
-      .description("Salva o clipe no iPhone, mesmo com o relógio bloqueado.")
-      .supportedFamilies([.accessoryRectangular, .accessoryCircular])
+    StaticConfiguration(kind: "LanceSave", provider: SaveProvider()) { entry in
+      LanceCard(state: entry.state)
+        .foregroundStyle(ground)
+        .containerBackground(accent, for: .widget)
+    }
+    .configurationDisplayName("LANCE")
+    .description("Mostra o tempo e os clipes da gravação e abre o LANCE com um toque.")
+    .supportedFamilies([.accessoryRectangular, .accessoryCircular])
   }
 }
 
 @main
 struct LanceWidgets: WidgetBundle {
-  var body: some Widget { SaveWidget() }
+  var body: some Widget { LanceWidget() }
 }

@@ -2,6 +2,7 @@ import Foundation
 import WatchConnectivity
 import UIKit
 import WatchKit
+import WidgetKit
 
 /// The watch's side of the link to the iPhone app (messages are `WatchMessage`, shared with the phone).
 final class WatchLink: NSObject, ObservableObject, WCSessionDelegate {
@@ -11,13 +12,6 @@ final class WatchLink: NSObject, ObservableObject, WCSessionDelegate {
   @Published private(set) var previewOn = false
   /// A short confirmation drawn over the screen when the phone says a save ended (true = saved).
   @Published private(set) var confirmation: Bool?
-  /// "Manter ativo": keep the app in front with a workout session while recording. Off by default (battery).
-  @Published var keepActive = UserDefaults.standard.bool(forKey: "keepActive") {
-    didSet {
-      UserDefaults.standard.set(keepActive, forKey: "keepActive")
-      refresh()
-    }
-  }
   /// Whether the phone can be reached right now (Gravar and Parar need it).
   @Published private(set) var reachable = false
 
@@ -32,7 +26,8 @@ final class WatchLink: NSObject, ObservableObject, WCSessionDelegate {
   private var lastStateAt = Date.distantPast
   private var lastSaveAt: Double?
   private var unreachableSince: Date?
-  private let keeper = WorkoutKeeper()
+  /// What the widget was last given, so it is only reloaded when the game changes.
+  private var lastShared: WatchSharedState?
   private var aging: Timer?
 
   override init() {
@@ -155,13 +150,25 @@ final class WatchLink: NSObject, ObservableObject, WCSessionDelegate {
     let next = WatchModel.screen(
       recording: recording, reachable: reachable, clipCount: clipCount, startedAtMs: startedAtMs,
       stateAge: stateAge, unreachableFor: unreachableSince.map { Date().timeIntervalSince($0) } ?? 0)
-    // The workout session lives exactly as long as a fresh recording: it always ends with it.
-    keeper.setActive(WatchModel.workoutWanted(recording: recording, stale: stateAge > WatchModel.staleAfter, keepActive: keepActive))
     if screen != next { screen = next }
     // Nothing to look at once the recording is over or the phone is gone.
     var recordingShown = false
     if case .recording = next { recordingShown = true }
     if previewOn, !WatchModel.previewWanted(viewOn: true, reachable: reachable, recording: recordingShown) { setPreview(false) }
+    publishToWidget(next)
+  }
+
+  /// The widget draws the timer and the clip count from this, in the app group both share. Main thread only.
+  private func publishToWidget(_ screen: WatchScreen) {
+    var shared = WatchSharedState(recording: false, clipCount: 0, startedAtMs: nil)
+    if case let .recording(count, started) = screen, let started {
+      shared = WatchSharedState(recording: true, clipCount: count, startedAtMs: started.timeIntervalSince1970 * 1000)
+    }
+    guard shared != lastShared else { return }
+    lastShared = shared
+    let group = WatchSharedState.groupID(forBundleID: Bundle.main.bundleIdentifier ?? "")
+    UserDefaults(suiteName: group)?.set(shared.dictionary, forKey: WatchSharedState.key)
+    WidgetCenter.shared.reloadAllTimelines()
   }
 
   // MARK: WCSessionDelegate

@@ -1,5 +1,14 @@
 # Apple Watch: start/stop control and resilient sync
 
+> **Update (2026-10-21), decided while testing on the watch:** the workout session (HealthKit) described under
+> "Decision" and "Watch lifecycle" was **dropped**. A dev-signed watch app must be installed from Xcode, the user does not
+> need the app kept alive in the background (battery), and what they wanted is met by a **widget** (watch face or Smart Stack)
+> that shows the timer and clip count and opens the app with one tap, where Salvar is the big button. A widget cannot
+> reach the phone by itself (tried: a button intent over WatchConnectivity from the extension, which does not work), so it
+> only opens the app. The watch app and the widget share the game's state through an app group (`WatchSharedState`).
+> Also changed: the phone listens for the remote's start above every screen (it was lost when the setup screen was
+> replaced by the game summary). Everything below that mentions HealthKit / `WorkoutKeeper` / "Manter ativo" is history.
+
 ## Goal
 Make the watch usable as a full remote during a game, like the phone remote:
 1. Start a new recording and end the current one from the watch (keeping Save and the camera view).
