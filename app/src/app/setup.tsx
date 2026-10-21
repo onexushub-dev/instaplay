@@ -154,18 +154,6 @@ export default function Setup() {
 
   const inGame = phase === 'recording' || phase === 'stopping' || (phase === 'ended' && error !== undefined);
 
-  // The remote phone's "Iniciar gravação": starts a game from whatever screen is in front (the summary of the last game,
-  // say), as long as no game is running.
-  useEffect(() => {
-    const sub = addReplayListener('onRemoteStart', () => {
-      if (starting) return;
-      if (phase !== 'idle' && !(phase === 'ended' && error === undefined)) return;
-      router.navigate('/setup');
-      void session.start(modeId);
-    });
-    return () => sub.remove();
-  });
-
   // One camera view for the whole game: setup and recording only swap the controls drawn over it.
   return (
     <View style={styles.root}>

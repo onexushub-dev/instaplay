@@ -8,6 +8,7 @@ import { useEffect } from 'react';
 import { AppState } from 'react-native';
 
 import { isRemoteSupported, remoteHostStart, remoteHostStop } from '../../modules/replay-camera';
+import { RemoteStartListener } from '../session/RemoteStartListener';
 import { SessionProvider } from '../session/SessionContext';
 import { colors } from '../theme/tokens';
 
@@ -46,6 +47,7 @@ export default function RootLayout() {
   return (
     <SessionProvider>
       <StatusBar style="light" />
+      <RemoteStartListener />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.ground } }}>
         {/* Dragging the trim handles to the right would otherwise count as the swipe back. */}
         <Stack.Screen name="clip/[id]" options={{ gestureEnabled: false }} />
