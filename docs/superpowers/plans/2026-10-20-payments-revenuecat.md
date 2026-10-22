@@ -1,5 +1,7 @@
 # Pagamentos com RevenueCat Implementation Plan
 
+> **Executado. Regras de clipes bloqueados substituídas em 2026-10-22** pelo plano `2026-10-22-payments-first-session-free.md` (primeira gravação grátis, pagar antes da segunda, Passe como crédito).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Cobrar o Passe Avulso (R$ 4,90) e o Pro (R$ 19,90/mês) pelo RevenueCat sem nunca parar a gravação: do 11º clipe em diante os clipes ficam salvos e bloqueados, e o paywall aparece só fora da gravação.

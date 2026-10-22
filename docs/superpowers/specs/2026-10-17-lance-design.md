@@ -19,12 +19,12 @@ Levar para o celular do praticante o sistema de "replay" que algumas quadras ofe
 | Buffer | Janela móvel de 60s. O que sai da janela é apagado na hora. Só os lances salvos ficam no celular |
 | Corte padrão | Últimos 30s até o gatilho, ajustável depois dentro dos 60s |
 | Dados | Só no celular, sem login. Modelo preparado para login futuro |
-| Receita | Freemium + Passe Avulso (R$4,90, vinculado à sessão — jogo ou treino — em que foi comprado) + Pro (R$19,90/mês). Kit físico de fixação opcional, vendido fora do app |
+| Receita | Primeira gravação grátis e sem limite; da segunda em diante, Passe Avulso (R$4,90, uma sessão — jogo ou treino) ou Pro (R$19,90/mês, 7 dias grátis), pagos antes de começar. Kit físico de fixação opcional, vendido fora do app |
 | Câmera | Módulo nativo próprio `ReplayCamera` (Expo Modules), sem VisionCamera |
 
 ## 3. Experiência do usuário
 
-Fluxo: **Boas-vindas → Posicionar câmera → Gravando → Lance salvo (repete) → Fim de jogo → Editor → Story.** O paywall aparece no meio do fluxo quando alguma regra pede.
+Fluxo: **Boas-vindas → Posicionar câmera → Gravando → Lance salvo (repete) → Fim de jogo → Editor → Story.** O paywall aparece antes de começar a segunda gravação (e quando o usuário pede um recurso pago numa gravação grátis), nunca durante a gravação.
 
 ### 3.1 Boas-vindas (só na primeira vez)
 - Promessa: "Grave o jogo inteiro. Guarde só o lance."
@@ -38,7 +38,7 @@ Fluxo: **Boas-vindas → Posicionar câmera → Gravando → Lance salvo (repete
 - Dica: "Atrás da linha de fundo, na altura do ombro".
 - Esporte: Beach tennis, Futevôlei, Vôlei de praia, Outro.
 - Status dos gatilhos: Tela (sempre ativa), Gesto X (ativo/inativo), Controle (conectado/não), Relógio (pareado/"Toque para parear").
-- Botão "Começar jogo". Bloqueado se houver menos de ~500 MB livres.
+- Botão "Começar gravação". Bloqueado se houver menos de ~500 MB livres. Da segunda gravação em diante, sem Pro e sem Passe disponível, abre o paywall antes de começar (seção 3.5).
 
 ### 3.3 Gravando
 - A tela escurece para economizar bateria, mas a gravação continua.
@@ -52,19 +52,18 @@ Fluxo: **Boas-vindas → Posicionar câmera → Gravando → Lance salvo (repete
 ### 3.4 Lance salvo (feedback de ~2s)
 - Borda e flash na cor de destaque, som curto, vibração no relógio.
 - "Lance #N salvo · via <origem> · últimos 30s".
-- Contador de lances grátis (ex.: 9 de 10).
 - Botão "Desfazer".
 
-### 3.5 Limite grátis e paywall (revisado em 2026-10-20)
-- A gravação nunca para por causa do plano. Do 11º lance em diante os lances são salvos e ficam bloqueados.
-- Durante o jogo: aviso discreto ("Lance #10 salvo · último grátis"; "Lance #11 salvo · libere no fim do jogo"; em treino, "treino" no lugar de "jogo"). Nenhum paywall aparece durante a gravação.
-- Depois do jogo: o resumo mostra "N lances guardados · M bloqueados" com as miniaturas e o botão "Liberar", que abre o paywall (Passe Avulso R$4,90 pré-selecionado ou Pro R$19,90/mês). Tocar em um lance bloqueado ou em um recurso pago também abre o paywall.
-- "Agora não": nada se perde; dá para liberar a qualquer momento com o Passe Avulso.
+### 3.5 Primeira gravação grátis e paywall (revisado em 2026-10-22)
+- A primeira gravação do aparelho é grátis e sem limite de lances (exporta em 720p com selo, sem câmera lenta, 1 template).
+- Da segunda em diante, "Começar gravação" exige o Pro ativo ou um Passe Avulso disponível (comprado e ainda não usado). Sem nenhum dos dois, abre o paywall (Passe Avulso R$4,90 pré-selecionado ou Pro R$19,90/mês com 7 dias grátis); comprando, a gravação começa; fechando, nada começa.
+- A gravação nunca para por causa do plano e nenhum paywall aparece durante a gravação. Não há lances bloqueados.
+- No resumo e no editor da gravação grátis, "Liberar HD e recursos" e a câmera lenta abrem o paywall; o Passe comprado ali vale para aquela gravação.
 - Pagamento pela App Store / Google Play. Detalhes em `2026-10-20-payments-revenuecat-design.md`.
 
 ### 3.6 Relógio (watchOS e Wear OS)
 - Uma tela só: tempo + número de lances e um botão grande "Salvar lance".
-- O relógio como gatilho é dos planos pagos (Pro, ou jogo já pago com o Passe; na prática, só o Pro antes do jogo). No grátis o botão dá lugar a "Disponível no Pro" e o resto continua. Detalhes em `2026-10-20-payments-revenuecat-design.md`.
+- O relógio como gatilho é só do Pro (também na primeira gravação). Sem Pro o botão dá lugar a "Disponível no Pro" e o resto continua. Detalhes em `2026-10-20-payments-revenuecat-design.md`.
 - Vibração quando o lance é confirmado.
 
 ### 3.7 Fim de jogo
@@ -154,9 +153,10 @@ Apps de relógio: watchOS (SwiftUI, via expo-apple-targets) · Wear OS (Compose)
 
 ```
 UsuárioAnônimo { id: uuid, criadoEm, revenueCatId }
-Sessão         { id: uuid, esporte, início, fim, passeAtivo, lancesGrátisUsados }
+Sessão         { id: uuid, esporte, início, fim, passeTransaçãoId? }
 Lance          { id: uuid, sessãoId, criadoEm, origem: tela|gesto|controle|relógio,
-                 arquivo, corte: { início, fim }, bloqueado }
+                 arquivo, corte: { início, fim } }
+Pagamentos     { primeiraSessãoUsada, passesUsados: [transaçãoId] }
 Preferências   { lente, duraçãoPadrão: 30, gestoAtivo, relógioPareado }
 ```
 
@@ -167,16 +167,17 @@ Preferências   { lente, duraçãoPadrão: 30, gestoAtivo, relógioPareado }
 
 | Regra | Grátis | Passe Avulso (R$4,90) | Pro (R$19,90/mês) |
 |---|---|---|---|
-| Lances liberados por jogo ou treino | 10 (os mesmos nos dois modos, Quadra e Academia; os seguintes ficam salvos e bloqueados) | Todos | Todos |
+| Começar uma gravação | Só a primeira do aparelho | Uma gravação por Passe | Todas |
+| Lances por gravação | Sem limite | Sem limite | Sem limite |
 | Exportação | 720p | 1080p 60fps | 1080p 60fps |
 | Selo/marca d'água | Sim | Não | Não |
 | Câmera lenta | Não | Sim | Sim |
 | Templates de Story | 1 | Todos | Todos |
-| Relógio como gatilho | Não | Só se o jogo já foi pago (na prática, não) | Sim |
-| Validade | — | O jogo em que foi comprado, para sempre | Mensal |
+| Relógio como gatilho | Não | Não | Sim |
+| Validade | A primeira gravação, para sempre | A gravação a que foi ligado, para sempre | Mensal (7 dias grátis para quem tem direito) |
 
-- O Passe é uma compra avulsa pela loja, vinculada ao `sessãoId`. Ele continua valendo se o app reiniciar e pode ser comprado depois do jogo.
-- Comprar o Passe libera em HD todos os lances da sessão, inclusive os bloqueados.
+- O Passe é uma compra avulsa (consumível) pela loja e funciona como crédito: comprado na preparação, é consumido ao começar a próxima gravação; comprado no resumo/editor da gravação grátis, vale para ela. Ligado a uma gravação, continua valendo se o app reiniciar e nunca volta a ser crédito.
+- A primeira gravação grátis é marcada no aparelho quando começa; apagar a gravação não a devolve (reinstalar sim, risco aceito sem login).
 - Conteúdo digital é vendido só pelas compras da loja (Apple/Google). O kit físico é vendido fora do app (link externo, Pix).
 - Hipótese a verificar: decisões regulatórias no Brasil (CADE vs. Apple) que permitam pagamento externo.
 
@@ -194,7 +195,7 @@ Preferências   { lente, duraçãoPadrão: 30, gestoAtivo, relógioPareado }
 
 ## 8. Testes
 
-- **JS (unitários):** trava de gatilhos, regras do Passe e do Pro, limite de 10 lances, estado da sessão.
+- **JS (unitários):** trava de gatilhos, regras do Passe e do Pro, primeira gravação grátis e portão de início, estado da sessão.
 - **Nativo:** testes do anel de pedaços (descarte e junção), em aparelho real.
 - **Campo:** sessões de 2h ao sol, num iPhone e num Android intermediário.
 
@@ -233,7 +234,7 @@ Decisão do Marcus: entregar todas as funcionalidades antes de cobrar.
 | % de jogos com ≥1 lance salvo | > 70% |
 | Lances postados / salvos | > 30% |
 | Uso por gatilho | descobrir |
-| Conversão do paywall do fim de jogo | > 5% |
+| Conversão do paywall da segunda gravação | > 5% |
 | Volta em 30 dias | > 25% |
 
 ## 11. Lançamento
