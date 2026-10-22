@@ -19,6 +19,8 @@ const key = {
   clip: (id: string) => `lance:v1:clip:${id}`,
   clipsOf: (sessionId: string) => `lance:v1:clips-of:${sessionId}`,
   sessions: 'lance:v1:sessions',
+  firstSessionUsed: 'lance:v1:firstSessionUsed',
+  spentPasses: 'lance:v1:spentPasses',
 };
 const SESSION_PREFIX = 'lance:v1:session:';
 
@@ -51,6 +53,27 @@ export function createRepo(kv: KV, files: FileProbe, newId: () => string) {
     return found;
   }
 
+  /** Pass transaction ids already tied to a game. Rebuilt once from existing games when the key is missing. */
+  function spentList(): string[] {
+    const stored = read<string[]>(key.spentPasses);
+    if (stored) return stored;
+    const found = sessionIds()
+      .map((id) => getSession(id)?.passTransactionId)
+      .filter((id): id is string => id !== undefined);
+    const unique = [...new Set(found)];
+    write(key.spentPasses, unique);
+    return unique;
+  }
+
+  /** Writes the merged list; true if anything was added. Does not notify. */
+  function addSpent(ids: string[]): boolean {
+    const current = spentList();
+    const next = [...new Set([...current, ...ids])];
+    if (next.length === current.length) return false;
+    write(key.spentPasses, next);
+    return true;
+  }
+
   return {
     getPrefs(): Prefs {
       return { ...DEFAULT_PREFS, ...read<Partial<Prefs>>(key.prefs) };
@@ -73,11 +96,28 @@ export function createRepo(kv: KV, files: FileProbe, newId: () => string) {
       return version;
     },
 
-    startSession(sport: Sport, now: number): Session {
+    /** True once any game was ever started. A marker of its own: deleting games never resets it. */
+    isFirstSessionUsed(): boolean {
+      return kv.getString(key.firstSessionUsed) === '1';
+    },
+
+    /** Pass transaction ids already tied to a game; only grows. */
+    spentPasses(): Set<string> {
+      return new Set(spentList());
+    },
+
+    spendPasses(ids: string[]): void {
+      if (addSpent(ids)) changed();
+    },
+
+    startSession(sport: Sport, now: number, passTransactionId?: string): Session {
       const ids = sessionIds(); // before writing, so a first-time rebuild doesn't list this game twice
-      const session: Session = { id: newId(), sport, startedAt: now };
+      if (passTransactionId) spentList(); // migrate before this game exists, then add its id below
+      const session: Session = { id: newId(), sport, startedAt: now, ...(passTransactionId ? { passTransactionId } : {}) };
       write(key.session(session.id), session);
       write(key.sessions, [...ids, session.id]);
+      kv.set(key.firstSessionUsed, '1');
+      if (passTransactionId) addSpent([passTransactionId]);
       changed();
       return session;
     },
@@ -105,6 +145,7 @@ export function createRepo(kv: KV, files: FileProbe, newId: () => string) {
       if (!existing) return undefined;
       const session: Session = { ...existing, passTransactionId: transactionId };
       write(key.session(id), session);
+      addSpent([transactionId]);
       changed();
       return session;
     },

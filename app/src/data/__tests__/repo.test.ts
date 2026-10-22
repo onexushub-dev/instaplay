@@ -230,3 +230,66 @@ test('deleteSession removes the game, its clips and the index entry, and returns
   expect(repo.listClips(s.id)).toEqual([]);
   expect(repo.listSessions()).toEqual([]);
 });
+
+test('first session marker: false on a new repo, true after startSession, survives deleting the session', () => {
+  const repo = setup();
+  expect(repo.isFirstSessionUsed()).toBe(false);
+  const s = repo.startSession('quadra', 1);
+  expect(repo.isFirstSessionUsed()).toBe(true);
+  repo.deleteSession(s.id);
+  expect(repo.isFirstSessionUsed()).toBe(true);
+});
+
+test('startSession with a pass transaction stores it on the session and spends it; without, no passTransactionId', () => {
+  const repo = setup();
+  const paid = repo.startSession('quadra', 1, 'tx-1');
+  expect(paid.passTransactionId).toBe('tx-1');
+  expect(repo.getSession(paid.id)?.passTransactionId).toBe('tx-1');
+  expect(repo.spentPasses().has('tx-1')).toBe(true);
+  const free = repo.startSession('quadra', 2);
+  expect('passTransactionId' in free).toBe(false);
+});
+
+test('startSession notifies subscribers once', () => {
+  const repo = setup();
+  const fn = jest.fn();
+  repo.subscribe(fn);
+  repo.startSession('quadra', 1, 'tx-1');
+  expect(fn).toHaveBeenCalledTimes(1);
+});
+
+test('deleteSession keeps the pass id spent', () => {
+  const repo = setup();
+  const s = repo.startSession('quadra', 1, 'tx-1');
+  repo.deleteSession(s.id);
+  expect(repo.spentPasses().has('tx-1')).toBe(true);
+});
+
+test('setSessionPass spends the transaction; a missing session spends nothing', () => {
+  const repo = setup();
+  const s = repo.startSession('quadra', 1);
+  repo.setSessionPass(s.id, 'tx-2');
+  expect(repo.spentPasses().has('tx-2')).toBe(true);
+  repo.setSessionPass('nope', 'tx-3');
+  expect(repo.spentPasses().has('tx-3')).toBe(false);
+});
+
+test('spentPasses migrates from existing sessions when the key is missing', () => {
+  const map = new Map<string, string>();
+  map.set('lance:v1:session:a', JSON.stringify({ id: 'a', sport: 'quadra', startedAt: 1, passTransactionId: 'old' }));
+  map.set('lance:v1:session:b', JSON.stringify({ id: 'b', sport: 'quadra', startedAt: 2 }));
+  const repo = createRepo(memoryKV(map), fakeFiles({}), () => 'x');
+  expect([...repo.spentPasses()]).toEqual(['old']);
+  expect(map.has('lance:v1:spentPasses')).toBe(true);
+});
+
+test('spendPasses dedupes and only notifies on change', () => {
+  const repo = setup();
+  const fn = jest.fn();
+  repo.subscribe(fn);
+  repo.spendPasses(['a', 'a', 'b']);
+  expect([...repo.spentPasses()].sort()).toEqual(['a', 'b']);
+  expect(fn).toHaveBeenCalledTimes(1);
+  repo.spendPasses(['a']);
+  expect(fn).toHaveBeenCalledTimes(1);
+});
