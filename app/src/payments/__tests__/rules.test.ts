@@ -1,4 +1,4 @@
-import { detectPurchase, isClipLocked, shouldLockOnSave, tierFor, watchTriggerAllowed } from '../rules';
+import { availableCredit, creditCount, detectPurchase, isClipLocked, shouldLockOnSave, startGate, tierFor, watchTriggerAllowed } from '../rules';
 import { EMPTY_SNAPSHOT, type PassTransaction, type Snapshot } from '../types';
 
 const tx = (id: string, purchasedAt: number): PassTransaction => ({ id, productId: 'single_pass', purchasedAt });
@@ -39,8 +39,32 @@ test('detectPurchase', () => {
   expect(detectPurchase(EMPTY_SNAPSHOT, snap(false, [tx('X', 5), tx('Y', 9), tx('Z', 7)])).passTransactionId).toBe('Y');
 });
 
-test('watchTriggerAllowed: the watch saves clips on a paid tier only', () => {
+test('watchTriggerAllowed: the watch saves clips on Pro only', () => {
   expect(watchTriggerAllowed('pro')).toBe(true);
-  expect(watchTriggerAllowed('pass')).toBe(true);
+  expect(watchTriggerAllowed('pass')).toBe(false);
   expect(watchTriggerAllowed('free')).toBe(false);
+});
+
+test('availableCredit: the oldest single_pass not spent', () => {
+  const A = tx('A', 1);
+  const B = tx('B', 2);
+  expect(availableCredit(EMPTY_SNAPSHOT, new Set())).toBeUndefined();
+  expect(availableCredit(snap(false, [B, A]), new Set())).toBe(A);
+  expect(availableCredit(snap(false, [B, A]), new Set(['A']))).toBe(B);
+  expect(availableCredit(snap(false, [B, A]), new Set(['A', 'B']))).toBeUndefined();
+  const other: PassTransaction = { id: 'O', productId: 'other', purchasedAt: 0 };
+  expect(availableCredit(snap(false, [other]), new Set())).toBeUndefined();
+});
+
+test('creditCount counts unspent Passes', () => {
+  expect(creditCount(snap(false, [tx('A', 1), tx('B', 2)]), new Set(['A']))).toBe(1);
+});
+
+test('startGate: free first session, then Pro, then credit, else paywall', () => {
+  const A = tx('A', 1);
+  expect(startGate({ firstSessionUsed: false, proActive: false })).toEqual({ kind: 'firstSession' });
+  expect(startGate({ firstSessionUsed: false, proActive: true, credit: A })).toEqual({ kind: 'firstSession' });
+  expect(startGate({ firstSessionUsed: true, proActive: true, credit: A })).toEqual({ kind: 'pro' });
+  expect(startGate({ firstSessionUsed: true, proActive: false, credit: A })).toEqual({ kind: 'credit', passTransactionId: 'A' });
+  expect(startGate({ firstSessionUsed: true, proActive: false })).toEqual({ kind: 'paywall' });
 });

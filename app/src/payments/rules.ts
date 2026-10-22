@@ -1,4 +1,4 @@
-import { FREE_CLIPS, type Snapshot, type Tier } from './types';
+import { FREE_CLIPS, PASS_PRODUCT_ID, type PassTransaction, type Snapshot, type StartDecision, type Tier } from './types';
 
 export function tierFor(snapshot: Snapshot, session?: { passTransactionId?: string }): Tier {
   if (snapshot.proActive) return 'pro';
@@ -14,9 +14,27 @@ export function shouldLockOnSave(tier: Tier, unlockedCount: number): boolean {
   return tier === 'free' && unlockedCount >= FREE_CLIPS;
 }
 
-/** The watch as a save trigger is paid (Pro, or a game already paid with the Pass). Gates turning it on, never a tap mid-game. */
+/** The watch as a save trigger is Pro only (global tier). Gates turning it on, never a tap mid-recording. */
 export function watchTriggerAllowed(tier: Tier): boolean {
-  return tier !== 'free';
+  return tier === 'pro';
+}
+
+export function availableCredit(snapshot: Snapshot, spent: ReadonlySet<string>): PassTransaction | undefined {
+  return snapshot.passTransactions
+    .filter((t) => t.productId === PASS_PRODUCT_ID && !spent.has(t.id))
+    .reduce<PassTransaction | undefined>((a, b) => (a === undefined || b.purchasedAt < a.purchasedAt ? b : a), undefined);
+}
+
+export function creditCount(snapshot: Snapshot, spent: ReadonlySet<string>): number {
+  return snapshot.passTransactions.filter((t) => t.productId === PASS_PRODUCT_ID && !spent.has(t.id)).length;
+}
+
+/** Decides "Começar gravação": the first session is free, then Pro, then the oldest unused Pass, else the paywall. */
+export function startGate(input: { firstSessionUsed: boolean; proActive: boolean; credit?: PassTransaction }): StartDecision {
+  if (!input.firstSessionUsed) return { kind: 'firstSession' };
+  if (input.proActive) return { kind: 'pro' };
+  if (input.credit) return { kind: 'credit', passTransactionId: input.credit.id };
+  return { kind: 'paywall' };
 }
 
 export function detectPurchase(before: Snapshot, after: Snapshot): { pro: boolean; passTransactionId?: string } {
