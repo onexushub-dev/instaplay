@@ -1,4 +1,4 @@
-import { FREE_CLIPS, PASS_PRODUCT_ID, type PassTransaction, type Snapshot, type StartDecision, type Tier } from './types';
+import { PASS_PRODUCT_ID, type PassTransaction, type Snapshot, type StartDecision, type Tier } from './types';
 
 export function tierFor(snapshot: Snapshot, session?: { passTransactionId?: string }): Tier {
   if (snapshot.proActive) return 'pro';
@@ -6,12 +6,9 @@ export function tierFor(snapshot: Snapshot, session?: { passTransactionId?: stri
   return 'free';
 }
 
-export function isClipLocked(clip: { locked?: boolean }, tier: Tier): boolean {
-  return !!clip.locked && tier === 'free';
-}
-
-export function shouldLockOnSave(tier: Tier, unlockedCount: number): boolean {
-  return tier === 'free' && unlockedCount >= FREE_CLIPS;
+// Clip no longer declares `locked`; clips stored before still may carry it, so read it structurally (removed in Task 8).
+export function isClipLocked(clip: object, tier: Tier): boolean {
+  return !!(clip as { locked?: boolean }).locked && tier === 'free';
 }
 
 /** The watch as a save trigger is Pro only (global tier). Gates turning it on, never a tap mid-recording. */
