@@ -9,7 +9,6 @@ import { dayAndTime, megabytes, modeLabel, recordedLabel, sessionLabel } from '.
 import { removeFile, repo } from '../../data/mmkv';
 import { MAX_GAME_NAME } from '../../data/schema';
 import { openPaywall } from '../../payments/feedback';
-import { isClipLocked } from '../../payments/rules';
 import { useEntitlement } from '../../share/entitlement';
 import { useT } from '../../i18n/useT';
 import { useSession } from '../../session/SessionContext';
@@ -29,7 +28,6 @@ export default function SessionSummary() {
   );
 
   const { tier } = useEntitlement(id);
-  const lockedCount = clips.filter((c) => isClipLocked(c, tier)).length;
 
   const [name, setName] = useState(() => session?.name ?? '');
   const saveName = () => {
@@ -190,11 +188,12 @@ export default function SessionSummary() {
       </View>
       <Text style={styles.note}>{t('summary.note')}</Text>
 
-      {lockedCount > 0 ? (
-        <View style={styles.lockedCard}>
-          <Text style={styles.lockedTitle}>{t('summary.lockedClips', { count: lockedCount })}</Text>
-          <Text style={styles.lockedNote}>{t('summary.lockedNote')}</Text>
-          <Button label={t('summary.unlock')} onPress={() => void openPaywall(id, t)} />
+      {/* The summary only exists after the recording ends, so this card never shows mid-recording. */}
+      {tier === 'free' ? (
+        <View style={styles.freeCard}>
+          <Text style={styles.freeTitle}>{t('summary.freeTitle')}</Text>
+          <Text style={styles.freeNote}>{t('summary.freeNote')}</Text>
+          <Button label={t('summary.upgrade')} variant="secondary" onPress={() => void openPaywall(id, t)} />
         </View>
       ) : null}
 
@@ -210,16 +209,9 @@ export default function SessionSummary() {
           <ClipCard
             clip={item}
             number={index + 1}
-            locked={isClipLocked(item, tier)}
             selecting={selecting}
             selected={picked.includes(item.id)}
-            onPress={() =>
-              selecting
-                ? toggle(item.id)
-                : isClipLocked(item, tier)
-                  ? void openPaywall(id, t)
-                  : router.push(`/clip/${item.id}`)
-            }
+            onPress={() => (selecting ? toggle(item.id) : router.push(`/clip/${item.id}`))}
             onLongPress={
               selecting
                 ? undefined
@@ -292,9 +284,9 @@ const styles = StyleSheet.create({
   statValue: { fontFamily: fonts.displayBold, fontSize: 28, color: colors.text },
   statLabel: { fontFamily: fonts.body, fontSize: 12, color: colors.muted },
   note: { fontFamily: fonts.body, fontSize: 12, color: colors.muted, marginTop: -8 },
-  lockedCard: { backgroundColor: colors.surface, borderRadius: 14, padding: 12, gap: 8 },
-  lockedTitle: { fontFamily: fonts.bodyBold, fontSize: 16, color: colors.text },
-  lockedNote: { fontFamily: fonts.body, fontSize: 12, color: colors.muted },
+  freeCard: { backgroundColor: colors.surface, borderRadius: 14, padding: 12, gap: 8 },
+  freeTitle: { fontFamily: fonts.bodyBold, fontSize: 16, color: colors.text },
+  freeNote: { fontFamily: fonts.body, fontSize: 12, color: colors.muted },
   grid: { gap: 10, paddingBottom: 12 },
   gridRow: { gap: 10 },
   empty: { fontFamily: fonts.body, fontSize: 15, color: colors.soft, textAlign: 'center', marginTop: 40 },

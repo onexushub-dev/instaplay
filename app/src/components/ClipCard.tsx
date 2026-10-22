@@ -13,14 +13,13 @@ type Props = {
   clip: Clip;
   number: number;
   onPress: () => void;
-  locked?: boolean;
   onLongPress?: () => void;
   /** Picking clips to delete: the card shows a check circle and is dimmed until picked. */
   selecting?: boolean;
   selected?: boolean;
 };
 
-export function ClipCard({ clip, number, onPress, locked = false, onLongPress, selecting = false, selected = false }: Props) {
+export function ClipCard({ clip, number, onPress, onLongPress, selecting = false, selected = false }: Props) {
   const { t, locale } = useT();
   const thumb = useClipThumbnail(clip.path, clip.trim.startMs);
   const duration = seconds(clip.trim.endMs - clip.trim.startMs);
@@ -35,18 +34,13 @@ export function ClipCard({ clip, number, onPress, locked = false, onLongPress, s
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={locked ? t('summary.lockedA11y', { label }) : label}
+      accessibilityLabel={label}
       accessibilityState={selecting ? { checked: selected } : undefined}
       onPress={onPress}
       onLongPress={onLongPress}
       style={[styles.card, selecting && !selected && styles.unpicked]}>
       <View style={styles.thumb}>
         {thumb ? <Image source={{ uri: thumb }} style={StyleSheet.absoluteFill} contentFit="cover" /> : null}
-        {locked ? (
-          <View style={styles.lockVeil}>
-            <Text style={styles.lockText}>{t('summary.lockedTag')}</Text>
-          </View>
-        ) : null}
         <View style={[styles.tag, { left: 8, top: 8 }]}>
           <Text style={styles.tagText}>{`#${number}`}</Text>
         </View>
@@ -88,8 +82,6 @@ const styles = StyleSheet.create({
   },
   done: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   tagText: { fontFamily: fonts.bodyBold, fontSize: 12, color: colors.text },
-  lockVeil: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(15,16,13,0.7)', alignItems: 'center', justifyContent: 'center' },
-  lockText: { fontFamily: fonts.bodyBold, fontSize: 12, letterSpacing: 1, color: colors.text },
   unpicked: { opacity: 0.6 },
   check: {
     position: 'absolute',

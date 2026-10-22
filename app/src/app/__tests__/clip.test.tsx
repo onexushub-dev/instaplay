@@ -393,54 +393,23 @@ describe('on the free plan', () => {
         await new Promise((r) => setTimeout(r, 400));
       });
 
-    test('on the free plan a swipe skips locked clips in both directions', async () => {
-      payments.tierFor.mockImplementation(() => 'free');
-      __setOthers([{ id: 'c0', locked: true }, { id: 'c2', locked: true }, { id: 'c3' }]);
-      await open();
-      await swipe(1);
-      expect(router.setParams).toHaveBeenLastCalledWith({ id: 'c3' });
-      router.setParams.mockClear();
-      await swipe(-1);
-      expect(router.setParams).not.toHaveBeenCalled(); // the only clip before is locked, so there is nowhere to go
-    });
-
-    test('on the free plan the previous swipe lands on the unlocked clip behind a locked one', async () => {
-      payments.tierFor.mockImplementation(() => 'free');
-      __setOthers([{ id: 'c-1' }, { id: 'c0', locked: true }, { id: 'c2', locked: true }]);
-      await open();
-      await swipe(-1);
-      expect(router.setParams).toHaveBeenLastCalledWith({ id: 'c-1' });
-      router.setParams.mockClear();
-      await swipe(1);
-      expect(router.setParams).not.toHaveBeenCalled();
-    });
-
-    test('on the pro plan the same swipe reaches the clip that was locked', async () => {
-      payments.tierFor.mockImplementation(() => 'pro');
+    test('a swipe goes to the next and previous clip even when they are stored with locked: true', async () => {
       __setOthers([{ id: 'c0', locked: true }, { id: 'c2', locked: true }, { id: 'c3' }]);
       await open();
       await swipe(1);
       expect(router.setParams).toHaveBeenLastCalledWith({ id: 'c2' });
+      router.setParams.mockClear();
+      await swipe(-1);
+      expect(router.setParams).toHaveBeenLastCalledWith({ id: 'c0' });
     });
   });
 
-  test('a locked clip shows the lock and Liberar instead of the editor', async () => {
+  test('a clip stored with locked: true opens the editor and exports 720x1280 with the mark', async () => {
     __setClip({ ...base, locked: true });
     await open();
-    expect(screen.getByText('Este clipe está bloqueado')).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Compartilhar' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Salvar na galeria' })).toBeNull();
-    await pressAction('Liberar');
-    expect(payments.showPaywall).toHaveBeenCalledWith('s1');
-    expect(camera.exportClip).not.toHaveBeenCalled();
-  });
-
-  test('the same locked clip opens the editor on the pro plan', async () => {
-    payments.tierFor.mockImplementation(() => 'pro');
-    __setClip({ ...base, locked: true });
-    await open();
-    expect(screen.queryByText('Este clipe está bloqueado')).toBeNull();
     expect(screen.getByRole('button', { name: 'Compartilhar' })).toBeTruthy();
+    await pressAction('Compartilhar');
+    expect(camera.exportClip).toHaveBeenCalledWith(expect.objectContaining({ width: 720, height: 1280, watermark: true }));
   });
 
   test('0.5x opens the paywall and leaves the speed alone', async () => {
@@ -465,4 +434,14 @@ test('on pro, 0.5x changes the speed', async () => {
   await fireEvent.press(screen.getByRole('button', { name: 'Velocidade 0.5x' }));
   expect(repo.updateClip).toHaveBeenCalledWith('c1', { edit: { speed: 0.5, muted: false } });
   expect(payments.showPaywall).not.toHaveBeenCalled();
+});
+
+test.each(['pass', 'pro'])('on %s, 0.5x changes the speed and the export is 1080x1920 without the mark', async (tier) => {
+  payments.tierFor.mockImplementation(() => tier);
+  await open();
+  await fireEvent.press(screen.getByRole('button', { name: 'Velocidade 0.5x' }));
+  expect(repo.updateClip).toHaveBeenCalledWith('c1', { edit: { speed: 0.5, muted: false } });
+  expect(payments.showPaywall).not.toHaveBeenCalled();
+  await pressAction('Compartilhar');
+  expect(camera.exportClip).toHaveBeenCalledWith(expect.objectContaining({ width: 1080, height: 1920, watermark: false }));
 });

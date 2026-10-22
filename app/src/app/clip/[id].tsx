@@ -34,7 +34,6 @@ import {
   ShareIcon,
   TrashIcon,
 } from '../../components/icons';
-import { Button } from '../../components/Button';
 import { Playhead } from '../../components/Playhead';
 import { TrimBar } from '../../components/TrimBar';
 import { removeFile, repo } from '../../data/mmkv';
@@ -42,7 +41,6 @@ import { MAX_CLIP_NAME } from '../../data/schema';
 import type { MessageKey } from '../../i18n';
 import { useT } from '../../i18n/useT';
 import { openPaywall } from '../../payments/feedback';
-import { isClipLocked } from '../../payments/rules';
 import { effectiveSettings } from '../../modes/registry';
 import { captureOverlay } from '../../share/captureOverlay';
 import { contentFloor, nextRotation, outputMs, raiseToFloor, readEdit, SPEEDS, turnedSize } from '../../share/editing';
@@ -95,29 +93,10 @@ function clearOldExports() {
   }
 }
 
-/** The route: a clip locked on the free plan shows the unlock screen, anything else the editor (hooks stay apart). */
 export default function ClipRoute() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const version = useSyncExternalStore(repo.subscribe, repo.version);
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- version is the change signal
-  const clip = useMemo(() => repo.getClip(id), [id, version]);
-  const { tier } = useEntitlement(clip?.sessionId);
-  if (clip && isClipLocked(clip, tier)) return <LockedClip sessionId={clip.sessionId} />;
   // Keyed by clip: moving to another clip starts the editor from that clip's own state.
   return <ClipEditor key={id} id={id} />;
-}
-
-function LockedClip({ sessionId }: { sessionId: string }) {
-  const { t } = useT();
-  return (
-    <SafeAreaView style={styles.missingRoot}>
-      <IconButton label={t('common.back')} onPress={() => router.back()}>
-        <BackIcon />
-      </IconButton>
-      <Text style={styles.missing}>{t('clip.locked')}</Text>
-      <Button label={t('clip.unlock')} onPress={() => void openPaywall(sessionId, t)} />
-    </SafeAreaView>
-  );
 }
 
 /**
@@ -137,11 +116,11 @@ function ClipEditor({ id }: { id: string }) {
   const session = clip ? repo.getSession(clip.sessionId) : undefined;
   const maxMs = session ? effectiveSettings(session.sport, repo.getPrefs()).bufferSeconds * 1000 : undefined;
   const { tier } = useEntitlement(clip?.sessionId);
-  // The clips a swipe can move to: locked ones are left out, they open the unlock screen only from the summary.
+  // The clips a swipe can move to: every clip of the session.
   const siblings = useMemo(
-    () => (clip ? repo.listClips(clip.sessionId).filter((c) => !isClipLocked(c, tier)) : []),
+    () => (clip ? repo.listClips(clip.sessionId) : []),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- version is the change signal
-    [clip, tier, version],
+    [clip, version],
   );
 
   const [trim, setTrim] = useState(() => clip?.trim ?? { startMs: 0, endMs: 0 });

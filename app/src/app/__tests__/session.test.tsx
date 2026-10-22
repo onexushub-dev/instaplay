@@ -157,56 +157,42 @@ test('a named clip is identified by its name in the recording', async () => {
   expect(screen.getByRole('button', { name: /^Clipe 2,/ })).toBeTruthy();
 });
 
-describe('locked clipes', () => {
-  const lockedClip = (id: string, createdAt: number) => ({ ...clip(id, 'screen', createdAt), locked: true });
-  const setup = () => {
-    payments.tierFor.mockReturnValue('free');
-    repo.listClips.mockReturnValue([clip('a', 'gesture', 1), lockedClip('b', 2), lockedClip('c', 3)]);
-    repo.sessionStats.mockReturnValue({ clips: 3, bytes: 1, recordedMs: 1 });
+describe('free recording', () => {
+  const oldLockedClip = (id: string, createdAt: number) => ({ ...clip(id, 'screen', createdAt), locked: true });
+  const setup = (tier: string) => {
+    payments.tierFor.mockReturnValue(tier);
+    repo.listClips.mockReturnValue([clip('a', 'gesture', 1), oldLockedClip('b', 2)]);
+    repo.sessionStats.mockReturnValue({ clips: 2, bytes: 1, recordedMs: 1 });
   };
 
-  test('the free plan shows the locked card and the unlock button', async () => {
-    setup();
+  test('the free plan shows the card and the unlock button that opens the paywall for this recording', async () => {
+    setup('free');
     await render(<SessionSummary />);
-    expect(screen.getByText('2 clipes bloqueados')).toBeTruthy();
-    expect(screen.getByText('Guardados, mas bloqueados. Libere com o Passe Avulso ou o Pro.')).toBeTruthy();
-    await fireEvent.press(screen.getByRole('button', { name: 'Liberar clipes' }));
+    expect(screen.getByText('Gravação no plano grátis')).toBeTruthy();
+    expect(screen.getByText('720p com a marca e sem câmera lenta. O Passe Avulso libera tudo nesta gravação.')).toBeTruthy();
+    await fireEvent.press(screen.getByRole('button', { name: 'Liberar HD e recursos' }));
     expect(payments.showPaywall).toHaveBeenCalledWith('s1');
   });
 
-  test('tapping a locked clipe opens the paywall and does not navigate', async () => {
-    setup();
+  test.each(['pass', 'pro'])('on the %s plan there is no card', async (tier) => {
+    setup(tier);
     await render(<SessionSummary />);
-    await fireEvent.press(screen.getByRole('button', { name: /^Clipe 2,.*, bloqueado$/ }));
-    expect(payments.showPaywall).toHaveBeenCalledWith('s1');
-    expect(router.push).not.toHaveBeenCalled();
+    expect(screen.queryByText('Gravação no plano grátis')).toBeNull();
+    expect(screen.queryByText('Liberar HD e recursos')).toBeNull();
   });
 
-  test('an unlocked clipe still navigates', async () => {
-    setup();
+  test.each(['free', 'pass', 'pro'])('on the %s plan any clipe opens, even an old one stored with locked: true', async (tier) => {
+    setup(tier);
     await render(<SessionSummary />);
-    await fireEvent.press(screen.getByRole('button', { name: /^Clipe 1,/ }));
-    expect(router.push).toHaveBeenCalledWith('/clip/a');
-  });
-
-  test('while picking clipes to delete, a locked clipe is picked instead of opening the paywall', async () => {
-    setup();
-    await render(<SessionSummary />);
-    await fireEvent.press(screen.getByRole('button', { name: 'Selecionar clipes' }));
-    await fireEvent.press(screen.getByRole('button', { name: /^Clipe 2,.*bloqueado$/ }));
-    expect(payments.showPaywall).not.toHaveBeenCalled();
-    expect(screen.getByText('1 selecionado')).toBeTruthy();
-  });
-
-  test.each(['pass', 'pro'])('on the %s plan nothing is locked', async (tier) => {
-    payments.tierFor.mockReturnValue(tier);
-    repo.listClips.mockReturnValue([clip('a', 'gesture', 1), lockedClip('b', 2)]);
-    repo.sessionStats.mockReturnValue({ clips: 2, bytes: 1, recordedMs: 1 });
-    await render(<SessionSummary />);
-    expect(screen.queryByText('Liberar clipes')).toBeNull();
-    expect(screen.queryByText(/bloqueado/)).toBeNull();
     await fireEvent.press(screen.getByRole('button', { name: /^Clipe 2,/ }));
     expect(router.push).toHaveBeenCalledWith('/clip/b');
+    expect(payments.showPaywall).not.toHaveBeenCalled();
+  });
+
+  test('no clipe is labeled as blocked', async () => {
+    setup('free');
+    await render(<SessionSummary />);
+    expect(screen.queryByText(/bloqueado/i)).toBeNull();
   });
 });
 

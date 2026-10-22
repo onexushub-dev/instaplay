@@ -1,4 +1,4 @@
-import { availableCredit, creditCount, detectPurchase, isClipLocked, startGate, tierFor, watchTriggerAllowed } from '../rules';
+import { availableCredit, creditCount, detectPurchase, startGate, tierFor, watchTriggerAllowed } from '../rules';
 import { EMPTY_SNAPSHOT, type PassTransaction, type Snapshot } from '../types';
 
 const tx = (id: string, purchasedAt: number): PassTransaction => ({ id, productId: 'single_pass', purchasedAt });
@@ -9,13 +9,6 @@ test('tierFor: Pro beats pass, pass beats free', () => {
   expect(tierFor(EMPTY_SNAPSHOT, { passTransactionId: 'A' })).toBe('pass');
   expect(tierFor(EMPTY_SNAPSHOT, {})).toBe('free');
   expect(tierFor(EMPTY_SNAPSHOT)).toBe('free');
-});
-
-test('isClipLocked only locks on the free tier', () => {
-  expect(isClipLocked({ locked: true }, 'free')).toBe(true);
-  expect(isClipLocked({ locked: true }, 'pass')).toBe(false);
-  expect(isClipLocked({ locked: true }, 'pro')).toBe(false);
-  expect(isClipLocked({}, 'free')).toBe(false);
 });
 
 test('detectPurchase', () => {

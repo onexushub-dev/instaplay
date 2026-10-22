@@ -28,3 +28,9 @@ test('a shared clip says so, and saving wins when both happened', async () => {
   await rerender(<ClipCard clip={{ ...clip, sharedAt: 1, savedAt: 2 }} number={1} onPress={() => {}} />);
   expect(screen.getByText('Na galeria')).toBeTruthy();
 });
+
+test('the card is never labeled or tagged as blocked', async () => {
+  await render(<ClipCard clip={clip} number={1} onPress={() => {}} />);
+  expect(screen.getByRole('button', { name: /^Clipe 1/ }).props.accessibilityLabel).not.toMatch(/, bloqueado$/);
+  expect(screen.queryByText('BLOQUEADO')).toBeNull();
+});

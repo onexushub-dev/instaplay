@@ -6,11 +6,6 @@ export function tierFor(snapshot: Snapshot, session?: { passTransactionId?: stri
   return 'free';
 }
 
-// Clip no longer declares `locked`; clips stored before still may carry it, so read it structurally (removed in Task 8).
-export function isClipLocked(clip: object, tier: Tier): boolean {
-  return !!(clip as { locked?: boolean }).locked && tier === 'free';
-}
-
 /** The watch as a save trigger is Pro only (global tier). Gates turning it on, never a tap mid-recording. */
 export function watchTriggerAllowed(tier: Tier): boolean {
   return tier === 'pro';
