@@ -53,13 +53,23 @@ export function createRepo(kv: KV, files: FileProbe, newId: () => string) {
     return found;
   }
 
-  /** Pass transaction ids already tied to a game. Rebuilt once from existing games when the key is missing. */
+  /** Pass transaction ids already tied to a game. Rebuilt from existing games when the key is missing or unreadable. */
   function spentList(): string[] {
-    const stored = read<string[]>(key.spentPasses);
-    if (stored) return stored;
-    const found = sessionIds()
-      .map((id) => getSession(id)?.passTransactionId)
-      .filter((id): id is string => id !== undefined);
+    try {
+      const stored = read<unknown>(key.spentPasses);
+      if (Array.isArray(stored)) return stored.filter((x): x is string => typeof x === 'string');
+    } catch {
+      // corrupt value: rebuild below
+    }
+    const found: string[] = [];
+    for (const id of sessionIds()) {
+      try {
+        const tx = getSession(id)?.passTransactionId;
+        if (tx) found.push(tx);
+      } catch {
+        // a corrupt game record is skipped
+      }
+    }
     const unique = [...new Set(found)];
     write(key.spentPasses, unique);
     return unique;
@@ -112,7 +122,7 @@ export function createRepo(kv: KV, files: FileProbe, newId: () => string) {
 
     startSession(sport: Sport, now: number, passTransactionId?: string): Session {
       const ids = sessionIds(); // before writing, so a first-time rebuild doesn't list this game twice
-      if (passTransactionId) spentList(); // migrate before this game exists, then add its id below
+      spentList(); // build the ledger from existing games before this one exists
       const session: Session = { id: newId(), sport, startedAt: now, ...(passTransactionId ? { passTransactionId } : {}) };
       write(key.session(session.id), session);
       write(key.sessions, [...ids, session.id]);
@@ -141,7 +151,12 @@ export function createRepo(kv: KV, files: FileProbe, newId: () => string) {
 
     /** Records the single pass transaction on the game. Undefined if the game does not exist. */
     setSessionPass(id: string, transactionId: string): Session | undefined {
-      const existing = getSession(id);
+      let existing: Session | undefined;
+      try {
+        existing = getSession(id);
+      } catch {
+        existing = undefined; // corrupt record: treat as missing
+      }
       if (!existing) return undefined;
       const session: Session = { ...existing, passTransactionId: transactionId };
       write(key.session(id), session);
@@ -224,6 +239,7 @@ export function createRepo(kv: KV, files: FileProbe, newId: () => string) {
      * (the repo knows nothing about the file system beyond probing).
      */
     deleteSession(id: string): string[] {
+      spentList(); // the ledger must exist before a game carrying a Pass disappears
       const paths: string[] = [];
       for (const clipId of clipIds(id)) {
         const clip = read<Clip>(key.clip(clipId));

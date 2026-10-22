@@ -293,3 +293,62 @@ test('spendPasses dedupes and only notifies on change', () => {
   repo.spendPasses(['a']);
   expect(fn).toHaveBeenCalledTimes(1);
 });
+
+const legacy = () => {
+  const map = new Map<string, string>();
+  map.set('lance:v1:session:a', JSON.stringify({ id: 'a', sport: 'quadra', startedAt: 1, passTransactionId: 'old' }));
+  return map;
+};
+const repoOver = (map: Map<string, string>) => createRepo(memoryKV(map), fakeFiles({}), () => 'new');
+
+test('deleting a legacy paid game before any ledger read keeps its id spent', () => {
+  const repo = repoOver(legacy());
+  repo.deleteSession('a');
+  expect(repo.spentPasses().has('old')).toBe(true);
+});
+
+test('spentPasses rebuilds from games when the ledger is corrupt or not an array', () => {
+  for (const bad of ['{not json', '{"a":1}']) {
+    const map = legacy();
+    map.set('lance:v1:spentPasses', bad);
+    expect([...repoOver(map).spentPasses()]).toEqual(['old']);
+  }
+});
+
+test('a corrupt game record does not break migration, startSession or setSessionPass', () => {
+  const map = legacy();
+  map.set('lance:v1:session:bad', '{oops');
+  const repo = repoOver(map);
+  expect(() => repo.startSession('quadra', 5, 'tx-9')).not.toThrow();
+  expect(repo.spentPasses().has('old')).toBe(true);
+  expect(repo.setSessionPass('bad', 'tx-x')).toBeUndefined();
+  expect(repo.spentPasses().has('tx-x')).toBe(false);
+});
+
+test('fresh install: empty ledger, marker false', () => {
+  const repo = setup();
+  expect(repo.spentPasses().size).toBe(0);
+  expect(repo.isFirstSessionUsed()).toBe(false);
+});
+
+test('an existing ledger key is left alone', () => {
+  const map = legacy();
+  map.set('lance:v1:spentPasses', JSON.stringify(['kept']));
+  expect([...repoOver(map).spentPasses()]).toEqual(['kept']);
+});
+
+test('startSession during migration adds no duplicates; marker stays false with old games', () => {
+  const map = legacy();
+  const repo = repoOver(map);
+  expect(repo.isFirstSessionUsed()).toBe(false);
+  repo.startSession('quadra', 5, 'old');
+  expect([...repo.spentPasses()]).toEqual(['old']);
+});
+
+test('startSession without a pass notifies once', () => {
+  const repo = setup();
+  const fn = jest.fn();
+  repo.subscribe(fn);
+  repo.startSession('quadra', 1);
+  expect(fn).toHaveBeenCalledTimes(1);
+});
