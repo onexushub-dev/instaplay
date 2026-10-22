@@ -18,6 +18,10 @@ export type SessionState = {
   error?: ReplayErrorCode;
   /** The native side stopped because the phone got too hot. */
   thermalStop?: boolean;
+  /** The running game's plan, fixed at its start (Pro or a spent Single Pass). */
+  paid?: boolean;
+  /** The seconds each save reaches back in the running game (15 on the free plan). */
+  bufferSeconds?: number;
 };
 
 export type SessionAction =
@@ -26,7 +30,7 @@ export type SessionAction =
   | { type: 'cameraFailed'; code: ReplayErrorCode }
   | { type: 'cameraOff' }
   | { type: 'startRequested' }
-  | { type: 'started'; sessionId: string; startedAt: number }
+  | { type: 'started'; sessionId: string; startedAt: number; paid: boolean; bufferSeconds: number }
   | { type: 'startFailed'; code: ReplayErrorCode }
   | { type: 'startBlocked' }
   | { type: 'saveStarted' }
@@ -63,7 +67,15 @@ export function reducer(state: SessionState, action: SessionAction): SessionStat
     case 'startRequested':
       return { ...initialState, camera: state.camera, phase: 'starting' };
     case 'started':
-      return { ...state, phase: 'recording', sessionId: action.sessionId, startedAt: action.startedAt, clipCount: 0 };
+      return {
+        ...state,
+        phase: 'recording',
+        sessionId: action.sessionId,
+        startedAt: action.startedAt,
+        clipCount: 0,
+        paid: action.paid,
+        bufferSeconds: action.bufferSeconds,
+      };
     case 'startFailed':
       return { ...initialState, camera: state.camera, error: action.code };
     case 'startBlocked':
@@ -100,7 +112,7 @@ export function reducer(state: SessionState, action: SessionAction): SessionStat
     case 'stopRequested':
       return { ...state, phase: 'stopping' };
     case 'stopped':
-      return { ...state, phase: 'ended', saving: false };
+      return { ...state, phase: 'ended', saving: false, paid: undefined, bufferSeconds: undefined };
     case 'reset':
       return initialState;
   }

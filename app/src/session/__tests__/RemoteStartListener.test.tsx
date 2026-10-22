@@ -58,9 +58,9 @@ test.each([
   expect(router.navigate).not.toHaveBeenCalled();
 });
 
-test('a remote start that needs payment goes to setup and opens no paywall', async () => {
+test('a blocked remote start goes to setup and opens no paywall', async () => {
   const s = session({});
-  s.start.mockResolvedValue('needsPayment');
+  s.start.mockResolvedValue('blocked');
   await render(<RemoteStartListener />);
   await askToStart();
   expect(router.navigate).toHaveBeenCalledWith('/setup');

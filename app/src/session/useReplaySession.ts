@@ -12,7 +12,9 @@ import type {
 import type { Repo } from '../data/repo';
 import type { ModeId, Sport, TriggerSource } from '../data/schema';
 import { type AppLocale, voiceLocale } from '../i18n/locale';
-import type { StartDecision } from '../payments/types';
+import { captureConfig, triggerAllowed } from '../payments/limits';
+import { planOf } from '../payments/rules';
+import type { Plan, StartDecision } from '../payments/types';
 import { effectiveSettings } from '../modes/registry';
 import { clampZoom, lensFor } from '../modes/zoom';
 import { createTriggerBus } from '../triggers/bus';
@@ -46,13 +48,13 @@ export type SessionDeps = {
   now(): number;
   /** The app's language now: the voice command listens in it. */
   locale(): AppLocale;
-  /** Whether a game may start now: the first is free, then Pro or a Pass credit. */
+  /** How the next game starts: Pro, a Single Pass credit, one of the month's free recordings, or blocked. */
   startDecision: () => Promise<StartDecision>;
   /** Bluetooth remote: calls onPress per press while enabled (useVolumeRemote in the app). */
   useRemote(enabled: boolean, onPress: () => void): void;
 };
 
-export type StartResult = 'started' | 'needsPayment' | 'failed' | 'busy';
+export type StartResult = 'started' | 'blocked' | 'failed' | 'busy';
 
 const errorCode = (e: unknown): ReplayErrorCode =>
   ((e as { code?: ReplayErrorCode })?.code ?? 'CAMERA_UNAVAILABLE') as ReplayErrorCode;
@@ -67,14 +69,14 @@ export function useReplaySession(deps: SessionDeps) {
   }, [state]);
   const saving = useRef(false);
   // The camera configuration currently open, undefined when off; read synchronously by start().
-  // Continuous zoom (iOS): "quality|buffer", the zoom is changed live. Two fixed lenses (Android): "lens|quality|buffer".
+  // Continuous zoom (iOS): "quality|buffer|audio", the zoom is changed live. Two fixed lenses (Android): "lens|quality|buffer|audio".
   const cameraLens = useRef<string | undefined>(undefined);
   // The zoom the running camera was last given, so the same zoom is never sent twice (a repeat would cut a smooth ramp short).
   const zoomApplied = useRef<number | undefined>(undefined);
   const cameraOpening = useRef<Promise<boolean> | undefined>(undefined);
   const cameraError = useRef<ReplayErrorCode | undefined>(undefined);
-  // The mode of the game being played: its default cut applies to every saved clip.
-  const gameMode = useRef<ModeId>('beachTennis');
+  // The running game's cut, fixed at its start by its plan (15 s at most on the free plan): applies to every saved clip.
+  const cutSeconds = useRef(0);
   const [bus] = useState(() => createTriggerBus({ now: deps.now }));
 
   const save = useCallback(
@@ -94,7 +96,7 @@ export function useReplaySession(deps: SessionDeps) {
           source,
           path: saved.clipPath,
           durationMs: saved.durationMs,
-        }, effectiveSettings(gameMode.current, deps.repo.getPrefs()).cutSeconds * 1000);
+        }, cutSeconds.current * 1000);
         deps.haptic();
         dispatch({ type: 'saved', sessionId, clipId: clip.id, source, at });
         deps.camera.watchSignal(true);
@@ -151,21 +153,27 @@ export function useReplaySession(deps: SessionDeps) {
 
   const trigger = useCallback((source: TriggerSource) => void bus.fire(source), [bus]);
 
-  deps.useRemote(state.phase === 'recording', () => trigger('remote'));
+  // The Bluetooth remote is paid: only a paid game turns it on.
+  deps.useRemote(
+    state.phase === 'recording' && triggerAllowed('remote', state.paid ? 'paid' : 'free'),
+    () => trigger('remote'),
+  );
 
   /**
-   * Turns the camera on for `mode` (setup screen) so the preview is live and the game starts instantly.
-   * Reopens it when the mode's quality or buffer differ from what is open (and, with two fixed lenses, its lens);
+   * Turns the camera on for `mode` with what `plan` allows (the free plan: HD, no sound, 15 s).
+   * Reopens it when the quality, buffer or sound differ from what is open (and, with two fixed lenses, its lens);
    * with continuous zoom a different zoom is applied to the running camera instead. Resolves true when on.
    */
-  const prepare = useCallback(
-    (mode: ModeId): Promise<boolean> => {
+  const openCamera = useCallback(
+    (mode: ModeId, plan: Plan): Promise<boolean> => {
       const settings = effectiveSettings(mode, deps.repo.getPrefs());
-      const { quality, bufferSeconds } = settings;
+      const { quality, bufferSeconds, audio } = captureConfig(settings, plan);
       const range = deps.camera.getZoomRange();
       const zoom = clampZoom(settings.zoom, range);
       const lens = lensFor(zoom);
-      const key = range.continuous ? `${quality}|${bufferSeconds}` : `${lens}|${quality}|${bufferSeconds}`;
+      const key = range.continuous
+        ? `${quality}|${bufferSeconds}|${audio}`
+        : `${lens}|${quality}|${bufferSeconds}|${audio}`;
       if (cameraLens.current === key) {
         if (range.continuous && zoomApplied.current !== zoom) {
           zoomApplied.current = zoom;
@@ -184,7 +192,7 @@ export function useReplaySession(deps: SessionDeps) {
           }
           // Body-pose detection is heavy: it only runs once the game starts.
           deps.camera.setGestureEnabled(false);
-          await deps.camera.startSession({ lens, zoom, maxQuality: quality, bufferSeconds });
+          await deps.camera.startSession({ lens, zoom, maxQuality: quality, bufferSeconds, audio });
           cameraLens.current = key;
           zoomApplied.current = zoom;
           dispatch({ type: 'cameraOn' });
@@ -201,6 +209,28 @@ export function useReplaySession(deps: SessionDeps) {
     [deps]
   );
 
+  /**
+   * The setup screen's live preview for `mode` on `plan`, so the game starts instantly. Never touches a camera a game
+   * is starting, recording or stopping with (a plan change notified meanwhile must not reopen it): resolves true.
+   */
+  const prepare = useCallback(
+    (mode: ModeId, plan: Plan): Promise<boolean> => {
+      const phase = stateRef.current.phase;
+      if (phase === 'starting' || phase === 'recording' || phase === 'stopping') return Promise.resolve(true);
+      return openCamera(mode, plan);
+    },
+    [openCamera]
+  );
+
+  // Never throws: a decision that cannot be read is a free start (fail-open, accepted in the spec).
+  const safeDecision = useCallback(async (): Promise<StartDecision> => {
+    try {
+      return await deps.startDecision();
+    } catch {
+      return { kind: 'free' };
+    }
+  }, [deps]);
+
   const startingRef = useRef(false);
   const start = useCallback(
     async (sport: Sport): Promise<StartResult> => {
@@ -208,43 +238,67 @@ export function useReplaySession(deps: SessionDeps) {
       if (startingRef.current || phase === 'starting' || phase === 'recording' || phase === 'stopping') return 'busy';
       startingRef.current = true;
       try {
-        // Payment is settled before the camera work: nothing paid is ever asked once recording.
-        // A decision that cannot be read fails safe: no game starts and nothing was touched.
-        try {
-          await deps.startDecision();
-        } catch {
-          return 'needsPayment';
-        }
+        // decide → (blocked: stop here) → open the camera for that plan → decide again → reopen if the plan changed →
+        // create the session. Nothing paid is ever asked once recording.
+        let decision = await safeDecision();
+        // Nothing touched: the setup screen opens the paywall.
+        if (decision.kind === 'blocked') return 'blocked';
         dispatch({ type: 'startRequested' });
+        let toggled = false;
+        let locale: VoiceLocale | undefined;
         try {
-          if (!(await prepare(sport))) {
+          if (!(await openCamera(sport, planOf(decision)))) {
             dispatch({ type: 'startFailed', code: cameraError.current ?? 'CAMERA_UNAVAILABLE' });
             return 'failed';
           }
-          // The tier can change while the camera opens (Pro lapsing, a credit spent elsewhere): this check decides.
-          const decision = await deps.startDecision();
-          gameMode.current = sport;
-          // The write comes first: if it throws, no gesture or voice toggle was left on without a session.
-          const session = deps.repo.startSession(
-            sport,
-            deps.now(),
-            {
-              paid: decision.kind === 'pro' || decision.kind === 'credit',
-              ...(decision.kind === 'credit' ? { passTransactionId: decision.passTransactionId } : {}),
-            },
-          );
+          // The plan can change while the camera opens (Pro lapsing, a credit spent elsewhere, the month's last free
+          // recording used): this check decides, and the camera is reopened to match it.
+          const again = await safeDecision();
+          if (again.kind === 'blocked') {
+            dispatch({ type: 'startBlocked' });
+            return 'blocked';
+          }
+          if (planOf(again) !== planOf(decision) && !(await openCamera(sport, planOf(again)))) {
+            dispatch({ type: 'startFailed', code: cameraError.current ?? 'CAMERA_UNAVAILABLE' });
+            return 'failed';
+          }
+          decision = again; // the session always matches the camera that is open
+          const plan = planOf(decision);
           const settings = effectiveSettings(sport, deps.repo.getPrefs());
-          deps.camera.setGestureEnabled(settings.gestureEnabled);
+          const config = captureConfig(settings, plan);
           // Listen only when the phone may: native and the setup tile must agree on whether voice is on.
-          deps.camera.setVoiceEnabled(
-            settings.voiceEnabled && deps.camera.getSpeechPermission() === 'granted',
-            voiceLocale(deps.locale()),
-          );
-          dispatch({ type: 'started', sessionId: session.id, startedAt: session.startedAt });
+          const voiceOn = settings.voiceEnabled && deps.camera.getSpeechPermission() === 'granted';
+          locale = voiceLocale(deps.locale());
+          toggled = true;
+          deps.camera.setGestureEnabled(settings.gestureEnabled);
+          deps.camera.setVoiceEnabled(voiceOn, locale);
+          // Last fallible step: it counts a free recording or spends a credit, so a start that failed never does.
+          const session = deps.repo.startSession(sport, deps.now(), {
+            paid: plan === 'paid',
+            ...(decision.kind === 'credit' ? { passTransactionId: decision.passTransactionId } : {}),
+          });
+          cutSeconds.current = config.cutSeconds;
+          const paid = plan === 'paid';
+          dispatch({
+            type: 'started',
+            sessionId: session.id,
+            startedAt: session.startedAt,
+            paid,
+            bufferSeconds: config.bufferSeconds,
+          });
           // Visible to a second start() before React commits.
-          stateRef.current = { ...stateRef.current, phase: 'recording' };
+          stateRef.current = { ...stateRef.current, phase: 'recording', paid };
           return 'started';
         } catch (e) {
+          // No game: body pose and voice go back off, as while positioning.
+          if (toggled) {
+            try {
+              deps.camera.setGestureEnabled(false);
+              if (locale) deps.camera.setVoiceEnabled(false, locale);
+            } catch {
+              // the start already failed; the error below is the one shown
+            }
+          }
           dispatch({ type: 'startFailed', code: errorCode(e) });
           return 'failed';
         }
@@ -252,7 +306,7 @@ export function useReplaySession(deps: SessionDeps) {
         startingRef.current = false;
       }
     },
-    [deps, prepare]
+    [deps, openCamera, safeDecision]
   );
 
   const stop = useCallback(async (): Promise<string | undefined> => {

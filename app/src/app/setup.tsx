@@ -137,7 +137,8 @@ export default function Setup() {
   const watchStatus =
     watch === 'ready' ? t('setup.watchReady') : watch === 'notInstalled' ? t('setup.watchNotInstalled') : t('setup.watchNone');
   // The watch trigger is paid: before a game the next start's plan decides; the lock opens the paywall.
-  const watchAllowed = triggerAllowed('watch', usePlan());
+  const plan = usePlan();
+  const watchAllowed = triggerAllowed('watch', plan);
   const watchOn = watchAllowed && watch === 'ready';
   // The phone remote (a second iPhone that taps Salvar for this one). The camera phone waits for its paired remotes for
   // as long as the app is open (see the root layout); pairing happens on its own sheet (/pairing).
@@ -216,9 +217,9 @@ export default function Setup() {
 
   // Live preview while positioning; the buffer starts filling now, so "Começar gravação" is instant.
   useEffect(() => {
-    if (live) void prepare(modeId);
+    if (live) void prepare(modeId, plan);
     else void release();
-  }, [live, prepare, release, modeId, lens]);
+  }, [live, prepare, release, modeId, lens, plan]);
 
   useEffect(() => {
     if (!focused) return;
@@ -245,7 +246,7 @@ export default function Setup() {
     if (busy.current) return;
     busy.current = true;
     try {
-      if ((await session.start(modeId)) !== 'needsPayment') return;
+      if ((await session.start(modeId)) !== 'blocked') return;
       const outcome = await openPaywall(t);
       // One retry right after a purchase: the player already asked to start. A purchase that shows up later
       // (SDK lag) only changes the status line; the next tap starts.

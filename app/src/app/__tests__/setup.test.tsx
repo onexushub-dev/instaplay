@@ -146,7 +146,7 @@ test('under another screen (Minhas gravações, editor, Salvar) it releases the 
 test('turns the camera on for the live preview', async () => {
   const s = session({ camera: 'off' });
   await render(<Setup />);
-  expect(s.prepare).toHaveBeenCalledWith('quadra'); // a pre-modes sport opens as Quadra
+  expect(s.prepare).toHaveBeenCalledWith('quadra', 'paid'); // a pre-modes sport opens as Quadra
 });
 
 const zoomButton = (name: string) => screen.getByRole('button', { name });
@@ -682,7 +682,7 @@ test('a started recording never opens the paywall', async () => {
 
 test('a cancelled paywall keeps the player on the setup screen', async () => {
   const s = session({});
-  s.start.mockResolvedValue('needsPayment');
+  s.start.mockResolvedValue('blocked');
   openPaywall.mockResolvedValue('cancelled');
   const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
   await render(<Setup />);
@@ -698,7 +698,7 @@ test('a cancelled paywall keeps the player on the setup screen', async () => {
 
 test.each(['purchased', 'restored'])('after %s it starts once more, and does not ask again if still unpaid', async (outcome) => {
   const s = session({});
-  s.start.mockResolvedValue('needsPayment');
+  s.start.mockResolvedValue('blocked');
   openPaywall.mockResolvedValue(outcome);
   await render(<Setup />);
   await pressStart();
@@ -708,7 +708,7 @@ test.each(['purchased', 'restored'])('after %s it starts once more, and does not
 
 test('a paywall error does not start again', async () => {
   const s = session({});
-  s.start.mockResolvedValue('needsPayment');
+  s.start.mockResolvedValue('blocked');
   openPaywall.mockResolvedValue('error');
   await render(<Setup />);
   await pressStart();

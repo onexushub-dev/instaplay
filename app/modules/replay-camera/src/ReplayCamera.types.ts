@@ -17,7 +17,8 @@ export type ReplayErrorCode =
  * `bufferSeconds`: the rolling window kept for saves (default 60; gym modes use 120).
  * `zoom`: the starting zoom where zoom is continuous (iOS: 0.5 = ultra-wide, 1 = wide); `lens` is what the others open.
  */
-export type SessionOptions = { lens: Lens; zoom?: number; maxQuality: Quality; bufferSeconds?: number };
+/** `audio`: record the microphone into the buffer (off on the free plan); native support is separate. */
+export type SessionOptions = { lens: Lens; zoom?: number; maxQuality: Quality; bufferSeconds?: number; audio?: boolean };
 /** What the camera can zoom: `continuous` is false where only the two lenses exist (Android). */
 export type ZoomRange = { min: number; max: number; continuous: boolean };
 /** `at` = ms since epoch when the trigger happened. */
