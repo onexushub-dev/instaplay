@@ -10,11 +10,24 @@ export function creditCount(snapshot: Snapshot, spent: ReadonlySet<string>): num
   return snapshot.passTransactions.filter((t) => t.productId === PASS_PRODUCT_ID && !spent.has(t.id)).length;
 }
 
-/** Decides "Começar gravação": Pro, else the oldest unused Pass, else the free plan. A credit is not spent with Pro. */
-export function startPlan(input: { proActive: boolean; credit?: PassTransaction }): StartDecision {
+export const FREE_RECORDINGS_PER_MONTH = 5;
+
+/** The local calendar month, `YYYY-MM`. */
+export function monthKey(now: number): string {
+  const d = new Date(now);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+export function freeLeft(freeUsed: number): number {
+  return Math.max(0, FREE_RECORDINGS_PER_MONTH - freeUsed);
+}
+
+/** Decides "Começar gravação": Pro, else the oldest unused Pass, else the free plan while the month has room, else blocked. A credit is not spent with Pro. */
+export function startPlan(input: { proActive: boolean; credit?: PassTransaction; freeUsed: number }): StartDecision {
   if (input.proActive) return { kind: 'pro' };
   if (input.credit) return { kind: 'credit', passTransactionId: input.credit.id };
-  return { kind: 'free' };
+  if (input.freeUsed < FREE_RECORDINGS_PER_MONTH) return { kind: 'free' };
+  return { kind: 'blocked' };
 }
 
 export function planOf(d: StartDecision): Plan {
@@ -23,6 +36,7 @@ export function planOf(d: StartDecision): Plan {
     case 'credit':
       return 'paid';
     case 'free':
+    case 'blocked':
       return 'free';
     default: {
       const unknown: never = d; // a new kind must choose its plan here, never fall into 'paid'

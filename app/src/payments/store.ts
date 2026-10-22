@@ -106,6 +106,7 @@ export function createPaymentsStore(client: PaymentsClient, repo: Pick<Repo, 'ge
       return startPlan({
         proActive: snap.proActive,
         credit: availableCredit(snap, spent()),
+        freeUsed: 0, // Task 5 wires the monthly counter
       });
     } catch {
       return { kind: 'free' };

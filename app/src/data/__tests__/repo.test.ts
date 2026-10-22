@@ -317,3 +317,51 @@ test('a legacy game has no paid flag and the migration still ledgers its pass', 
   expect(repo.getSession('a')?.paid).toBeUndefined();
   expect([...repo.spentPasses()]).toEqual(['old']);
 });
+
+describe('free monthly counter', () => {
+  const t = new Date(2026, 9, 5).getTime();
+  const t2 = new Date(2026, 10, 2).getTime();
+
+  test('free starts count once each and notify once each', () => {
+    const repo = setup();
+    const fn = jest.fn();
+    repo.subscribe(fn);
+    repo.startSession('quadra', t, { paid: false });
+    repo.startSession('quadra', t, { paid: false });
+    expect(repo.freeCount(t)).toBe(2);
+    expect(fn).toHaveBeenCalledTimes(2);
+  });
+
+  test('paid starts do not count', () => {
+    const repo = setup();
+    repo.startSession('quadra', t, { paid: true });
+    repo.startSession('quadra', t, { paid: true, passTransactionId: 'A' });
+    expect(repo.freeCount(t)).toBe(0);
+  });
+
+  test('deleting never gives a slot back; a new month starts at 0 and keeps the old value', () => {
+    const map = new Map<string, string>();
+    const repo = createRepo(memoryKV(map), fakeFiles({}), (() => { let n = 0; return () => `id-${++n}`; })());
+    const a = repo.startSession('quadra', t, { paid: false });
+    const b = repo.startSession('quadra', t, { paid: false });
+    repo.deleteSession(a.id);
+    repo.deleteSession(b.id);
+    expect(repo.freeCount(t)).toBe(2);
+    expect(repo.freeCount(t2)).toBe(0);
+    expect(map.get('lance:v1:freeCount:2026-10')).toBe('2');
+  });
+
+  test.each(['abc', '-3', '1.5'])('corrupt value %s reads 0 and the next start writes 1', (bad) => {
+    const map = new Map<string, string>([['lance:v1:freeCount:2026-10', bad]]);
+    const repo = createRepo(memoryKV(map), fakeFiles({}), () => 'x');
+    expect(repo.freeCount(t)).toBe(0);
+    repo.startSession('quadra', t, { paid: false });
+    expect(repo.freeCount(t)).toBe(1);
+  });
+
+  test('old sessions without a counter do not count', () => {
+    const map = new Map<string, string>([['lance:v1:session:old', JSON.stringify({ id: 'old', sport: 'quadra', startedAt: t })]]);
+    const repo = createRepo(memoryKV(map), fakeFiles({}), () => 'x');
+    expect(repo.freeCount(t)).toBe(0);
+  });
+});

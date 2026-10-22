@@ -36,3 +36,7 @@ test('triggerAllowed: tap, gesture and voice are free; watch, remote and phone a
     expect(triggerAllowed(s, 'paid')).toBe(true);
   }
 });
+
+test('captureConfig free: a buffer shorter than 15 s is kept', () => {
+  expect(captureConfig({ ...court, bufferSeconds: 10 }, 'free').bufferSeconds).toBe(10);
+});

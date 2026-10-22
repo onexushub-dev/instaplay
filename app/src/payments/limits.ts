@@ -18,7 +18,7 @@ export function captureConfig(settings: ModeSettings, plan: Plan): CaptureConfig
   }
   return {
     quality: hdQuality(settings.quality),
-    bufferSeconds: FREE_MAX_SECONDS,
+    bufferSeconds: Math.min(settings.bufferSeconds, FREE_MAX_SECONDS),
     cutSeconds: Math.min(settings.cutSeconds, FREE_MAX_SECONDS),
     audio: false,
   };

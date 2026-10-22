@@ -229,7 +229,7 @@ export function useReplaySession(deps: SessionDeps) {
             sport,
             deps.now(),
             {
-              paid: decision.kind !== 'free',
+              paid: decision.kind === 'pro' || decision.kind === 'credit',
               ...(decision.kind === 'credit' ? { passTransactionId: decision.passTransactionId } : {}),
             },
           );

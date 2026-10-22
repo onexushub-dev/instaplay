@@ -1,4 +1,4 @@
-import { availableCredit, creditCount, detectPurchase, planOf, sessionPlan, startPlan } from '../rules';
+import { availableCredit, creditCount, detectPurchase, freeLeft, monthKey, planOf, sessionPlan, startPlan } from '../rules';
 import { EMPTY_SNAPSHOT, type PassTransaction, type Snapshot } from '../types';
 
 const tx = (id: string, purchasedAt: number): PassTransaction => ({ id, productId: 'single_pass', purchasedAt });
@@ -34,15 +34,19 @@ test('creditCount counts unspent Passes', () => {
 
 test('startPlan: Pro, then the oldest credit, else free (a credit is not spent with Pro)', () => {
   const A = tx('A', 1);
-  expect(startPlan({ proActive: true, credit: A })).toEqual({ kind: 'pro' });
-  expect(startPlan({ proActive: false, credit: A })).toEqual({ kind: 'credit', passTransactionId: 'A' });
-  expect(startPlan({ proActive: false })).toEqual({ kind: 'free' });
+  expect(startPlan({ proActive: true, credit: A, freeUsed: 5 })).toEqual({ kind: 'pro' });
+  expect(startPlan({ proActive: false, credit: A, freeUsed: 5 })).toEqual({ kind: 'credit', passTransactionId: 'A' });
+  expect(startPlan({ proActive: false, freeUsed: 0 })).toEqual({ kind: 'free' });
+  expect(startPlan({ proActive: false, freeUsed: 4 })).toEqual({ kind: 'free' });
+  expect(startPlan({ proActive: false, freeUsed: 5 })).toEqual({ kind: 'blocked' });
+  expect(startPlan({ proActive: false, freeUsed: 6 })).toEqual({ kind: 'blocked' });
 });
 
 test('planOf: free only for the free decision', () => {
   expect(planOf({ kind: 'pro' })).toBe('paid');
   expect(planOf({ kind: 'credit', passTransactionId: 'A' })).toBe('paid');
   expect(planOf({ kind: 'free' })).toBe('free');
+  expect(planOf({ kind: 'blocked' })).toBe('free');
 });
 
 test('sessionPlan: an explicit paid flag beats the pass id', () => {
@@ -50,4 +54,16 @@ test('sessionPlan: an explicit paid flag beats the pass id', () => {
   expect(sessionPlan({ paid: false, passTransactionId: 'x' })).toBe('free');
   expect(sessionPlan({ passTransactionId: 'x' })).toBe('paid');
   expect(sessionPlan({})).toBe('free');
+});
+
+test('monthKey is the local YYYY-MM', () => {
+  expect(monthKey(new Date(2026, 0, 5).getTime())).toBe('2026-01');
+  expect(monthKey(new Date(2026, 11, 31, 23, 59).getTime())).toBe('2026-12');
+  expect(monthKey(new Date(2027, 0, 1, 0, 0).getTime())).toBe('2027-01');
+});
+
+test('freeLeft', () => {
+  expect(freeLeft(0)).toBe(5);
+  expect(freeLeft(4)).toBe(1);
+  expect(freeLeft(7)).toBe(0);
 });

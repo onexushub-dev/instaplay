@@ -12,4 +12,5 @@ export type Plan = 'free' | 'paid';
 export type StartDecision =
   | { kind: 'pro' }
   | { kind: 'credit'; passTransactionId: string }
-  | { kind: 'free' };
+  | { kind: 'free' }
+  | { kind: 'blocked' };
