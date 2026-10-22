@@ -59,15 +59,18 @@ export function createPaymentsStore(
    * that is new against `before` (all unspent ones when `before` is unknown) in the ledger, so a restore never
    * creates a credit. `dropped` is a pending this paywall's pre-read dropped unexplained: its Pass is kept too. Notifies.
    */
-  function applyRestored(s: Snapshot, before: Snapshot | null, dropped?: Pending | null) {
+  function applyRestored(s: Snapshot, before: Snapshot | null, dropped?: Pending | null): { droppedExplained: boolean } {
     current = s;
-    const kept = resolvePending(s) ?? (dropped ? purchasedSince(dropped.before, s) : undefined);
+    const resolved = resolvePending(s);
+    const droppedId = !resolved && dropped ? purchasedSince(dropped.before, s) : undefined;
+    const kept = resolved ?? droppedId;
     const known = repo.spentPasses();
     before?.passTransactions.forEach((t) => known.add(t.id));
     if (kept) known.add(kept);
     const restored = s.passTransactions.filter((t) => !known.has(t.id)).map((t) => t.id);
     if (restored.length > 0) repo.spendPasses(restored);
     notify();
+    return { droppedExplained: !!droppedId };
   }
 
   /** The ledger plus, while a purchase waits to bind, every pass the snapshot has beyond its "before": it is that game's. */
@@ -156,9 +159,9 @@ export function createPaymentsStore(
     async showPaywall(sessionId?: string): Promise<PaywallOutcome> {
       if (open) return 'cancelled';
       open = true;
+      let dropped: Pending | null = null;
       try {
         let before = current;
-        let dropped: Pending | null = null;
         if (pending || !before) {
           const fresh = await read(() => client.getSnapshot());
           if (fresh) {
@@ -179,9 +182,10 @@ export function createPaymentsStore(
         if (outcome === 'restored') {
           // The listener may already have delivered the restored data during the paywall.
           const after = (await read(() => client.getSnapshot())) ?? current;
-          if (after) applyRestored(after, before, dropped);
-          else notify();
+          if (after && applyRestored(after, before, dropped).droppedExplained) dropped = null;
+          else if (!after) notify();
         } else if (outcome === 'purchased') {
+          dropped = null; // the single slot now waits for this purchase
           // Without a game, the marker keeps a lagging Pass a credit: a restore never spends it, a start re-reads.
           pending = { ...(sessionId ? { sessionId } : {}), before: before ?? EMPTY_SNAPSHOT };
           const after = await read(() => client.getSnapshot());
@@ -196,6 +200,12 @@ export function createPaymentsStore(
         }
         return outcome;
       } finally {
+        // Nothing was bought here: the dropped purchase is still unexplained, so it waits again (a restore must not
+        // spend its Pass, a start must re-read). Checked against what is known now in case it already showed up.
+        if (dropped && pending === null) {
+          pending = dropped;
+          if (current) resolvePending(current);
+        }
         open = false;
       }
     },
@@ -208,7 +218,12 @@ export function createPaymentsStore(
       if (open) return 'cancelled';
       open = true;
       try {
-        const before = await restoreBefore();
+        let before: Snapshot | null;
+        try {
+          before = await restoreBefore();
+        } catch {
+          return 'error';
+        }
         let outcome: PaywallOutcome;
         try {
           outcome = await client.showPaywall(PRO_ONLY_OFFERING);

@@ -667,6 +667,76 @@ describe('payments store', () => {
       expect(spy).not.toHaveBeenCalled();
     });
 
+    it.each([
+      ['cancelled', false],
+      ['error', true],
+    ] as const)('a next paywall that ends %s (pre-read dropped the marker) gives it back: a later restore keeps it', async (outcome, crash) => {
+      const { client, repo, store } = await laggedCredit();
+      client.nextOutcome = outcome;
+      client.failPaywall = crash;
+      await expect(store.showPaywall()).resolves.toBe(outcome); // pre-read succeeds without Y
+      client.failPaywall = false;
+      client.snapshot = snap({ passTransactions: [tx('tx-1'), tx('y', 2)] });
+      await store.restore();
+      expect(store.credits()).toBe(1);
+      expect(repo.spentPasses().has('y')).toBe(false);
+    });
+
+    it('a cancelled session paywall gives a dropped session pending back: its Pass still binds to s1', async () => {
+      const { client, repo, store } = await setup(snap({ passTransactions: [tx('tx-1')] }), undefined, { spent: ['tx-1'] });
+      client.nextOutcome = 'purchased';
+      await store.showPaywall('s1'); // lag: pending for s1
+      client.nextOutcome = 'cancelled';
+      await store.showPaywall('s2'); // pre-read without the pass, then cancelled
+      client.emit(snap({ passTransactions: [tx('tx-1'), tx('tx-2', 2)] }));
+      expect(repo.setSessionPass.mock.calls).toEqual([['s1', 'tx-2']]);
+      expect(store.credits()).toBe(0);
+    });
+
+    it('a given-back marker whose Pass already arrived during the paywall is explained at once', async () => {
+      const { client, repo, store } = await laggedCredit();
+      let release!: () => void;
+      client.paywallGate = new Promise<void>((r) => (release = r));
+      client.nextOutcome = 'cancelled';
+      const p = store.showPaywall();
+      await flush();
+      client.emit(snap({ passTransactions: [tx('tx-1'), tx('y', 2)] }));
+      release();
+      await p;
+      expect(store.peekStart()).toEqual({ kind: 'credit', passTransactionId: 'y' });
+      client.snapshot = snap({ passTransactions: [tx('tx-1'), tx('y', 2), tx('old', 0)] });
+      await store.restore();
+      expect(repo.spentPasses().has('old')).toBe(true);
+      expect(store.credits()).toBe(1);
+    });
+
+    it('a restore in the next paywall that explains the dropped marker does not give it back', async () => {
+      const { client, store } = await laggedCredit();
+      client.nextOutcome = 'restored';
+      const real = client.showPaywall.bind(client);
+      client.showPaywall = async () => {
+        client.snapshot = snap({ passTransactions: [tx('tx-1'), tx('y', 2)] });
+        return real();
+      };
+      await store.showPaywall();
+      const spy = jest.spyOn(client, 'getSnapshot');
+      await expect(store.startDecision()).resolves.toEqual({ kind: 'credit', passTransactionId: 'y' });
+      expect(spy).not.toHaveBeenCalled(); // no marker left: no re-read
+    });
+
+    it('showProPaywall maps a throwing pre-read apply to error and releases the guard', async () => {
+      const { client, repo, store } = await laggedCredit();
+      repo.spentPasses.mockImplementation(() => {
+        throw new Error('storage');
+      });
+      const spy = jest.spyOn(client, 'showPaywall');
+      await expect(store.showProPaywall()).resolves.toBe('error');
+      expect(spy).not.toHaveBeenCalled();
+      repo.spentPasses.mockImplementation(() => new Set(['tx-1']));
+      client.nextOutcome = 'cancelled';
+      await expect(store.showProPaywall()).resolves.toBe('cancelled');
+    });
+
     it('the listener explaining it clears the marker: a later restore spends only new passes', async () => {
       const { client, repo, store } = await laggedCredit();
       client.emit(snap({ passTransactions: [tx('tx-1'), tx('y', 2)] }));
