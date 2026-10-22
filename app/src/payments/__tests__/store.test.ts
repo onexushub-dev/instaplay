@@ -8,6 +8,7 @@ const snap = (over: Partial<Snapshot> = {}): Snapshot => ({ ...EMPTY_SNAPSHOT, .
 function memRepo(sessions: Record<string, { paid?: boolean; passTransactionId?: string }> = { s1: {}, s2: {} }, opts: { spent?: string[] } = {}) {
   const spent = new Set<string>(opts.spent ?? []);
   return {
+    freeCount: jest.fn((_now: number) => 0),
     getSession: jest.fn((id: string) => sessions[id] as any),
     spentPasses: jest.fn(() => new Set(spent)),
     spendPasses: jest.fn((ids: string[]) => ids.forEach((id) => spent.add(id))),
@@ -799,6 +800,90 @@ describe('payments store', () => {
       expect(store.peekStart()).toEqual({ kind: 'free' });
       expect(store.credits()).toBe(0);
       expect(store.nextPlan()).toBe('free');
+    });
+  });
+
+  describe('the monthly free cap', () => {
+    const JAN31 = new Date(2027, 0, 31, 12).getTime();
+    const FEB1 = new Date(2027, 1, 1, 12).getTime();
+
+    async function capSetup(initial: Snapshot = snap()) {
+      const client = createFakeClient();
+      client.snapshot = initial;
+      const repo = memRepo();
+      const clock = { t: JAN31 };
+      const store = createPaymentsStore(client, repo, () => clock.t);
+      store.start();
+      await flush();
+      return { client, repo, store, clock };
+    }
+
+    it('free below the cap, blocked at it; blocked still plans free', async () => {
+      const { repo, store } = await capSetup();
+      repo.freeCount.mockReturnValue(4);
+      expect(store.peekStart()).toEqual({ kind: 'free' });
+      expect(store.freeLeft()).toBe(1);
+      repo.freeCount.mockReturnValue(5);
+      expect(store.peekStart()).toEqual({ kind: 'blocked' });
+      await expect(store.startDecision()).resolves.toEqual({ kind: 'blocked' });
+      expect(store.nextPlan()).toBe('free');
+      expect(store.freeLeft()).toBe(0);
+    });
+
+    it('Pro and a credit are not capped', async () => {
+      const pro = await capSetup(snap({ proActive: true }));
+      pro.repo.freeCount.mockReturnValue(9);
+      expect(pro.store.peekStart()).toEqual({ kind: 'pro' });
+      const cr = await capSetup(snap({ passTransactions: [tx('tx-1')] }));
+      cr.repo.freeCount.mockReturnValue(9);
+      expect(cr.store.peekStart()).toEqual({ kind: 'credit', passTransactionId: 'tx-1' });
+    });
+
+    it('a failure decides free: the counter throwing never stops a start', async () => {
+      const { repo, store } = await capSetup();
+      repo.freeCount.mockImplementation(() => {
+        throw new Error('storage');
+      });
+      expect(store.peekStart()).toEqual({ kind: 'free' });
+      await expect(store.startDecision()).resolves.toEqual({ kind: 'free' });
+      expect(store.freeLeft()).toBe(5);
+    });
+
+    it('a late purchase at a blocked start re-reads and blocks without throwing, then the listener makes it a credit', async () => {
+      const { client, repo, store } = await capSetup(snap({ passTransactions: [tx('tx-1')] }));
+      repo.spendPasses(['tx-1']);
+      repo.freeCount.mockReturnValue(5);
+      client.nextOutcome = 'purchased';
+      client.snapshot = snap({ passTransactions: [tx('tx-1')] }); // tx-2 not visible yet
+      await expect(store.showPaywall()).resolves.toBe('purchased');
+      await expect(store.startDecision()).resolves.toEqual({ kind: 'blocked' });
+      client.emit(snap({ passTransactions: [tx('tx-1'), tx('tx-2', 2)] }));
+      expect(store.peekStart()).toEqual({ kind: 'credit', passTransactionId: 'tx-2' });
+    });
+
+    it('a restore bringing only old Passes does not lift the block', async () => {
+      const { client, repo, store } = await capSetup();
+      repo.freeCount.mockReturnValue(5);
+      client.snapshot = snap({ passTransactions: [tx('old')] });
+      await store.restore();
+      expect(store.peekStart()).toEqual({ kind: 'blocked' });
+      expect(store.credits()).toBe(0);
+    });
+
+    it('the month turning notifies once and frees the start', async () => {
+      const { repo, store, clock } = await capSetup();
+      repo.freeCount.mockImplementation((n: number) => (n === JAN31 ? 5 : 0));
+      expect(store.peekStart()).toEqual({ kind: 'blocked' });
+      const fn = jest.fn();
+      store.subscribe(fn);
+      store.recheckMonth();
+      expect(fn).not.toHaveBeenCalled();
+      clock.t = FEB1;
+      store.recheckMonth();
+      expect(fn).toHaveBeenCalledTimes(1);
+      expect(store.peekStart()).toEqual({ kind: 'free' });
+      store.recheckMonth();
+      expect(fn).toHaveBeenCalledTimes(1);
     });
   });
 

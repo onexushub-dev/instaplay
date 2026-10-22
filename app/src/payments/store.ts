@@ -1,6 +1,15 @@
 import type { Repo } from '../data/repo';
 import type { PaymentsClient, PaywallOutcome } from './client';
-import { availableCredit, creditCount, detectPurchase, planOf, startPlan } from './rules';
+import {
+  availableCredit,
+  creditCount,
+  detectPurchase,
+  FREE_RECORDINGS_PER_MONTH,
+  freeLeft,
+  monthKey,
+  planOf,
+  startPlan,
+} from './rules';
 import { EMPTY_SNAPSHOT, type Plan, type Snapshot, type StartDecision } from './types';
 
 /**
@@ -9,13 +18,19 @@ import { EMPTY_SNAPSHOT, type Plan, type Snapshot, type StartDecision } from './
  */
 type Pending = { before: Snapshot };
 
-export function createPaymentsStore(client: PaymentsClient, repo: Pick<Repo, 'getSession' | 'spentPasses' | 'spendPasses'>) {
+export function createPaymentsStore(
+  client: PaymentsClient,
+  repo: Pick<Repo, 'getSession' | 'spentPasses' | 'spendPasses' | 'freeCount'>,
+  now: () => number = Date.now,
+) {
   let current: Snapshot | null = null;
   // At most one paywall result we could not explain yet. A new paywall never opens while it exists unresolved.
   let pending: Pending | null = null;
   let open = false;
   let version = 0;
   let started = false;
+  // The month the last decision was made in: recheckMonth() notifies when the clock has moved to another one.
+  let lastMonth = monthKey(now());
   const listeners = new Set<() => void>();
 
   // Restored passes whose ledger write failed: counted as spent from here and written again at the next update, so a
@@ -99,14 +114,19 @@ export function createPaymentsStore(client: PaymentsClient, repo: Pick<Repo, 'ge
     return { droppedExplained: !!droppedId };
   }
 
-  /** Never throws: a storage failure decides 'free'. */
+  /**
+   * Never throws: a storage failure decides 'free'. That is deliberate: a storage failure decides free: it never stops a
+   * player from recording, and can let the monthly cap through.
+   */
   function decide(): StartDecision {
     try {
+      const t = now();
+      lastMonth = monthKey(t);
       const snap = current ?? EMPTY_SNAPSHOT;
       return startPlan({
         proActive: snap.proActive,
         credit: availableCredit(snap, spent()),
-        freeUsed: 0, // Task 5 wires the monthly counter
+        freeUsed: repo.freeCount(t),
       });
     } catch {
       return { kind: 'free' };
@@ -264,6 +284,27 @@ export function createPaymentsStore(client: PaymentsClient, repo: Pick<Repo, 'ge
         return decide();
       } catch {
         return { kind: 'free' };
+      }
+    },
+
+    /** Free recordings left this month. A failure counts as the whole allowance, like `decide`. */
+    freeLeft(): number {
+      try {
+        return freeLeft(repo.freeCount(now()));
+      } catch {
+        return FREE_RECORDINGS_PER_MONTH;
+      }
+    },
+
+    /** Notifies when the clock is in another month than the last decision: the counter reads 0 there. */
+    recheckMonth(): void {
+      try {
+        if (monthKey(now()) !== lastMonth) {
+          lastMonth = monthKey(now());
+          notify();
+        }
+      } catch {
+        // no clock: nothing to recheck
       }
     },
 

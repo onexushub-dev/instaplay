@@ -70,6 +70,7 @@ jest.mock('../../payments', () => ({
   payments: {
     peekStart: jest.fn(() => ({ kind: 'pro' })),
     credits: jest.fn(() => 0),
+    freeLeft: jest.fn(() => 5),
     subscribe: jest.fn(() => () => {}),
     version: jest.fn(() => 0),
   },

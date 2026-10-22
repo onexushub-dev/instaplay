@@ -4,6 +4,7 @@ import { usePlan } from '../entitlement';
 
 const mockStore = {
   v: 0,
+  decision: null as null | { kind: string },
   plan: 'free' as 'free' | 'paid',
   listeners: new Set<() => void>(),
 };
@@ -21,7 +22,9 @@ jest.mock('../../payments', () => ({
       return () => mockStore.listeners.delete(l);
     },
     version: () => mockStore.v,
-    nextPlan: jest.fn(() => mockStore.plan),
+    nextPlan: jest.fn(() =>
+      mockStore.decision ? jest.requireActual('../../payments/rules').planOf(mockStore.decision) : mockStore.plan,
+    ),
   },
 }));
 
@@ -38,6 +41,7 @@ jest.mock('../../data/mmkv', () => ({
 
 beforeEach(() => {
   mockStore.plan = 'free';
+  mockStore.decision = null;
   mockRepo.sessions = { s1: { paid: true }, s2: { paid: false }, old: { passTransactionId: 'tx' } };
 });
 
@@ -66,6 +70,12 @@ test('without a session it is the next start plan and follows the store', async 
     mockStore.listeners.forEach((l) => l());
   });
   expect(result.current).toBe('paid');
+});
+
+test('a blocked start is the free plan', async () => {
+  mockStore.decision = { kind: 'blocked' };
+  const { result } = await renderHook(() => usePlan());
+  expect(result.current).toBe('free');
 });
 
 test('re-renders when the repo notifies (a credit spent)', async () => {
