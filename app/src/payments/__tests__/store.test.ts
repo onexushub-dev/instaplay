@@ -490,11 +490,14 @@ describe('payments store', () => {
       expect(store.credits()).toBe(0);
     });
 
-    it('restore() with no snapshot before spends every unspent pass it brings', async () => {
+    it('restore() with no snapshot before and its read failing spends every unspent pass it brings', async () => {
       const client = createFakeClient();
       const repo = memRepo();
       const store = createPaymentsStore(client, repo);
       client.snapshot = snap({ passTransactions: [tx('a'), tx('b', 2)] });
+      client.getSnapshot = async () => {
+        throw new Error('x');
+      };
       await store.restore();
       expect(repo.spendPasses).toHaveBeenCalledWith(['a', 'b']);
       expect(store.credits()).toBe(0);
@@ -607,6 +610,121 @@ describe('payments store', () => {
       t.client.nextOutcome = 'purchased';
       await t.store.showPaywall('s1');
       expect(t.store.peekStart()).toEqual({ kind: 'credit', passTransactionId: 'tx-1' });
+    });
+  });
+
+  describe('a lagged purchase without a session (fix round 1)', () => {
+    async function laggedCredit() {
+      const t = await setup(snap({ passTransactions: [tx('tx-1')] }), undefined, { spent: ['tx-1'] });
+      t.client.nextOutcome = 'purchased';
+      await t.store.showPaywall(); // SDK lag: Y not in the read after
+      return t;
+    }
+
+    it('a later restore() keeps it as a credit', async () => {
+      const { client, store } = await laggedCredit();
+      client.snapshot = snap({ passTransactions: [tx('tx-1'), tx('y', 2)] });
+      await store.restore();
+      expect(store.credits()).toBe(1);
+      expect(store.peekStart()).toEqual({ kind: 'credit', passTransactionId: 'y' });
+    });
+
+    it('a later restore() whose fresh read fails still keeps it as a credit, spending only real restores', async () => {
+      const { client, repo, store } = await laggedCredit();
+      client.getSnapshot = async () => {
+        throw new Error('x');
+      };
+      client.snapshot = snap({ passTransactions: [tx('tx-1'), tx('old', 0), tx('y', 2)] });
+      await store.restore();
+      expect(store.credits()).toBe(1);
+      expect(repo.spentPasses().size).toBe(2); // tx-1 + one of the two new ones
+    });
+
+    it('the restore button of the next paywall keeps it as a credit', async () => {
+      const { client, store } = await laggedCredit();
+      client.nextOutcome = 'restored';
+      const real = client.showPaywall.bind(client);
+      client.showPaywall = async () => {
+        client.snapshot = snap({ passTransactions: [tx('tx-1'), tx('y', 2)] });
+        return real();
+      };
+      await store.showPaywall();
+      expect(store.credits()).toBe(1);
+    });
+
+    it('startDecision re-reads and finds it as a credit (never sells a second Pass for one start)', async () => {
+      const { client, store } = await laggedCredit();
+      client.snapshot = snap({ passTransactions: [tx('tx-1'), tx('y', 2)] }); // listener has not emitted
+      await expect(store.startDecision()).resolves.toEqual({ kind: 'credit', passTransactionId: 'y' });
+    });
+
+    it('with the read failing, the next paywall does not open (no second charge)', async () => {
+      const { client, store } = await laggedCredit();
+      client.failSnapshot = true;
+      await expect(store.startDecision()).resolves.toEqual({ kind: 'paywall' });
+      const spy = jest.spyOn(client, 'showPaywall');
+      await expect(store.showPaywall()).resolves.toBe('error');
+      expect(spy).not.toHaveBeenCalled();
+    });
+
+    it('the listener explaining it clears the marker: a later restore spends only new passes', async () => {
+      const { client, repo, store } = await laggedCredit();
+      client.emit(snap({ passTransactions: [tx('tx-1'), tx('y', 2)] }));
+      client.snapshot = snap({ passTransactions: [tx('tx-1'), tx('y', 2), tx('old', 0)] });
+      await store.restore();
+      expect(repo.spentPasses().has('old')).toBe(true);
+      expect(store.peekStart()).toEqual({ kind: 'credit', passTransactionId: 'y' });
+    });
+  });
+
+  describe('restore with no snapshot yet (fix round 1)', () => {
+    function cold(initial: Snapshot) {
+      const client = createFakeClient();
+      client.snapshot = initial;
+      const repo = memRepo();
+      const store = createPaymentsStore(client, repo); // start() not called: no snapshot yet
+      return { client, repo, store };
+    }
+
+    it('restore() reads first so an old unused credit is not spent', async () => {
+      const { client, repo, store } = cold(snap({ passTransactions: [tx('credit')] }));
+      const real = client.restore.bind(client);
+      client.restore = async () => {
+        client.snapshot = snap({ passTransactions: [tx('credit'), tx('old', 0)] });
+        return real();
+      };
+      await store.restore();
+      expect(repo.spentPasses().has('credit')).toBe(false);
+      expect(repo.spentPasses().has('old')).toBe(true);
+      expect(store.credits()).toBe(1);
+    });
+
+    it('showProPaywall restored reads first so an old unused credit is not spent', async () => {
+      const { client, repo, store } = cold(snap({ passTransactions: [tx('credit')] }));
+      client.nextOutcome = 'restored';
+      await store.showProPaywall();
+      expect(repo.spentPasses().has('credit')).toBe(false);
+      expect(store.credits()).toBe(1);
+    });
+
+    it('restore() falls back to spending every unspent pass only when that read fails', async () => {
+      const { client, repo, store } = cold(snap({ passTransactions: [tx('a')] }));
+      client.getSnapshot = async () => {
+        throw new Error('x');
+      };
+      await store.restore();
+      expect(repo.spentPasses().has('a')).toBe(true);
+    });
+  });
+
+  describe('sync reads never throw (fix round 1)', () => {
+    it('peekStart falls back to paywall and credits to 0 when the repo throws', async () => {
+      const { repo, store } = await setup(snap({ passTransactions: [tx('a')] }));
+      repo.spentPasses.mockImplementation(() => {
+        throw new Error('storage');
+      });
+      expect(store.peekStart()).toEqual({ kind: 'paywall' });
+      expect(store.credits()).toBe(0);
     });
   });
 
