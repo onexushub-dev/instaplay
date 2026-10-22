@@ -280,7 +280,6 @@ export const ptBR: Messages = {
       funcional: 'Funcional',
       outroAcademia: 'Outro',
     },
-    what: { quadra: 'jogo', academia: 'treino' },
     tip: {
       quadra: 'Atrás da linha de fundo, na altura do ombro',
       academia: 'No chão ou no tripé, a 2–3 m, de lado para o exercício',
@@ -295,8 +294,6 @@ export const ptBR: Messages = {
     phone: 'Celular',
   },
   payments: {
-    lastFreeNote: 'Último clipe grátis deste %{what}.',
-    lockedNote: 'Guardado. Libere no fim do %{what}.',
     paywallError: 'Não deu para abrir a loja. Tente de novo em instantes.',
     restored: 'Compras restauradas.',
     nothingToRestore: 'Nenhuma compra para restaurar.',

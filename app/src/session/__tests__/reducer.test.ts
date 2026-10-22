@@ -24,14 +24,12 @@ test('saved increments the count and sets lastSaved', () => {
     clipId: 'c1',
     source: 'gesture',
     at: 5,
-    locked: false,
-    lastFree: false,
   });
   expect(s).toMatchObject({ saving: false, clipCount: 1, lastSaved: { clipId: 'c1', number: 1, source: 'gesture', at: 5 } });
 });
 
 test('undone decrements the count and clears lastSaved', () => {
-  const saved = reducer(recording({ clipCount: 2 }), { type: 'saved', sessionId: 's1', clipId: 'c3', source: 'screen', at: 1, locked: false, lastFree: false });
+  const saved = reducer(recording({ clipCount: 2 }), { type: 'saved', sessionId: 's1', clipId: 'c3', source: 'screen', at: 1 });
   const s = reducer(saved, { type: 'undone', clipId: 'c3' });
   expect(s.clipCount).toBe(2);
   expect(s.lastSaved).toBeUndefined();
@@ -65,7 +63,7 @@ test('reset goes back to idle', () => {
 
 test('a save that finishes after the game changed is ignored', () => {
   const next = { ...recording(), sessionId: 's2', clipCount: 0 };
-  const s = reducer(next, { type: 'saved', sessionId: 's1', clipId: 'old', source: 'screen', at: 1, locked: false, lastFree: false });
+  const s = reducer(next, { type: 'saved', sessionId: 's1', clipId: 'old', source: 'screen', at: 1 });
   expect(s.clipCount).toBe(0);
   expect(s.lastSaved).toBeUndefined();
 });
@@ -83,11 +81,9 @@ test('starting a game keeps the camera that is already on', () => {
   expect(reducer(on, { type: 'startRequested' }).camera).toBe('on');
 });
 
-test('saved keeps locked and lastFree in lastSaved', () => {
-  const s = reducer(recording(), {
-    type: 'saved', sessionId: 's1', clipId: 'c1', source: 'screen', at: 1, locked: true, lastFree: false,
-  });
-  expect(s.lastSaved).toMatchObject({ locked: true, lastFree: false });
+test('saved keeps neither locked nor lastFree in lastSaved', () => {
+  const s = reducer(recording(), { type: 'saved', sessionId: 's1', clipId: 'c1', source: 'screen', at: 1 });
+  expect(s.lastSaved).toEqual({ clipId: 'c1', number: 1, source: 'screen', at: 1 });
 });
 
 test('startBlocked after startRequested goes back to idle keeping the camera, without an error', () => {

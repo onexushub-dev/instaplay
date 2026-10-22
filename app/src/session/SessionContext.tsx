@@ -19,7 +19,6 @@ const appDeps: SessionDeps = {
   now: Date.now,
   locale: currentLocale,
   startDecision: payments.startDecision,
-  tierFor: payments.tierFor,
   useRemote: useVolumeRemote,
 };
 

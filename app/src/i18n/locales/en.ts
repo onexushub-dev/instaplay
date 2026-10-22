@@ -282,7 +282,6 @@ export const en = {
       funcional: 'Functional training',
       outroAcademia: 'Other',
     },
-    what: { quadra: 'game', academia: 'workout' },
     tip: {
       quadra: 'Behind the baseline, at shoulder height',
       academia: 'On the floor or a tripod, 6–10 ft away, side-on to the exercise',
@@ -297,8 +296,6 @@ export const en = {
     phone: 'Phone',
   },
   payments: {
-    lastFreeNote: 'Last free clip of this %{what}.',
-    lockedNote: 'Saved. Unlock it after the %{what}.',
     paywallError: "Couldn't open the store. Try again in a moment.",
     restored: 'Purchases restored.',
     nothingToRestore: 'No purchases to restore.',

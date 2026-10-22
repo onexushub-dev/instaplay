@@ -12,8 +12,7 @@ import type {
 import type { Repo } from '../data/repo';
 import type { ModeId, Sport, TriggerSource } from '../data/schema';
 import { type AppLocale, voiceLocale } from '../i18n/locale';
-import { shouldLockOnSave } from '../payments/rules';
-import { FREE_CLIPS, type StartDecision, type Tier } from '../payments/types';
+import type { StartDecision } from '../payments/types';
 import { effectiveSettings } from '../modes/registry';
 import { clampZoom, lensFor } from '../modes/zoom';
 import { createTriggerBus } from '../triggers/bus';
@@ -49,8 +48,6 @@ export type SessionDeps = {
   locale(): AppLocale;
   /** Whether a game may start now: the first is free, then Pro or a Pass credit. */
   startDecision: () => Promise<StartDecision>;
-  /** The tier that applies to this game right now (free, pass or pro). */
-  tierFor: (sessionId: string) => Tier;
   /** Bluetooth remote: calls onPress per press while enabled (useVolumeRemote in the app). */
   useRemote(enabled: boolean, onPress: () => void): void;
 };
@@ -91,21 +88,15 @@ export function useReplaySession(deps: SessionDeps) {
       deps.camera.signalSaved({ sound: prefs.soundOnSave, flash: prefs.flashOnSave });
       try {
         const saved = await deps.camera.saveClip({ source, at });
-        // The limit never interrupts the game: past the free clips the clip is kept, just locked.
-        const tier = deps.tierFor(sessionId);
-        const unlocked = deps.repo.unlockedClipCount(sessionId);
-        const locked = shouldLockOnSave(tier, unlocked);
-        const lastFree = tier === 'free' && !locked && unlocked + 1 === FREE_CLIPS;
         const clip = deps.repo.addClip({
           sessionId,
           createdAt: at,
           source,
           path: saved.clipPath,
           durationMs: saved.durationMs,
-          ...(locked ? { locked: true } : {}),
         }, effectiveSettings(gameMode.current, deps.repo.getPrefs()).cutSeconds * 1000);
         deps.haptic();
-        dispatch({ type: 'saved', sessionId, clipId: clip.id, source, at, locked, lastFree });
+        dispatch({ type: 'saved', sessionId, clipId: clip.id, source, at });
         deps.camera.watchSignal(true);
         deps.camera.remoteSignal(true);
       } catch {
