@@ -29,7 +29,7 @@ export function createPaymentsStore(
   let open = false;
   let version = 0;
   let started = false;
-  // The month the last decision was made in: recheckMonth() notifies when the clock has moved to another one.
+  // The month of the last notify: recheckMonth() notifies when the clock is in another one (no notify yet this month).
   let lastMonth = monthKey(now());
   const listeners = new Set<() => void>();
 
@@ -38,6 +38,7 @@ export function createPaymentsStore(
   const unledgered = new Set<string>();
 
   function notify() {
+    lastMonth = monthKey(now());
     version += 1;
     listeners.forEach((fn) => fn());
   }
@@ -115,13 +116,12 @@ export function createPaymentsStore(
   }
 
   /**
-   * Never throws: a storage failure decides 'free'. That is deliberate: a storage failure decides free: it never stops a
-   * player from recording, and can let the monthly cap through.
+   * Never throws, and never mutates the store (it runs while rendering). Deliberate: a storage failure decides free: it
+   * never stops a player from recording, and can let the monthly cap through.
    */
   function decide(): StartDecision {
     try {
       const t = now();
-      lastMonth = monthKey(t);
       const snap = current ?? EMPTY_SNAPSHOT;
       return startPlan({
         proActive: snap.proActive,
@@ -272,7 +272,7 @@ export function createPaymentsStore(
 
     /**
      * "Começar gravação": reads first when there is no snapshot yet or a purchase waits (it may be a credit now).
-     * Never blocks: a failed read decides with what is known (the empty snapshot at worst), any failure is 'free'.
+     * Never throws: a failed read decides with what is known (the empty snapshot at worst), any failure is 'free'.
      * Never spends a credit (the session start does).
      */
     async startDecision(): Promise<StartDecision> {
@@ -296,11 +296,10 @@ export function createPaymentsStore(
       }
     },
 
-    /** Notifies when the clock is in another month than the last decision: the counter reads 0 there. */
+    /** Notifies when the clock is in another month than the last notify: the counter reads 0 there. */
     recheckMonth(): void {
       try {
         if (monthKey(now()) !== lastMonth) {
-          lastMonth = monthKey(now());
           notify();
         }
       } catch {

@@ -887,6 +887,27 @@ describe('payments store', () => {
     });
   });
 
+  describe('the month rolling during a render', () => {
+    it('a render calling nextPlan() first does not swallow recheckMonth()', async () => {
+      const client = createFakeClient();
+      const repo = memRepo();
+      const clock = { t: new Date(2027, 0, 31, 23, 59).getTime() };
+      const store = createPaymentsStore(client, repo, () => clock.t);
+      store.start();
+      await flush();
+      repo.freeCount.mockImplementation((n: number) => (n < new Date(2027, 1, 1).getTime() ? 5 : 0));
+      expect(store.nextPlan()).toBe('free');
+      clock.t = new Date(2027, 1, 1, 0, 1).getTime();
+      store.nextPlan(); // a re-render after midnight
+      const fn = jest.fn();
+      store.subscribe(fn);
+      store.recheckMonth();
+      expect(fn).toHaveBeenCalledTimes(1);
+      store.recheckMonth();
+      expect(fn).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('races', () => {
     it('pending without a snapshot starts free and keeps the credit (buy, then start from the watch first)', async () => {
       const { client, repo, store } = await setup(snap({ passTransactions: [tx('tx-1')] }), { spent: ['tx-1'] });
