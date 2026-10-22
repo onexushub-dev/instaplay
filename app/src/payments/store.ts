@@ -1,15 +1,17 @@
 import type { Repo } from '../data/repo';
 import type { PaymentsClient, PaywallOutcome } from './client';
-import { detectPurchase, tierFor as ruleTier } from './rules';
-import { EMPTY_SNAPSHOT, PRO_ONLY_OFFERING, type Snapshot, type Tier } from './types';
+import { availableCredit, creditCount, detectPurchase, startGate, tierFor as ruleTier } from './rules';
+import { EMPTY_SNAPSHOT, PRO_ONLY_OFFERING, type Snapshot, type StartDecision, type Tier } from './types';
 
 type Pending = { sessionId: string; before: Snapshot };
 
-export function createPaymentsStore(client: PaymentsClient, repo: Pick<Repo, 'getSession' | 'setSessionPass'>) {
+export function createPaymentsStore(
+  client: PaymentsClient,
+  repo: Pick<Repo, 'getSession' | 'setSessionPass' | 'isFirstSessionUsed' | 'spentPasses' | 'spendPasses'>,
+) {
   let current: Snapshot | null = null;
   // At most one paywall result we could not explain yet. A new paywall never opens while it exists unresolved.
   let pending: Pending | null = null;
-  const bound = new Set<string>(); // transaction ids this store already bound; never bind one twice
   let open = false;
   let version = 0;
   let started = false;
@@ -23,12 +25,12 @@ export function createPaymentsStore(client: PaymentsClient, repo: Pick<Repo, 'ge
   /** Binds the pending purchase if `snapshot` explains it (oldest new pass tx); clears it on a new pass or Pro. */
   function resolvePending(snapshot: Snapshot) {
     if (!pending) return;
-    const known = new Set([...pending.before.passTransactions.map((t) => t.id), ...bound]);
+    const known = repo.spentPasses(); // the ledger: a pass already tied to a game is never bound again
+    pending.before.passTransactions.forEach((t) => known.add(t.id));
     const fresh = snapshot.passTransactions.filter((t) => !known.has(t.id));
     if (fresh.length > 0) {
       const oldest = fresh.reduce((x, y) => (y.purchasedAt < x.purchasedAt ? y : x));
       repo.setSessionPass(pending.sessionId, oldest.id);
-      bound.add(oldest.id);
       pending = null;
     } else if (detectPurchase(pending.before, snapshot).pro) {
       pending = null;
@@ -39,6 +41,41 @@ export function createPaymentsStore(client: PaymentsClient, repo: Pick<Repo, 'ge
     current = s;
     resolvePending(s);
     notify();
+  }
+
+  /**
+   * After a restore: binds a waiting purchase first, then puts every other pass that is new against `before` (all
+   * unspent ones when `before` is unknown) in the ledger, so a restore never creates a credit. Notifies.
+   */
+  function applyRestored(s: Snapshot, before: Snapshot | null) {
+    current = s;
+    resolvePending(s);
+    const known = repo.spentPasses();
+    before?.passTransactions.forEach((t) => known.add(t.id));
+    const restored = s.passTransactions.filter((t) => !known.has(t.id)).map((t) => t.id);
+    if (restored.length > 0) repo.spendPasses(restored);
+    notify();
+  }
+
+  /** The ledger plus, while a purchase waits to bind, every pass the snapshot has beyond its "before": it is that game's. */
+  function effectiveSpent(): Set<string> {
+    const spent = repo.spentPasses();
+    if (pending && current) {
+      const before = new Set(pending.before.passTransactions.map((t) => t.id));
+      current.passTransactions.forEach((t) => {
+        if (!before.has(t.id)) spent.add(t.id);
+      });
+    }
+    return spent;
+  }
+
+  function decide(): StartDecision {
+    const snap = current ?? EMPTY_SNAPSHOT;
+    return startGate({
+      firstSessionUsed: repo.isFirstSessionUsed(),
+      proActive: snap.proActive,
+      credit: availableCredit(snap, effectiveSpent()),
+    });
   }
 
   async function read(fresh: () => Promise<Snapshot>): Promise<Snapshot | null> {
@@ -82,7 +119,11 @@ export function createPaymentsStore(client: PaymentsClient, repo: Pick<Repo, 'ge
       return ruleTier(current ?? EMPTY_SNAPSHOT, session);
     },
 
-    async showPaywall(sessionId: string): Promise<PaywallOutcome> {
+    /**
+     * The default offering. With `sessionId` a new Pass bought here is bound to that game; without one it stays a
+     * credit. A Pass that shows up by a restore is never bound nor a credit: it goes to the ledger.
+     */
+    async showPaywall(sessionId?: string): Promise<PaywallOutcome> {
       if (open) return 'cancelled';
       open = true;
       try {
@@ -103,15 +144,17 @@ export function createPaymentsStore(client: PaymentsClient, repo: Pick<Repo, 'ge
         } catch {
           return 'error';
         }
-        if (outcome === 'purchased' || outcome === 'restored') {
-          // Without a known "before", a restore could re-bind an old pass to the wrong game.
-          if (before || outcome === 'purchased') pending = { sessionId, before: before ?? EMPTY_SNAPSHOT };
+        if (outcome === 'restored') {
+          // The listener may already have delivered the restored data during the paywall.
+          const after = (await read(() => client.getSnapshot())) ?? current;
+          if (after) applyRestored(after, before);
+          else notify();
+        } else if (outcome === 'purchased') {
+          if (sessionId) pending = { sessionId, before: before ?? EMPTY_SNAPSHOT };
           const after = await read(() => client.getSnapshot());
           if (after) {
             current = after;
             resolvePending(after);
-            // A restore that shows nothing new leaves no pending; a purchase may just be SDK lag.
-            if (outcome === 'restored') pending = null;
           } else if (current) {
             // The SDK listener may already have delivered the new data during the paywall.
             resolvePending(current);
@@ -132,15 +175,19 @@ export function createPaymentsStore(client: PaymentsClient, repo: Pick<Repo, 'ge
       if (open) return 'cancelled';
       open = true;
       try {
+        const before = current;
         let outcome: PaywallOutcome;
         try {
           outcome = await client.showPaywall(PRO_ONLY_OFFERING);
         } catch {
           return 'error';
         }
-        if (outcome === 'purchased' || outcome === 'restored') {
+        if (outcome === 'purchased') {
           const after = await read(() => client.getSnapshot());
           if (after) apply(after);
+        } else if (outcome === 'restored') {
+          const after = (await read(() => client.getSnapshot())) ?? current;
+          if (after) applyRestored(after, before);
         }
         return outcome;
       } finally {
@@ -148,14 +195,42 @@ export function createPaymentsStore(client: PaymentsClient, repo: Pick<Repo, 'ge
       }
     },
 
+    /** Restores Pro. Passes it brings go to the ledger, never become credits. */
     async restore(): Promise<boolean> {
+      const before = current; // taken now: the listener may deliver the restored data before `restore` resolves
       try {
         const s = await client.restore();
-        apply(s);
+        applyRestored(s, before);
         return s.proActive;
       } catch {
         return false;
       }
+    },
+
+    /** "Começar gravação" with what is known now (the status line). */
+    peekStart(): StartDecision {
+      return decide();
+    },
+
+    /**
+     * "Começar gravação": reads first when there is no snapshot yet or a purchase waits to bind (it may bind now).
+     * A failed read decides with what is known (the empty snapshot at worst). Never throws; never spends a credit.
+     */
+    async startDecision(): Promise<StartDecision> {
+      try {
+        if (current === null || pending) {
+          const fresh = await read(() => client.getSnapshot());
+          if (fresh && (current === null || pending)) apply(fresh);
+        }
+        return decide();
+      } catch {
+        return { kind: 'paywall' };
+      }
+    },
+
+    /** Unused Passes, counted like `peekStart`. */
+    credits(): number {
+      return creditCount(current ?? EMPTY_SNAPSHOT, effectiveSpent());
     },
   };
 }

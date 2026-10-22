@@ -28,6 +28,16 @@ describe('openPaywall', () => {
     await openPaywall('s1', t);
     expect(Alert.alert).not.toHaveBeenCalled();
   });
+  it.each(['cancelled', 'purchased', 'restored', 'error'])('without a session opens the default paywall and returns %s', async (outcome) => {
+    showPaywall.mockResolvedValue(outcome);
+    await expect(openPaywall(undefined, t)).resolves.toBe(outcome);
+    expect(showPaywall).toHaveBeenCalledWith(undefined);
+  });
+  it('without a session tells the user when the paywall fails', async () => {
+    showPaywall.mockResolvedValue('error');
+    await openPaywall(undefined, t);
+    expect(Alert.alert).toHaveBeenCalledWith(t('payments.paywallError'));
+  });
 });
 
 describe('openProPaywall', () => {

@@ -1,12 +1,17 @@
 import { Alert } from 'react-native';
 
 import type { TFunction } from '../i18n';
+import type { PaywallOutcome } from './client';
 import { payments } from '.';
 
-/** Opens the paywall. A cancel is silent; a failure (no key, load error, unreadable purchases) gets a short notice. */
-export async function openPaywall(sessionId: string, t: TFunction): Promise<void> {
+/**
+ * Opens the paywall (without a game, a Pass bought stays a credit). A cancel is silent; a failure (no key, load error,
+ * unreadable purchases) gets a short notice. Returns the outcome.
+ */
+export async function openPaywall(sessionId: string | undefined, t: TFunction): Promise<PaywallOutcome> {
   const outcome = await payments.showPaywall(sessionId);
   if (outcome === 'error') Alert.alert(t('payments.paywallError'));
+  return outcome;
 }
 
 /** Opens the Pro-only paywall (no game to bind a Pass to); a failure, a missing offering included, gets the same notice. */
