@@ -662,4 +662,64 @@ describe('start gate', () => {
     expect(f.view.result.current.state.phase).toBe('recording');
     expect(f.camera.stopSession).not.toHaveBeenCalled();
   });
+
+  test.each([
+    ['the second decision', (f: ReturnType<typeof fakeDeps>) => f.startDecision.mockResolvedValueOnce({ kind: 'firstSession' }).mockRejectedValueOnce(new Error('x'))],
+    ['setVoiceEnabled', (f: ReturnType<typeof fakeDeps>) => f.camera.setVoiceEnabled.mockImplementationOnce(() => { throw new Error('x'); })],
+    ['repo.startSession', (f: ReturnType<typeof fakeDeps>) => { f.deps.repo.startSession = () => { throw new Error('x'); }; }],
+  ])('a throw from %s fails the start without sticking in starting', async (_n, arm) => {
+    const f = await setup();
+    arm(f);
+    let r: unknown;
+    await act(async () => void (r = await f.view.result.current.start('futevolei')));
+    expect(r).toBe('failed');
+    expect(f.view.result.current.state).toMatchObject({ phase: 'idle', error: expect.any(String) });
+    expect(f.view.result.current.state.error).toBeDefined();
+    f.startDecision.mockResolvedValue({ kind: 'firstSession' });
+    if (_n === 'repo.startSession') {
+      expect(f.deps.repo.isFirstSessionUsed()).toBe(false);
+      expect(f.deps.repo.spentPasses().size).toBe(0);
+    }
+  });
+
+  test('after a failed start a later start works', async () => {
+    const f = await setup();
+    f.camera.setVoiceEnabled.mockImplementationOnce(() => { throw new Error('x'); });
+    await act(() => f.view.result.current.start('futevolei'));
+    let r: unknown;
+    await act(async () => void (r = await f.view.result.current.start('futevolei')));
+    expect(r).toBe('started');
+  });
+
+  test('a throwing repo write leaves gesture and voice untouched', async () => {
+    const f = await setup();
+    f.deps.repo.startSession = () => { throw new Error('x'); };
+    await act(() => f.view.result.current.start('futevolei'));
+    expect(f.camera.setGestureEnabled).not.toHaveBeenCalledWith(true);
+    expect(f.camera.setVoiceEnabled).not.toHaveBeenCalled();
+  });
+
+  test('an unreadable first decision is needsPayment and touches nothing', async () => {
+    const f = await setup();
+    f.startDecision.mockRejectedValueOnce(new Error('x'));
+    let r: unknown;
+    await act(async () => void (r = await f.view.result.current.start('futevolei')));
+    expect(r).toBe('needsPayment');
+    expect(f.camera.startSession).not.toHaveBeenCalled();
+    expect(f.view.result.current.state.phase).toBe('idle');
+  });
+
+  test('start is busy while recording and while stopping', async () => {
+    const f = await setup();
+    await act(() => f.view.result.current.start('futevolei'));
+    let r: unknown;
+    await act(async () => void (r = await f.view.result.current.start('futevolei')));
+    expect(r).toBe('busy');
+    let stopping: Promise<unknown> | undefined;
+    f.camera.stopSession.mockImplementationOnce(() => new Promise<void>(() => {}));
+    await act(async () => void (stopping = f.view.result.current.stop()));
+    await act(async () => void (r = await f.view.result.current.start('futevolei')));
+    expect(r).toBe('busy');
+    expect(stopping).toBeDefined();
+  });
 });

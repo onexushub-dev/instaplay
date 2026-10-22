@@ -218,33 +218,48 @@ export function useReplaySession(deps: SessionDeps) {
       startingRef.current = true;
       try {
         // Payment is settled before the camera work: nothing paid is ever asked once recording.
-        if ((await deps.startDecision()).kind === 'paywall') return 'needsPayment';
-        dispatch({ type: 'startRequested' });
-        if (!(await prepare(sport))) {
-          dispatch({ type: 'startFailed', code: cameraError.current ?? 'CAMERA_UNAVAILABLE' });
-          return 'failed';
-        }
-        // The tier can change while the camera opens (Pro lapsing, a credit spent elsewhere): this check decides.
-        const decision = await deps.startDecision();
-        if (decision.kind === 'paywall') {
-          dispatch({ type: 'startBlocked' });
+        // A decision that cannot be read fails safe: no game starts and nothing was touched.
+        let first: StartDecision;
+        try {
+          first = await deps.startDecision();
+        } catch {
           return 'needsPayment';
         }
-        gameMode.current = sport;
-        const settings = effectiveSettings(sport, deps.repo.getPrefs());
-        deps.camera.setGestureEnabled(settings.gestureEnabled);
-        // Listen only when the phone may: native and the setup tile must agree on whether voice is on.
-        deps.camera.setVoiceEnabled(
-          settings.voiceEnabled && deps.camera.getSpeechPermission() === 'granted',
-          voiceLocale(deps.locale()),
-        );
-        const session = deps.repo.startSession(
-          sport,
-          deps.now(),
-          decision.kind === 'credit' ? decision.passTransactionId : undefined,
-        );
-        dispatch({ type: 'started', sessionId: session.id, startedAt: session.startedAt });
-        return 'started';
+        if (first.kind === 'paywall') return 'needsPayment';
+        dispatch({ type: 'startRequested' });
+        try {
+          if (!(await prepare(sport))) {
+            dispatch({ type: 'startFailed', code: cameraError.current ?? 'CAMERA_UNAVAILABLE' });
+            return 'failed';
+          }
+          // The tier can change while the camera opens (Pro lapsing, a credit spent elsewhere): this check decides.
+          const decision = await deps.startDecision();
+          if (decision.kind === 'paywall') {
+            dispatch({ type: 'startBlocked' });
+            return 'needsPayment';
+          }
+          gameMode.current = sport;
+          // The write comes first: if it throws, no gesture or voice toggle was left on without a session.
+          const session = deps.repo.startSession(
+            sport,
+            deps.now(),
+            decision.kind === 'credit' ? decision.passTransactionId : undefined,
+          );
+          const settings = effectiveSettings(sport, deps.repo.getPrefs());
+          deps.camera.setGestureEnabled(settings.gestureEnabled);
+          // Listen only when the phone may: native and the setup tile must agree on whether voice is on.
+          deps.camera.setVoiceEnabled(
+            settings.voiceEnabled && deps.camera.getSpeechPermission() === 'granted',
+            voiceLocale(deps.locale()),
+          );
+          dispatch({ type: 'started', sessionId: session.id, startedAt: session.startedAt });
+          // Visible to a second start() before React commits.
+          stateRef.current = { ...stateRef.current, phase: 'recording' };
+          return 'started';
+        } catch (e) {
+          dispatch({ type: 'startFailed', code: errorCode(e) });
+          return 'failed';
+        }
       } finally {
         startingRef.current = false;
       }
