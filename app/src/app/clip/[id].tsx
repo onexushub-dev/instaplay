@@ -44,7 +44,7 @@ import { openPaywall } from '../../payments/feedback';
 import { effectiveSettings } from '../../modes/registry';
 import { captureOverlay } from '../../share/captureOverlay';
 import { contentFloor, nextRotation, outputMs, raiseToFloor, readEdit, SPEEDS, turnedSize } from '../../share/editing';
-import { useEntitlement } from '../../share/entitlement';
+import { usePlan } from '../../share/entitlement';
 import { exportOptions } from '../../share/exportOptions';
 import { frameLayout } from '../../share/layout';
 import { ShareOverlay } from '../../share/ShareOverlay';
@@ -115,7 +115,7 @@ function ClipEditor({ id }: { id: string }) {
   );
   const session = clip ? repo.getSession(clip.sessionId) : undefined;
   const maxMs = session ? effectiveSettings(session.sport, repo.getPrefs()).bufferSeconds * 1000 : undefined;
-  const { tier } = useEntitlement(clip?.sessionId);
+  const plan = usePlan(clip?.sessionId);
   // The clips a swipe can move to: every clip of the session.
   const siblings = useMemo(
     () => (clip ? repo.listClips(clip.sessionId) : []),
@@ -168,7 +168,7 @@ function ClipEditor({ id }: { id: string }) {
   const made = useRef<string[]>([]);
   const captureRefView = useRef<ComponentRef<typeof View>>(null);
 
-  const options = clip ? exportOptions(tier, clip.edit, clip.trim) : undefined;
+  const options = clip ? exportOptions(plan, clip.edit, clip.trim) : undefined;
   const frame = { width: options?.width ?? 1080, height: options?.height ?? 1920 };
   // The shape after the player's own turn; the clip's own rotation is already in the thumbnail's shape.
   const shape = turnedSize(videoSize, edit.rotation);
@@ -621,7 +621,7 @@ function ClipEditor({ id }: { id: string }) {
                 label={`${speed}x`}
                 a11y={t('clip.speed', { speed })}
                 active={edit.speed === speed}
-                onPress={() => (speed < 1 && tier === 'free' ? void openPaywall(clip.sessionId, t) : setEdit({ speed }))}
+                onPress={() => (speed < 1 && plan === 'free' ? void openPaywall(t) : setEdit({ speed }))}
               />
             ))}
             <Tool

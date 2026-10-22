@@ -1,15 +1,8 @@
-import { availableCredit, creditCount, detectPurchase, planOf, sessionPlan, startPlan, tierFor, watchTriggerAllowed } from '../rules';
+import { availableCredit, creditCount, detectPurchase, planOf, sessionPlan, startPlan } from '../rules';
 import { EMPTY_SNAPSHOT, type PassTransaction, type Snapshot } from '../types';
 
 const tx = (id: string, purchasedAt: number): PassTransaction => ({ id, productId: 'single_pass', purchasedAt });
 const snap = (proActive: boolean, passTransactions: PassTransaction[] = []): Snapshot => ({ proActive, passTransactions });
-
-test('tierFor: Pro beats pass, pass beats free', () => {
-  expect(tierFor(snap(true), { passTransactionId: 'A' })).toBe('pro');
-  expect(tierFor(EMPTY_SNAPSHOT, { passTransactionId: 'A' })).toBe('pass');
-  expect(tierFor(EMPTY_SNAPSHOT, {})).toBe('free');
-  expect(tierFor(EMPTY_SNAPSHOT)).toBe('free');
-});
 
 test('detectPurchase', () => {
   expect(detectPurchase(EMPTY_SNAPSHOT, snap(true))).toEqual({ pro: true });
@@ -22,12 +15,6 @@ test('detectPurchase', () => {
   expect('passTransactionId' in same).toBe(false);
   expect(detectPurchase(snap(true), snap(true)).pro).toBe(false);
   expect(detectPurchase(EMPTY_SNAPSHOT, snap(false, [tx('X', 5), tx('Y', 9), tx('Z', 7)])).passTransactionId).toBe('Y');
-});
-
-test('watchTriggerAllowed: the watch saves clips on Pro only', () => {
-  expect(watchTriggerAllowed('pro')).toBe(true);
-  expect(watchTriggerAllowed('pass')).toBe(false);
-  expect(watchTriggerAllowed('free')).toBe(false);
 });
 
 test('availableCredit: the oldest single_pass not spent', () => {

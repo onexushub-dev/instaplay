@@ -62,9 +62,8 @@ jest.mock('../../data/mmkv', () => {
   };
 });
 jest.mock('../../session/SessionContext', () => ({ useSession: jest.fn() }));
-jest.mock('../../share/entitlement', () => ({ useEntitlement: jest.fn(() => ({ tier: 'pro' })) }));
+jest.mock('../../share/entitlement', () => ({ usePlan: jest.fn(() => 'paid') }));
 jest.mock('../../payments/feedback', () => ({
-  openProPaywall: jest.fn(async () => {}),
   openPaywall: jest.fn(async () => 'cancelled'),
 }));
 jest.mock('../../payments', () => ({
@@ -73,7 +72,6 @@ jest.mock('../../payments', () => ({
     credits: jest.fn(() => 0),
     subscribe: jest.fn(() => () => {}),
     version: jest.fn(() => 0),
-    tierFor: jest.fn(() => 'pro'),
   },
 }));
 
@@ -120,7 +118,7 @@ beforeEach(() => {
   module.getZoomRange.mockReturnValue({ min: 0.5, max: 5, continuous: true });
   module.remoteHostPeers.mockReturnValue([]);
   module.remoteControllerHost.mockReturnValue(null);
-  jest.requireMock('../../share/entitlement').useEntitlement.mockReturnValue({ tier: 'pro' });
+  jest.requireMock('../../share/entitlement').usePlan.mockReturnValue('paid');
   payments.peekStart.mockReturnValue({ kind: 'pro' });
   payments.credits.mockReturnValue(0);
   openPaywall.mockResolvedValue('cancelled');
@@ -494,10 +492,10 @@ test('the collapsed summary mentions a ready watch, and only then', async () => 
 // ---- The watch trigger is paid (Pro, or a game already paid with the Pass)
 
 function freeTier() {
-  jest.requireMock('../../share/entitlement').useEntitlement.mockReturnValue({ tier: 'free' });
+  jest.requireMock('../../share/entitlement').usePlan.mockReturnValue('free');
 }
 
-test('on the free tier the Relógio tile shows a Pro badge and opens the Pro-only paywall', async () => {
+test('on the free tier the Relógio tile shows a Pro badge and opens the paywall', async () => {
   freeTier();
   camera().getWatchStatus.mockReturnValueOnce('ready');
   session({});
@@ -506,9 +504,9 @@ test('on the free tier the Relógio tile shows a Pro badge and opens the Pro-onl
   expect(screen.getByText('Pro')).toBeTruthy();
   const tile = screen.getByRole('button', { name: 'Relógio, Pronto, Disponível no Pro' });
   await fireEvent.press(tile);
-  const { openProPaywall } = jest.requireMock('../../payments/feedback');
-  expect(openProPaywall).toHaveBeenCalledTimes(1);
-  expect(openProPaywall.mock.calls[0][0]('setup.watchProOnly')).toBe('Disponível no Pro');
+  expect(openPaywall).toHaveBeenCalledTimes(1);
+  expect(openPaywall.mock.calls[0]).toHaveLength(1);
+  expect(openPaywall.mock.calls[0][0]('setup.watchProOnly')).toBe('Disponível no Pro');
 });
 
 test('on the free tier a locked watch is not counted as ready in the summary', async () => {
@@ -688,7 +686,7 @@ test('a cancelled paywall keeps the player on the setup screen', async () => {
   const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
   await render(<Setup />);
   await pressStart();
-  expect(openPaywall).toHaveBeenCalledWith(undefined, expect.any(Function));
+  expect(openPaywall).toHaveBeenCalledWith(expect.any(Function));
   expect(s.start).toHaveBeenCalledTimes(1);
   expect(router.push).not.toHaveBeenCalled();
   expect(router.replace).not.toHaveBeenCalled();

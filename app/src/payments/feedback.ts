@@ -5,19 +5,13 @@ import type { PaywallOutcome } from './client';
 import { payments } from '.';
 
 /**
- * Opens the paywall (without a game, a Pass bought stays a credit). A cancel is silent; a failure (no key, load error,
+ * Opens the paywall (a Pass bought is a credit for a later start). A cancel is silent; a failure (no key, load error,
  * unreadable purchases) gets a short notice. Returns the outcome.
  */
-export async function openPaywall(sessionId: string | undefined, t: TFunction): Promise<PaywallOutcome> {
-  const outcome = await payments.showPaywall(sessionId);
+export async function openPaywall(t: TFunction): Promise<PaywallOutcome> {
+  const outcome = await payments.showPaywall();
   if (outcome === 'error') Alert.alert(t('payments.paywallError'));
   return outcome;
-}
-
-/** Opens the Pro-only paywall (no game to bind a Pass to); a failure, a missing offering included, gets the same notice. */
-export async function openProPaywall(t: TFunction): Promise<void> {
-  const outcome = await payments.showProPaywall();
-  if (outcome === 'error') Alert.alert(t('payments.paywallError'));
 }
 
 /** Restores purchases and says what happened. */

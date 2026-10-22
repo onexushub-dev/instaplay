@@ -11,7 +11,7 @@ jest.mock('expo-router', () => ({
 }));
 jest.mock('../../components/useClipThumbnail', () => ({ useClipThumbnail: () => undefined }));
 jest.mock('../../payments', () => ({
-  payments: { subscribe: () => () => {}, version: () => 0, tierFor: jest.fn(() => 'pro'), showPaywall: jest.fn() },
+  payments: { subscribe: () => () => {}, version: () => 0, nextPlan: jest.fn(() => 'free'), showPaywall: jest.fn() },
 }));
 jest.mock('../../session/SessionContext', () => ({ useSession: jest.fn() }));
 jest.mock('../../data/mmkv', () => {
@@ -56,9 +56,8 @@ const clip = (id: string, source: string, createdAt: number) => ({
 
 beforeEach(() => {
   jest.clearAllMocks();
-  payments.tierFor.mockReturnValue('pro');
   useSession.mockReturnValue({ reset: jest.fn(), state: {} });
-  repo.getSession.mockReturnValue({ id: 's1', sport: 'futevolei', startedAt: new Date(2026, 9, 17, 18, 40).getTime() });
+  repo.getSession.mockReturnValue({ id: 's1', sport: 'futevolei', startedAt: new Date(2026, 9, 17, 18, 40).getTime(), paid: true });
 });
 
 test('shows the game stats', async () => {
@@ -121,7 +120,7 @@ test('typing a name and submitting renames the game', async () => {
 });
 
 test('a named game shows its name as the title', async () => {
-  repo.getSession.mockReturnValue({ id: 's1', sport: 'futevolei', startedAt: 0, name: 'Final do torneio' });
+  repo.getSession.mockReturnValue({ id: 's1', sport: 'futevolei', startedAt: 0, name: 'Final do torneio', paid: true });
   repo.listClips.mockReturnValue([]);
   repo.sessionStats.mockReturnValue({ clips: 0, bytes: 0, recordedMs: 0 });
   await render(<SessionSummary />);
@@ -160,7 +159,9 @@ test('a named clip is identified by its name in the recording', async () => {
 describe('free recording', () => {
   const oldLockedClip = (id: string, createdAt: number) => ({ ...clip(id, 'screen', createdAt), locked: true });
   const setup = (tier: string) => {
-    payments.tierFor.mockReturnValue(tier);
+    // The recording's own plan: 'pass' is an older session that holds a Pass and has no `paid` flag.
+    const plan = tier === 'free' ? { paid: false } : tier === 'pass' ? { passTransactionId: 'tx-1' } : { paid: true };
+    repo.getSession.mockReturnValue({ id: 's1', sport: 'futevolei', startedAt: 0, ...plan });
     repo.listClips.mockReturnValue([clip('a', 'gesture', 1), oldLockedClip('b', 2)]);
     repo.sessionStats.mockReturnValue({ clips: 2, bytes: 1, recordedMs: 1 });
   };
@@ -171,7 +172,7 @@ describe('free recording', () => {
     expect(screen.getByText('Gravação no plano grátis')).toBeTruthy();
     expect(screen.getByText('720p com a marca e sem câmera lenta. O Passe Avulso libera tudo nesta gravação.')).toBeTruthy();
     await fireEvent.press(screen.getByRole('button', { name: 'Liberar HD e recursos' }));
-    expect(payments.showPaywall).toHaveBeenCalledWith('s1');
+    expect(payments.showPaywall).toHaveBeenCalledWith();
   });
 
   test.each(['pass', 'pro'])('on the %s plan there is no card', async (tier) => {

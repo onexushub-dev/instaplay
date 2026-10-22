@@ -5,41 +5,34 @@ import { EMPTY_SNAPSHOT, type Snapshot } from '../types';
 const tx = (id: string, purchasedAt = 1) => ({ id, productId: 'single_pass', purchasedAt });
 const snap = (over: Partial<Snapshot> = {}): Snapshot => ({ ...EMPTY_SNAPSHOT, ...over });
 
-function memRepo(
-  sessions: Record<string, { passTransactionId?: string }> = { s1: {}, s2: {} },
-  opts: { firstSessionUsed?: boolean; spent?: string[] } = {},
-) {
+function memRepo(sessions: Record<string, { paid?: boolean; passTransactionId?: string }> = { s1: {}, s2: {} }, opts: { spent?: string[] } = {}) {
   const spent = new Set<string>(opts.spent ?? []);
-  const repo = {
-    firstSessionUsed: (opts.firstSessionUsed ?? true) as boolean,
+  return {
     getSession: jest.fn((id: string) => sessions[id] as any),
-    setSessionPass: jest.fn((id: string, t: string) => {
-      if (!sessions[id]) return undefined;
-      sessions[id] = { ...sessions[id], passTransactionId: t };
-      spent.add(t);
-      return sessions[id] as any;
-    }),
-    isFirstSessionUsed: jest.fn((): boolean => repo.firstSessionUsed),
     spentPasses: jest.fn(() => new Set(spent)),
     spendPasses: jest.fn((ids: string[]) => ids.forEach((id) => spent.add(id))),
   };
-  return repo;
 }
 
 const flush = () => new Promise<void>((r) => setImmediate(() => r()));
 
-async function setup(
-  initial: Snapshot = snap(),
-  sessions?: Record<string, { passTransactionId?: string }>,
-  opts?: { firstSessionUsed?: boolean; spent?: string[] },
-) {
+async function setup(initial: Snapshot = snap(), opts?: { spent?: string[] }) {
   const client = createFakeClient();
   client.snapshot = initial;
-  const repo = memRepo(sessions, opts);
+  const repo = memRepo(undefined, opts);
   const store = createPaymentsStore(client, repo);
   store.start();
   await flush();
   return { client, repo, store };
+}
+
+/** Whether a start re-reads the snapshot: it does only while there is no snapshot or a purchase is unexplained. */
+async function startReReads(client: ReturnType<typeof createFakeClient>, store: ReturnType<typeof createPaymentsStore>) {
+  const spy = jest.spyOn(client, 'getSnapshot');
+  await store.startDecision();
+  const called = spy.mock.calls.length > 0;
+  spy.mockRestore();
+  return called;
 }
 
 describe('payments store', () => {
@@ -55,84 +48,64 @@ describe('payments store', () => {
     expect(store.version()).not.toBe(v);
   });
 
-  it('tierFor reflects pass, pro and free', async () => {
-    const { store } = await setup(snap(), { s1: { passTransactionId: 't' }, s2: {} });
-    expect(store.tierFor('s1')).toBe('pass');
-    expect(store.tierFor('s2')).toBe('free');
-    expect(store.tierFor()).toBe('free');
-    const p = await setup(snap({ proActive: true }));
-    expect(p.store.tierFor('s1')).toBe('pro');
-  });
-
-  it('tierFor never throws when getSnapshot fails', async () => {
-    const { client, store } = await (async () => {
-      const client = createFakeClient();
-      client.failSnapshot = true;
-      const repo = memRepo({ s1: { passTransactionId: 't' }, s2: {} });
-      const store = createPaymentsStore(client, repo);
-      store.start();
-      await flush();
-      return { client, store };
-    })();
-    expect(client.failSnapshot).toBe(true);
-    expect(store.tierFor('s2')).toBe('free');
-    expect(store.tierFor('s1')).toBe('pass');
-  });
-
-  it('purchased with a new transaction binds the pass to the session', async () => {
-    const { client, repo, store } = await setup(snap({ passTransactions: [tx('tx-1')] }));
+  it('purchased with a new transaction becomes a credit and the next plan is paid', async () => {
+    const { client, store } = await setup(snap({ passTransactions: [tx('tx-1')] }), { spent: ['tx-1'] });
+    expect(store.nextPlan()).toBe('free');
     client.nextOutcome = 'purchased';
     client.snapshot = snap({ passTransactions: [tx('tx-1'), tx('tx-2', 2)] });
     const fn = jest.fn();
     store.subscribe(fn);
-    await expect(store.showPaywall('s1')).resolves.toBe('purchased');
-    expect(repo.setSessionPass).toHaveBeenCalledWith('s1', 'tx-2');
-    expect(store.tierFor('s1')).toBe('pass');
-    expect(store.tierFor('s2')).toBe('free');
+    await expect(store.showPaywall()).resolves.toBe('purchased');
+    expect(store.credits()).toBe(1);
+    expect(store.nextPlan()).toBe('paid');
+    expect(store.peekStart()).toEqual({ kind: 'credit', passTransactionId: 'tx-2' });
     expect(fn).toHaveBeenCalled();
   });
 
-  it('Pro purchase binds nothing and tier is pro', async () => {
-    const { client, repo, store } = await setup();
+  it('a Pro purchase makes the next plan paid with no credit', async () => {
+    const { client, store } = await setup();
     client.nextOutcome = 'purchased';
     client.snapshot = snap({ proActive: true });
-    await store.showPaywall('s1');
-    expect(repo.setSessionPass).not.toHaveBeenCalled();
-    expect(store.tierFor('s1')).toBe('pro');
+    await store.showPaywall();
+    expect(store.peekStart()).toEqual({ kind: 'pro' });
+    expect(store.nextPlan()).toBe('paid');
+    expect(store.credits()).toBe(0);
+    expect(await startReReads(client, store)).toBe(false);
   });
 
-  it('cancelled binds nothing', async () => {
-    const { client, repo, store } = await setup();
+  it('cancelled leaves nothing pending', async () => {
+    const { client, store } = await setup();
     client.nextOutcome = 'cancelled';
-    client.snapshot = snap({ passTransactions: [tx('x')] });
-    await expect(store.showPaywall('s1')).resolves.toBe('cancelled');
-    expect(repo.setSessionPass).not.toHaveBeenCalled();
+    await expect(store.showPaywall()).resolves.toBe('cancelled');
+    expect(await startReReads(client, store)).toBe(false);
   });
 
-  it('restored without a new transaction binds nothing', async () => {
-    const { client, repo, store } = await setup(snap({ passTransactions: [tx('tx-1')] }));
+  it('restored without a new transaction leaves nothing pending', async () => {
+    const { client, store } = await setup(snap({ passTransactions: [tx('tx-1')] }));
     client.nextOutcome = 'restored';
-    await store.showPaywall('s1');
-    expect(repo.setSessionPass).not.toHaveBeenCalled();
+    await store.showPaywall();
+    expect(await startReReads(client, store)).toBe(false);
+    expect(store.credits()).toBe(1);
   });
 
-  it('failure reading the snapshot after purchased keeps a pending bind resolved by onSnapshot', async () => {
-    const { client, repo, store } = await setup(snap({ passTransactions: [tx('tx-1')] }));
+  it('failure reading the snapshot after purchased keeps a pending that onSnapshot explains as a credit', async () => {
+    const { client, store } = await setup(snap({ passTransactions: [tx('tx-1')] }), { spent: ['tx-1'] });
     client.nextOutcome = 'purchased';
     client.failSnapshot = true;
-    await expect(store.showPaywall('s1')).resolves.toBe('purchased');
-    expect(repo.setSessionPass).not.toHaveBeenCalled();
+    await expect(store.showPaywall()).resolves.toBe('purchased');
+    expect(store.credits()).toBe(0);
     client.emit(snap({ passTransactions: [tx('tx-1'), tx('tx-2', 2)] }));
-    expect(repo.setSessionPass).toHaveBeenCalledWith('s1', 'tx-2');
-    expect(store.tierFor('s1')).toBe('pass');
+    client.failSnapshot = false;
+    expect(store.peekStart()).toEqual({ kind: 'credit', passTransactionId: 'tx-2' });
+    expect(await startReReads(client, store)).toBe(false);
   });
 
   it('a second showPaywall while one is open returns cancelled without calling the client', async () => {
     const { client, store } = await setup();
     const spy = jest.spyOn(client, 'showPaywall');
     client.nextOutcome = 'cancelled';
-    const first = store.showPaywall('s1');
-    await expect(store.showPaywall('s1')).resolves.toBe('cancelled');
+    const first = store.showPaywall();
+    await expect(store.showPaywall()).resolves.toBe('cancelled');
     expect(spy).toHaveBeenCalledTimes(1);
     await first;
   });
@@ -144,43 +117,48 @@ describe('payments store', () => {
     expect(store.getSnapshot().proActive).toBe(true);
   });
 
-  it('a stale emit without the new transaction does not clear the pending bind', async () => {
+  it('a stale emit without the new transaction does not clear the pending', async () => {
     const before = snap({ passTransactions: [tx('tx-1')] });
-    const { client, repo, store } = await setup(before);
+    const { client, store } = await setup(before, { spent: ['tx-1'] });
     client.nextOutcome = 'purchased';
     client.failSnapshot = true;
-    await store.showPaywall('s1');
+    await store.showPaywall();
     client.emit(before); // stale
-    expect(repo.setSessionPass).not.toHaveBeenCalled();
+    client.failSnapshot = false;
+    client.snapshot = before;
+    expect(await startReReads(client, store)).toBe(true);
     client.emit(snap({ passTransactions: [tx('tx-1'), tx('tx-2', 2)] }));
-    expect(repo.setSessionPass).toHaveBeenCalledWith('s1', 'tx-2');
+    expect(await startReReads(client, store)).toBe(false);
+    expect(store.peekStart()).toEqual({ kind: 'credit', passTransactionId: 'tx-2' });
   });
 
-  it('emit during the paywall followed by a failed read still binds from current', async () => {
-    const { client, repo, store } = await setup(snap({ passTransactions: [tx('tx-1')] }));
+  it('emit during the paywall followed by a failed read still explains the purchase from current', async () => {
+    const { client, store } = await setup(snap({ passTransactions: [tx('tx-1')] }), { spent: ['tx-1'] });
     let release!: () => void;
     client.paywallGate = new Promise<void>((r) => (release = r));
     client.nextOutcome = 'purchased';
-    const p = store.showPaywall('s1');
+    const p = store.showPaywall();
     await flush();
     client.emit(snap({ passTransactions: [tx('tx-1'), tx('tx-2', 2)] }));
     client.failSnapshot = true;
     release();
     await p;
-    expect(repo.setSessionPass).toHaveBeenCalledWith('s1', 'tx-2');
-    expect(repo.setSessionPass).toHaveBeenCalledTimes(1);
+    client.failSnapshot = false;
+    expect(store.credits()).toBe(1);
+    expect(await startReReads(client, store)).toBe(false);
   });
 
-  it('a purchased pending blocks the next paywall while the read fails, then binds to its own session', async () => {
-    const { client, repo, store } = await setup(snap({ passTransactions: [tx('tx-1')] }));
+  it('a purchased pending blocks the next paywall while the read fails, then is explained once', async () => {
+    const { client, store } = await setup(snap({ passTransactions: [tx('tx-1')] }), { spent: ['tx-1'] });
     client.nextOutcome = 'purchased';
     client.failSnapshot = true;
-    await store.showPaywall('s1');
+    await store.showPaywall();
     const spy = jest.spyOn(client, 'showPaywall');
-    await expect(store.showPaywall('s2')).resolves.toBe('error');
+    await expect(store.showPaywall()).resolves.toBe('error');
     expect(spy).not.toHaveBeenCalled();
     client.emit(snap({ passTransactions: [tx('tx-1'), tx('tx-2', 2), tx('tx-3', 3)] }));
-    expect(repo.setSessionPass.mock.calls).toEqual([['s1', 'tx-2']]); // oldest new tx, bound once
+    expect(store.credits()).toBe(2); // both new passes came from the listener: purchases, not restores
+    expect(store.peekStart()).toEqual({ kind: 'credit', passTransactionId: 'tx-2' });
   });
 
   it('a stale initial start() read does not overwrite newer listener data', async () => {
@@ -195,7 +173,7 @@ describe('payments store', () => {
     expect(store.getSnapshot().proActive).toBe(true);
   });
 
-  it('restored does not bind when the before snapshot is unknown, and spends what it brought', async () => {
+  it('restored with the before snapshot unknown spends what it brought', async () => {
     const client = createFakeClient();
     client.failSnapshot = true;
     const repo = memRepo();
@@ -211,13 +189,12 @@ describe('payments store', () => {
       if (calls === 1) throw new Error('x');
       return client.snapshot;
     };
-    await store.showPaywall('s1');
-    expect(repo.setSessionPass).not.toHaveBeenCalled();
+    await store.showPaywall();
     expect(repo.spentPasses().has('old')).toBe(true);
     expect(store.credits()).toBe(0);
   });
 
-  it('purchased still binds when the before snapshot is unknown', async () => {
+  it('purchased with the before snapshot unknown is still a credit', async () => {
     const client = createFakeClient();
     const repo = memRepo();
     const store = createPaymentsStore(client, repo);
@@ -229,17 +206,18 @@ describe('payments store', () => {
       if (calls === 1) throw new Error('x');
       return client.snapshot;
     };
-    await store.showPaywall('s1');
-    expect(repo.setSessionPass).toHaveBeenCalledWith('s1', 'new');
+    await store.showPaywall();
+    expect(store.peekStart()).toEqual({ kind: 'credit', passTransactionId: 'new' });
+    expect(repo.spendPasses).not.toHaveBeenCalled();
   });
 
   it('a throwing showPaywall maps to error and releases the guard', async () => {
     const { client, store } = await setup();
     client.failPaywall = true;
-    await expect(store.showPaywall('s1')).resolves.toBe('error');
+    await expect(store.showPaywall()).resolves.toBe('error');
     client.failPaywall = false;
     client.nextOutcome = 'cancelled';
-    await expect(store.showPaywall('s1')).resolves.toBe('cancelled');
+    await expect(store.showPaywall()).resolves.toBe('cancelled');
   });
 
   it('a throwing restore resolves false', async () => {
@@ -248,38 +226,33 @@ describe('payments store', () => {
     await expect(store.restore()).resolves.toBe(false);
   });
 
-  it('restored with an unchanged snapshot does not capture a later purchase for another game', async () => {
+  it('restored with an unchanged snapshot does not turn a later purchase into a restore', async () => {
     const { client, repo, store } = await setup(snap({ passTransactions: [tx('tx-1')] }));
     client.nextOutcome = 'restored';
-    await store.showPaywall('s1');
+    await store.showPaywall();
     client.nextOutcome = 'purchased';
     client.snapshot = snap({ passTransactions: [tx('tx-1'), tx('tx-2', 2)] });
-    await store.showPaywall('s2');
-    expect(repo.setSessionPass.mock.calls).toEqual([['s2', 'tx-2']]);
-  });
-
-  it('restored with an unchanged snapshot leaves no pending', async () => {
-    const { client, repo, store } = await setup(snap({ passTransactions: [tx('tx-1')] }));
-    client.nextOutcome = 'restored';
-    await store.showPaywall('s1');
-    client.emit(snap({ passTransactions: [tx('tx-1'), tx('tx-2', 2)] }));
-    expect(repo.setSessionPass).not.toHaveBeenCalled();
+    await store.showPaywall();
+    expect(store.credits()).toBe(2);
+    expect(repo.spendPasses).not.toHaveBeenCalled();
   });
 
   it('purchased with no new transaction yet (SDK lag) stays pending until one arrives', async () => {
-    const { client, repo, store } = await setup(snap({ passTransactions: [tx('tx-1')] }));
+    const { client, store } = await setup(snap({ passTransactions: [tx('tx-1')] }), { spent: ['tx-1'] });
     client.nextOutcome = 'purchased';
-    await store.showPaywall('s1');
-    expect(repo.setSessionPass).not.toHaveBeenCalled();
+    await store.showPaywall();
+    expect(store.credits()).toBe(0);
+    expect(await startReReads(client, store)).toBe(true);
     client.emit(snap({ passTransactions: [tx('tx-1'), tx('tx-2', 2)] }));
-    expect(repo.setSessionPass).toHaveBeenCalledWith('s1', 'tx-2');
+    expect(store.peekStart()).toEqual({ kind: 'credit', passTransactionId: 'tx-2' });
+    expect(await startReReads(client, store)).toBe(false);
   });
 
-  it('a pending from a failed read cannot capture the next game purchase (fresh pre-paywall read)', async () => {
+  it('a restored paywall whose read after fails does not mark the next purchase as restored', async () => {
     const { client, repo, store } = await setup(snap({ passTransactions: [tx('tx-1')] }));
     client.nextOutcome = 'restored';
     client.failSnapshot = true;
-    await store.showPaywall('s1');
+    await store.showPaywall();
     client.failSnapshot = false;
     client.nextOutcome = 'purchased';
     client.snapshot = snap({ passTransactions: [tx('tx-1')] });
@@ -290,67 +263,69 @@ describe('payments store', () => {
       client.snapshot = snap({ passTransactions: [tx('tx-1'), tx('tx-2', 2)] });
       return real();
     };
-    await store.showPaywall('s2');
+    await store.showPaywall();
     expect(calls).toBe(1);
-    expect(repo.setSessionPass.mock.calls).toEqual([['s2', 'tx-2']]);
+    expect(store.credits()).toBe(2);
+    expect(repo.spendPasses).not.toHaveBeenCalled();
   });
 
-  it('a pending whose transaction shows in the fresh pre-paywall read binds to its own session', async () => {
-    const { client, repo, store } = await setup(snap({ passTransactions: [tx('tx-1')] }));
+  it('a pending whose transaction shows in the fresh pre-paywall read is explained there', async () => {
+    const { client, repo, store } = await setup(snap({ passTransactions: [tx('tx-1')] }), { spent: ['tx-1'] });
     client.nextOutcome = 'purchased';
     client.failSnapshot = true;
-    await store.showPaywall('s1');
+    await store.showPaywall();
     client.failSnapshot = false;
     client.snapshot = snap({ passTransactions: [tx('tx-1'), tx('tx-2', 2)] });
     client.nextOutcome = 'cancelled';
-    await store.showPaywall('s2');
-    expect(repo.setSessionPass.mock.calls).toEqual([['s1', 'tx-2']]);
+    await store.showPaywall();
+    expect(store.peekStart()).toEqual({ kind: 'credit', passTransactionId: 'tx-2' });
+    client.snapshot = snap({ passTransactions: [tx('tx-1'), tx('tx-2', 2), tx('old', 0)] });
+    await store.restore();
+    expect(repo.spentPasses()).toEqual(new Set(['tx-1', 'old']));
+    expect(store.credits()).toBe(1);
   });
 
   it('with a pending and the pre-paywall read failing, showPaywall returns error without opening the paywall', async () => {
-    const { client, repo, store } = await setup(snap({ passTransactions: [tx('tx-1')] }));
-    client.nextOutcome = 'purchased'; // a restore never leaves a pending any more
+    const { client, store } = await setup(snap({ passTransactions: [tx('tx-1')] }));
+    client.nextOutcome = 'purchased'; // a restore never leaves a pending
     client.failSnapshot = true;
-    await store.showPaywall('s1'); // post read fails -> pending for s1
+    await store.showPaywall(); // post read fails -> pending
     const spy = jest.spyOn(client, 'showPaywall');
     client.nextOutcome = 'purchased';
-    await expect(store.showPaywall('s2')).resolves.toBe('error');
+    await expect(store.showPaywall()).resolves.toBe('error');
     expect(spy).not.toHaveBeenCalled();
-    expect(repo.setSessionPass).not.toHaveBeenCalled();
     // guard released and pending kept: once the network is back, the next paywall settles it first
     client.failSnapshot = false;
     client.nextOutcome = 'cancelled';
-    await expect(store.showPaywall('s2')).resolves.toBe('cancelled');
+    await expect(store.showPaywall()).resolves.toBe('cancelled');
     expect(spy).toHaveBeenCalledTimes(1);
   });
 
-  it('a lag pending is dropped by an unchanged pre-paywall read and cannot capture the next purchase', async () => {
-    const { client, repo, store } = await setup(snap({ passTransactions: [tx('tx-1')] }));
+  it('a lag pending is dropped by an unchanged pre-paywall read and the next purchase takes the single slot', async () => {
+    const { client, repo, store } = await setup(snap({ passTransactions: [tx('tx-1')] }), { spent: ['tx-1'] });
     client.nextOutcome = 'purchased';
-    await store.showPaywall('s1'); // SDK lag: nothing new yet, pending kept
+    await store.showPaywall(); // SDK lag: nothing new yet, pending kept
     client.nextOutcome = 'purchased';
     const real = client.showPaywall.bind(client);
     client.showPaywall = async () => {
       client.snapshot = snap({ passTransactions: [tx('tx-1'), tx('tx-2', 2)] });
       return real();
     };
-    await store.showPaywall('s2');
-    client.emit(snap({ passTransactions: [tx('tx-1'), tx('tx-2', 2), tx('tx-3', 3)] }));
-    expect(repo.setSessionPass.mock.calls).toEqual([['s2', 'tx-2']]);
+    await store.showPaywall();
+    expect(await startReReads(client, store)).toBe(false); // tx-2 explained the second purchase
+    client.emit(snap({ passTransactions: [tx('tx-1'), tx('tx-2', 2), tx('tx-3', 3)] })); // the first one, late
+    expect(store.credits()).toBe(2);
+    expect(repo.spendPasses).not.toHaveBeenCalled();
   });
 
-  describe('paywall without a session (Pass as credit)', () => {
-    it('a purchase binds nothing and becomes a credit', async () => {
-      const { client, repo, store } = await setup(snap({ passTransactions: [tx('tx-1')] }), undefined, { spent: ['tx-1'] });
+  describe('the paywall (one default offering, Pass as credit)', () => {
+    it('a purchase that shows up only after the paywall closed (SDK lag) arrives as a credit', async () => {
+      const { client, store } = await setup();
       client.nextOutcome = 'purchased';
-      client.snapshot = snap({ passTransactions: [tx('tx-1'), tx('tx-2', 2)] });
-      const fn = jest.fn();
-      store.subscribe(fn);
-      await expect(store.showPaywall()).resolves.toBe('purchased');
-      expect(repo.setSessionPass).not.toHaveBeenCalled();
-      expect(store.credits()).toBe(1);
+      await store.showPaywall();
+      expect(store.peekStart()).toEqual({ kind: 'free' });
+      client.emit(snap({ passTransactions: [tx('tx-2', 2)] }));
       expect(store.peekStart()).toEqual({ kind: 'credit', passTransactionId: 'tx-2' });
-      expect(fn).toHaveBeenCalled();
     });
 
     it('a purchase whose read after fails still notifies with the current snapshot', async () => {
@@ -361,16 +336,6 @@ describe('payments store', () => {
       store.subscribe(fn);
       await expect(store.showPaywall()).resolves.toBe('purchased');
       expect(fn).toHaveBeenCalled();
-    });
-
-    it('a purchase that shows up only after the paywall closed (SDK lag) arrives as a credit, binding nothing', async () => {
-      const { client, repo, store } = await setup();
-      client.nextOutcome = 'purchased';
-      await store.showPaywall();
-      expect(store.peekStart()).toEqual({ kind: 'free' });
-      client.emit(snap({ passTransactions: [tx('tx-2', 2)] }));
-      expect(repo.setSessionPass).not.toHaveBeenCalled();
-      expect(store.peekStart()).toEqual({ kind: 'credit', passTransactionId: 'tx-2' });
     });
 
     it('a second call while the first is open returns cancelled without calling the client', async () => {
@@ -385,11 +350,39 @@ describe('payments store', () => {
       await first;
     });
 
-    it('opens the default offering', async () => {
+    it('opens the default offering: the client is called without arguments', async () => {
       const { client, store } = await setup();
       const spy = jest.spyOn(client, 'showPaywall');
       await store.showPaywall();
-      expect(spy).toHaveBeenCalledWith();
+      expect(spy).toHaveBeenCalledTimes(1);
+      expect(spy.mock.calls[0]).toEqual([]);
+    });
+
+    it('a throwing pre-read apply maps to error without opening, and releases the guard', async () => {
+      const { client, repo, store } = await setup(snap({ passTransactions: [tx('tx-1')] }), { spent: ['tx-1'] });
+      client.nextOutcome = 'purchased';
+      await store.showPaywall(); // lag: marker open, so the next paywall pre-reads
+      repo.spentPasses.mockImplementation(() => {
+        throw new Error('storage');
+      });
+      const spy = jest.spyOn(client, 'showPaywall');
+      await expect(store.showPaywall()).resolves.toBe('error');
+      expect(spy).not.toHaveBeenCalled();
+      repo.spentPasses.mockImplementation(() => new Set(['tx-1']));
+      client.nextOutcome = 'cancelled';
+      await expect(store.showPaywall()).resolves.toBe('cancelled');
+    });
+
+    it('a storage failure after a purchase still resolves purchased and the marker waits', async () => {
+      const { client, repo, store } = await setup(snap({ passTransactions: [tx('tx-1')] }), { spent: ['tx-1'] });
+      client.nextOutcome = 'purchased';
+      client.snapshot = snap({ passTransactions: [tx('tx-1'), tx('tx-2', 2)] });
+      repo.spentPasses.mockImplementation(() => {
+        throw new Error('storage');
+      });
+      await expect(store.showPaywall()).resolves.toBe('purchased');
+      repo.spentPasses.mockImplementation(() => new Set(['tx-1']));
+      expect(store.peekStart()).toEqual({ kind: 'credit', passTransactionId: 'tx-2' });
     });
   });
 
@@ -403,11 +396,20 @@ describe('payments store', () => {
       expect(store.credits()).toBe(1);
     });
 
+    it('Pro with a credit: pro, the credit is kept, the next plan is paid', async () => {
+      const { store } = await setup(snap({ proActive: true, passTransactions: [tx('tx-1')] }));
+      expect(store.peekStart()).toEqual({ kind: 'pro' });
+      await expect(store.startDecision()).resolves.toEqual({ kind: 'pro' });
+      expect(store.credits()).toBe(1);
+      expect(store.nextPlan()).toBe('paid');
+    });
+
     it('peekStart: Pro, then nothing is the free plan', async () => {
       const first = await setup(snap({ proActive: true }));
       expect(first.store.peekStart()).toEqual({ kind: 'pro' });
       const none = await setup();
       expect(none.store.peekStart()).toEqual({ kind: 'free' });
+      expect(none.store.nextPlan()).toBe('free');
     });
 
     it('peekStart follows the listener when Pro expires', async () => {
@@ -415,13 +417,15 @@ describe('payments store', () => {
       expect(store.peekStart()).toEqual({ kind: 'pro' });
       client.emit(snap());
       expect(store.peekStart()).toEqual({ kind: 'free' });
+      expect(store.nextPlan()).toBe('free');
     });
 
     it('peekStart is the empty snapshot decision before any read', () => {
       const client = createFakeClient();
-      const store = createPaymentsStore(client, memRepo(undefined, { firstSessionUsed: true }));
+      const store = createPaymentsStore(client, memRepo());
       expect(store.peekStart()).toEqual({ kind: 'free' });
       expect(store.credits()).toBe(0);
+      expect(store.nextPlan()).toBe('free');
     });
 
     it('startDecision reads first when there is no snapshot yet', async () => {
@@ -432,10 +436,18 @@ describe('payments store', () => {
       expect(store.getSnapshot().proActive).toBe(true);
     });
 
-    it('startDecision with the read failing decides with the empty snapshot and never throws', async () => {
+    it('startDecision with no snapshot and the read failing decides free and never throws', async () => {
       const client = createFakeClient();
       client.failSnapshot = true;
       const store = createPaymentsStore(client, memRepo());
+      await expect(store.startDecision()).resolves.toEqual({ kind: 'free' });
+    });
+
+    it('startDecision with the repo throwing decides free and never throws', async () => {
+      const { repo, store } = await setup(snap({ passTransactions: [tx('a')] }));
+      repo.spentPasses.mockImplementation(() => {
+        throw new Error('storage');
+      });
       await expect(store.startDecision()).resolves.toEqual({ kind: 'free' });
     });
 
@@ -452,19 +464,17 @@ describe('payments store', () => {
       expect(a).toEqual({ kind: 'credit', passTransactionId: 'tx-1' });
       expect(b).toEqual(a);
       expect(repo.spendPasses).not.toHaveBeenCalled();
-      expect(repo.setSessionPass).not.toHaveBeenCalled();
     });
   });
 
   describe('restore never creates a credit', () => {
-    it('restore() spends the passes it brings and binds nothing', async () => {
+    it('restore() spends the passes it brings', async () => {
       const { client, repo, store } = await setup();
       client.snapshot = snap({ passTransactions: [tx('old')] });
       await expect(store.restore()).resolves.toBe(false);
       expect(repo.spentPasses().has('old')).toBe(true);
       expect(store.credits()).toBe(0);
       expect(store.peekStart()).toEqual({ kind: 'free' });
-      expect(repo.setSessionPass).not.toHaveBeenCalled();
     });
 
     it('restore() spends passes delivered by the listener while it ran', async () => {
@@ -510,24 +520,14 @@ describe('payments store', () => {
       expect(store.credits()).toBe(1);
     });
 
-    it('restored from the session paywall spends the new pass and does not bind it', async () => {
+    it('restored from the paywall spends the new pass', async () => {
       const { client, repo, store } = await setup();
       client.nextOutcome = 'restored';
       client.snapshot = snap({ passTransactions: [tx('old')] });
-      await expect(store.showPaywall('s1')).resolves.toBe('restored');
-      expect(repo.setSessionPass).not.toHaveBeenCalled();
-      expect(repo.spentPasses().has('old')).toBe(true);
-      expect(store.tierFor('s1')).toBe('free');
-      expect(store.credits()).toBe(0);
-    });
-
-    it('restored from the paywall without a session spends the new pass', async () => {
-      const { client, repo, store } = await setup();
-      client.nextOutcome = 'restored';
-      client.snapshot = snap({ passTransactions: [tx('old')] });
-      await store.showPaywall();
+      await expect(store.showPaywall()).resolves.toBe('restored');
       expect(repo.spentPasses().has('old')).toBe(true);
       expect(store.credits()).toBe(0);
+      expect(store.nextPlan()).toBe('free');
     });
 
     it('restored with the read after failing spends what the listener delivered during the paywall', async () => {
@@ -545,73 +545,72 @@ describe('payments store', () => {
       expect(store.credits()).toBe(0);
     });
 
-    it('restored from the Pro-only paywall spends passes too', async () => {
+    it('restored Pro from the paywall spends passes too and the plan is paid', async () => {
       const { client, repo, store } = await setup();
       client.nextOutcome = 'restored';
       client.snapshot = snap({ proActive: true, passTransactions: [tx('old')] });
-      await store.showProPaywall();
+      await store.showPaywall();
       expect(repo.spentPasses().has('old')).toBe(true);
-      expect(store.tierFor()).toBe('pro');
+      expect(store.peekStart()).toEqual({ kind: 'pro' });
     });
 
-    it('a restore while a purchase waits to bind still gives that purchase to its session', async () => {
-      const { client, repo, store } = await setup(snap({ passTransactions: [tx('tx-1')] }), undefined, { spent: ['tx-1'] });
+    it('a restore while a purchase waits keeps that purchase a credit', async () => {
+      const { client, store } = await setup(snap({ passTransactions: [tx('tx-1')] }), { spent: ['tx-1'] });
       client.nextOutcome = 'purchased';
-      await store.showPaywall('s1'); // SDK lag: pending for s1
+      await store.showPaywall(); // SDK lag: pending
       client.snapshot = snap({ passTransactions: [tx('tx-1'), tx('tx-2', 2)] });
       await store.restore();
-      expect(repo.setSessionPass.mock.calls).toEqual([['s1', 'tx-2']]);
-      expect(store.credits()).toBe(0);
+      expect(store.credits()).toBe(1);
+      expect(store.peekStart()).toEqual({ kind: 'credit', passTransactionId: 'tx-2' });
     });
   });
 
-  describe('a pending purchase is never another session credit', () => {
+  describe('a purchase waiting for the store', () => {
     async function lagging() {
-      const t = await setup(snap({ passTransactions: [tx('tx-1')] }), undefined, { spent: ['tx-1'] });
+      const t = await setup(snap({ passTransactions: [tx('tx-1')] }), { spent: ['tx-1'] });
       t.client.nextOutcome = 'purchased';
-      await t.store.showPaywall('s1'); // SDK lag: no new transaction yet, pending for s1
+      await t.store.showPaywall(); // SDK lag: no new transaction yet, pending
       return t;
     }
 
-    it('while pending, nothing new counts as a credit', async () => {
+    it('while pending and unseen, nothing counts as a credit', async () => {
       const { store } = await lagging();
       expect(store.credits()).toBe(0);
       expect(store.peekStart()).toEqual({ kind: 'free' });
     });
 
-    it('startDecision reads the fresh snapshot, binds the purchase to s1 and decides paywall', async () => {
+    it('startDecision reads the fresh snapshot and decides the purchase as a credit', async () => {
       const { client, repo, store } = await lagging();
       client.snapshot = snap({ passTransactions: [tx('tx-1'), tx('tx-2', 2)] }); // listener has not emitted yet
-      await expect(store.startDecision()).resolves.toEqual({ kind: 'free' });
-      expect(repo.setSessionPass.mock.calls).toEqual([['s1', 'tx-2']]);
-      expect(repo.spentPasses().has('tx-2')).toBe(true);
-      expect(store.credits()).toBe(0);
+      await expect(store.startDecision()).resolves.toEqual({ kind: 'credit', passTransactionId: 'tx-2' });
+      expect(repo.spendPasses).not.toHaveBeenCalled();
+      expect(store.credits()).toBe(1);
     });
 
-    it('startDecision with the read failing still hides the purchase', async () => {
+    it('startDecision with the read failing decides free without throwing', async () => {
       const { client, store } = await lagging();
       client.failSnapshot = true;
       await expect(store.startDecision()).resolves.toEqual({ kind: 'free' });
     });
 
-    it('two new passes while pending: the oldest binds to s1, the other becomes a credit', async () => {
-      const { client, repo, store } = await lagging();
+    it('two new passes while pending are both credits, the oldest first', async () => {
+      const { client, store } = await lagging();
       client.emit(snap({ passTransactions: [tx('tx-1'), tx('tx-3', 3), tx('tx-2', 2)] }));
-      expect(repo.setSessionPass.mock.calls).toEqual([['s1', 'tx-2']]);
-      expect(store.peekStart()).toEqual({ kind: 'credit', passTransactionId: 'tx-3' });
+      expect(store.credits()).toBe(2);
+      expect(store.peekStart()).toEqual({ kind: 'credit', passTransactionId: 'tx-2' });
     });
 
     it('an existing credit is still usable while a purchase is pending', async () => {
       const t = await setup(snap({ passTransactions: [tx('tx-1')] }));
       t.client.nextOutcome = 'purchased';
-      await t.store.showPaywall('s1');
+      await t.store.showPaywall();
       expect(t.store.peekStart()).toEqual({ kind: 'credit', passTransactionId: 'tx-1' });
     });
   });
 
-  describe('a lagged purchase without a session (fix round 1)', () => {
+  describe('a lagged purchase keeps its marker (fix round 1)', () => {
     async function laggedCredit() {
-      const t = await setup(snap({ passTransactions: [tx('tx-1')] }), undefined, { spent: ['tx-1'] });
+      const t = await setup(snap({ passTransactions: [tx('tx-1')] }), { spent: ['tx-1'] });
       t.client.nextOutcome = 'purchased';
       await t.store.showPaywall(); // SDK lag: Y not in the read after
       return t;
@@ -678,15 +677,14 @@ describe('payments store', () => {
       expect(repo.spentPasses().has('y')).toBe(false);
     });
 
-    it('a cancelled session paywall gives a dropped session pending back: its Pass still binds to s1', async () => {
-      const { client, repo, store } = await setup(snap({ passTransactions: [tx('tx-1')] }), undefined, { spent: ['tx-1'] });
-      client.nextOutcome = 'purchased';
-      await store.showPaywall('s1'); // lag: pending for s1
+    it('a cancelled paywall gives the dropped marker back: a start still re-reads for it', async () => {
+      const { client, store } = await laggedCredit();
       client.nextOutcome = 'cancelled';
-      await store.showPaywall('s2'); // pre-read without the pass, then cancelled
-      client.emit(snap({ passTransactions: [tx('tx-1'), tx('tx-2', 2)] }));
-      expect(repo.setSessionPass.mock.calls).toEqual([['s1', 'tx-2']]);
-      expect(store.credits()).toBe(0);
+      await store.showPaywall(); // pre-read without the pass, then cancelled
+      expect(await startReReads(client, store)).toBe(true);
+      client.emit(snap({ passTransactions: [tx('tx-1'), tx('y', 2)] }));
+      expect(store.peekStart()).toEqual({ kind: 'credit', passTransactionId: 'y' });
+      expect(await startReReads(client, store)).toBe(false);
     });
 
     it('a given-back marker whose Pass already arrived during the paywall is explained at once', async () => {
@@ -718,19 +716,6 @@ describe('payments store', () => {
       const spy = jest.spyOn(client, 'getSnapshot');
       await expect(store.startDecision()).resolves.toEqual({ kind: 'credit', passTransactionId: 'y' });
       expect(spy).not.toHaveBeenCalled(); // no marker left: no re-read
-    });
-
-    it('showProPaywall maps a throwing pre-read apply to error and releases the guard', async () => {
-      const { client, repo, store } = await laggedCredit();
-      repo.spentPasses.mockImplementation(() => {
-        throw new Error('storage');
-      });
-      const spy = jest.spyOn(client, 'showPaywall');
-      await expect(store.showProPaywall()).resolves.toBe('error');
-      expect(spy).not.toHaveBeenCalled();
-      repo.spentPasses.mockImplementation(() => new Set(['tx-1']));
-      client.nextOutcome = 'cancelled';
-      await expect(store.showProPaywall()).resolves.toBe('cancelled');
     });
 
     it('the listener explaining it clears the marker: a later restore spends only new passes', async () => {
@@ -765,10 +750,10 @@ describe('payments store', () => {
       expect(store.credits()).toBe(1);
     });
 
-    it('showProPaywall restored reads first so an old unused credit is not spent', async () => {
+    it('a restored paywall reads first so an old unused credit is not spent', async () => {
       const { client, repo, store } = cold(snap({ passTransactions: [tx('credit')] }));
       client.nextOutcome = 'restored';
-      await store.showProPaywall();
+      await store.showPaywall();
       expect(repo.spentPasses().has('credit')).toBe(false);
       expect(store.credits()).toBe(1);
     });
@@ -784,55 +769,95 @@ describe('payments store', () => {
   });
 
   describe('sync reads never throw (fix round 1)', () => {
-    it('peekStart falls back to paywall and credits to 0 when the repo throws', async () => {
+    it('peekStart falls back to free, credits to 0 and nextPlan to free when the repo throws', async () => {
       const { repo, store } = await setup(snap({ passTransactions: [tx('a')] }));
       repo.spentPasses.mockImplementation(() => {
         throw new Error('storage');
       });
       expect(store.peekStart()).toEqual({ kind: 'free' });
       expect(store.credits()).toBe(0);
+      expect(store.nextPlan()).toBe('free');
     });
   });
 
-  describe('showProPaywall', () => {
-    it('opens the Pro-only offering, never the default one', async () => {
-      const { client, store } = await setup();
-      const spy = jest.spyOn(client, 'showPaywall');
-      await expect(store.showProPaywall()).resolves.toBe('cancelled');
-      expect(spy).toHaveBeenCalledWith('pro_only');
-    });
-
-    it('a Pro purchase updates the global tier and binds no pass', async () => {
-      const { client, repo, store } = await setup();
+  describe('races', () => {
+    it('pending without a snapshot starts free and keeps the credit (buy, then start from the watch first)', async () => {
+      const { client, repo, store } = await setup(snap({ passTransactions: [tx('tx-1')] }), { spent: ['tx-1'] });
       client.nextOutcome = 'purchased';
-      client.snapshot = snap({ proActive: true });
-      await expect(store.showProPaywall()).resolves.toBe('purchased');
-      expect(store.tierFor()).toBe('pro');
-      expect(repo.setSessionPass).not.toHaveBeenCalled();
+      await expect(store.showPaywall()).resolves.toBe('purchased'); // the snapshot still lacks the transaction
+      const spy = jest.spyOn(client, 'getSnapshot');
+      await expect(store.startDecision()).resolves.toEqual({ kind: 'free' });
+      expect(spy).toHaveBeenCalledTimes(1); // re-read, still without it
+      client.emit(snap({ passTransactions: [tx('tx-1'), tx('tx-2', 2)] }));
+      expect(store.peekStart()).toEqual({ kind: 'credit', passTransactionId: 'tx-2' });
+      expect(repo.spendPasses).not.toHaveBeenCalled();
     });
 
-    it('the listener alone also turns the tier to Pro', async () => {
-      const { client, store } = await setup();
-      client.emit(snap({ proActive: true }));
-      expect(store.tierFor()).toBe('pro');
-    });
-
-    it('a throwing paywall maps to error and releases the guard', async () => {
-      const { client, store } = await setup();
-      client.failPaywall = true;
-      await expect(store.showProPaywall()).resolves.toBe('error');
-      client.failPaywall = false;
-      await expect(store.showProPaywall()).resolves.toBe('cancelled');
-    });
-
-    it('does not open over another paywall', async () => {
+    it('a start while the paywall is open decides with what is known; the purchase is a credit for the next', async () => {
       const { client, store } = await setup();
       let release!: () => void;
       client.paywallGate = new Promise<void>((r) => (release = r));
-      const first = store.showPaywall('s1');
-      await expect(store.showProPaywall()).resolves.toBe('cancelled');
+      client.nextOutcome = 'purchased';
+      const p = store.showPaywall();
+      await flush();
+      await expect(store.startDecision()).resolves.toEqual({ kind: 'free' });
+      client.snapshot = snap({ passTransactions: [tx('tx-2', 2)] });
       release();
-      await first;
+      await expect(p).resolves.toBe('purchased');
+      expect(store.peekStart()).toEqual({ kind: 'credit', passTransactionId: 'tx-2' });
+    });
+
+    it('a pending re-read that resolves after the listener explained the purchase does not overwrite it', async () => {
+      const { client, store } = await setup(snap({ passTransactions: [tx('tx-1')] }), { spent: ['tx-1'] });
+      client.nextOutcome = 'purchased';
+      await store.showPaywall(); // lag: pending
+      let resolveRead!: (s: Snapshot) => void;
+      client.getSnapshot = () => new Promise<Snapshot>((r) => (resolveRead = r));
+      const decision = store.startDecision();
+      client.emit(snap({ passTransactions: [tx('tx-1'), tx('tx-2', 2)] })); // explains it
+      resolveRead(snap({ passTransactions: [tx('tx-1')] })); // stale
+      await expect(decision).resolves.toEqual({ kind: 'credit', passTransactionId: 'tx-2' });
+      expect(store.credits()).toBe(1);
+    });
+
+    it('Pro arriving while a credit waits: pro wins and keeps the credit; Pro expiring gives the credit back', async () => {
+      const { client, store } = await setup(snap({ passTransactions: [tx('tx-1')] }));
+      expect(store.peekStart()).toEqual({ kind: 'credit', passTransactionId: 'tx-1' });
+      client.emit(snap({ proActive: true, passTransactions: [tx('tx-1')] }));
+      expect(store.peekStart()).toEqual({ kind: 'pro' });
+      expect(store.credits()).toBe(1);
+      client.emit(snap({ passTransactions: [tx('tx-1')] }));
+      expect(store.peekStart()).toEqual({ kind: 'credit', passTransactionId: 'tx-1' });
+      expect(store.nextPlan()).toBe('paid');
+    });
+
+    it('the next plan flips with each notification (free -> paid -> free)', async () => {
+      const { client, repo, store } = await setup();
+      const plans: string[] = [];
+      store.subscribe(() => plans.push(store.nextPlan()));
+      client.emit(snap({ passTransactions: [tx('tx-1')] }));
+      repo.spendPasses(['tx-1']); // a session started with it
+      client.emit(snap({ passTransactions: [tx('tx-1')] }));
+      expect(plans).toEqual(['paid', 'free']);
+    });
+
+    it('a Pro purchase clears a waiting Pass marker; the late Pass is still a credit', async () => {
+      const { client, store } = await setup(snap({ passTransactions: [tx('tx-1')] }), { spent: ['tx-1'] });
+      client.nextOutcome = 'purchased';
+      await store.showPaywall(); // lag: pending
+      client.emit(snap({ proActive: true, passTransactions: [tx('tx-1')] }));
+      expect(await startReReads(client, store)).toBe(false);
+      client.emit(snap({ proActive: true, passTransactions: [tx('tx-1'), tx('tx-2', 2)] }));
+      expect(store.credits()).toBe(1);
+    });
+
+    it('a purchase the listener delivers after a cancelled paywall is a credit, not a restore', async () => {
+      const { client, repo, store } = await setup();
+      client.nextOutcome = 'cancelled';
+      await store.showPaywall();
+      client.emit(snap({ passTransactions: [tx('tx-2', 2)] }));
+      expect(store.peekStart()).toEqual({ kind: 'credit', passTransactionId: 'tx-2' });
+      expect(repo.spendPasses).not.toHaveBeenCalled();
     });
   });
 });

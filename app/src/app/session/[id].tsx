@@ -9,7 +9,7 @@ import { dayAndTime, megabytes, modeLabel, recordedLabel, sessionLabel } from '.
 import { removeFile, repo } from '../../data/mmkv';
 import { MAX_GAME_NAME } from '../../data/schema';
 import { openPaywall } from '../../payments/feedback';
-import { useEntitlement } from '../../share/entitlement';
+import { usePlan } from '../../share/entitlement';
 import { useT } from '../../i18n/useT';
 import { useSession } from '../../session/SessionContext';
 import { colors, fonts } from '../../theme/tokens';
@@ -27,7 +27,7 @@ export default function SessionSummary() {
     [id, version],
   );
 
-  const { tier } = useEntitlement(id);
+  const plan = usePlan(id);
 
   const [name, setName] = useState(() => session?.name ?? '');
   const saveName = () => {
@@ -189,11 +189,11 @@ export default function SessionSummary() {
       <Text style={styles.note}>{t('summary.note')}</Text>
 
       {/* The summary only exists after the recording ends, so this card never shows mid-recording. */}
-      {tier === 'free' ? (
+      {plan === 'free' ? (
         <View style={styles.freeCard}>
           <Text style={styles.freeTitle}>{t('summary.freeTitle')}</Text>
           <Text style={styles.freeNote}>{t('summary.freeNote')}</Text>
-          <Button label={t('summary.upgrade')} variant="secondary" onPress={() => void openPaywall(id, t)} />
+          <Button label={t('summary.upgrade')} variant="secondary" onPress={() => void openPaywall(t)} />
         </View>
       ) : null}
 
@@ -204,7 +204,7 @@ export default function SessionSummary() {
         columnWrapperStyle={styles.gridRow}
         contentContainerStyle={styles.grid}
         ListEmptyComponent={<Text style={styles.empty}>{t('summary.empty')}</Text>}
-        extraData={[selecting, picked, tier]}
+        extraData={[selecting, picked, plan]}
         renderItem={({ item, index }) => (
           <ClipCard
             clip={item}

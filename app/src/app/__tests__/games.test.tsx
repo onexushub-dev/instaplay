@@ -7,7 +7,7 @@ jest.mock('expo-router', () => ({ router: { push: jest.fn(), back: jest.fn(), di
 jest.mock('../../session/SessionContext', () => ({ useSession: jest.fn() }));
 jest.mock('../../components/useClipThumbnail', () => ({ useClipThumbnail: () => undefined }));
 jest.mock('../../payments', () => ({
-  payments: { subscribe: () => () => {}, version: () => 0, tierFor: jest.fn(() => 'free'), restore: jest.fn() },
+  payments: { subscribe: () => () => {}, version: () => 0, restore: jest.fn() },
 }));
 jest.mock('../../data/mmkv', () => ({
   repo: {
@@ -29,7 +29,6 @@ const clip = { id: 'c1', sessionId: 's1', createdAt: 1, source: 'screen', path: 
 
 beforeEach(() => {
   jest.clearAllMocks();
-  payments.tierFor.mockReturnValue('free');
   useSession.mockReturnValue({ reset: jest.fn(), state: { phase: 'idle' } });
 });
 
@@ -73,14 +72,17 @@ test('an English phone sees the list in English', async () => {
   }
 });
 
-const oneGame = () => {
-  repo.listSessions.mockReturnValue([{ session: { id: 's1', sport: 'outro', startedAt: 0 }, clips: 7, firstClip: clip }]);
+const oneGame = (plan: object = {}) => {
+  repo.listSessions.mockReturnValue([{ session: { id: 's1', sport: 'outro', startedAt: 0, ...plan }, clips: 7, firstClip: clip }]);
   repo.sessionStats.mockReturnValue({ clips: 7, bytes: 1, recordedMs: 60_000 });
 };
 
-test.each(['free', 'pass', 'pro'])('no game shows bloqueado on the %s plan', async (tier) => {
-  oneGame();
-  payments.tierFor.mockReturnValue(tier);
+test.each([
+  ['free', { paid: false }],
+  ['paid', { paid: true }],
+  ['older Pass', { passTransactionId: 'tx-1' }],
+])('no game shows bloqueado on the %s plan', async (_name, plan) => {
+  oneGame(plan);
   await render(<Games />);
   expect(screen.queryByText(/bloqueado/)).toBeNull();
 });

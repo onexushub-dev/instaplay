@@ -19,7 +19,6 @@ const key = {
   clip: (id: string) => `lance:v1:clip:${id}`,
   clipsOf: (sessionId: string) => `lance:v1:clips-of:${sessionId}`,
   sessions: 'lance:v1:sessions',
-  firstSessionUsed: 'lance:v1:firstSessionUsed',
   spentPasses: 'lance:v1:spentPasses',
 };
 const SESSION_PREFIX = 'lance:v1:session:';
@@ -106,11 +105,6 @@ export function createRepo(kv: KV, files: FileProbe, newId: () => string) {
       return version;
     },
 
-    /** Legacy marker, no longer written (read-only until Task 3 removes the payments store's use of it). */
-    isFirstSessionUsed(): boolean {
-      return kv.getString(key.firstSessionUsed) === '1';
-    },
-
     /** Pass transaction ids already tied to a game; only grows. */
     spentPasses(): Set<string> {
       return new Set(spentList());
@@ -145,22 +139,6 @@ export function createRepo(kv: KV, files: FileProbe, newId: () => string) {
       const { name: _old, ...rest } = getSession(id)!;
       const session: Session = trimmed ? { ...rest, name: trimmed } : rest;
       write(key.session(id), session);
-      changed();
-      return session;
-    },
-
-    /** Records the single pass transaction on the game. Undefined if the game does not exist. */
-    setSessionPass(id: string, transactionId: string): Session | undefined {
-      let existing: Session | undefined;
-      try {
-        existing = getSession(id);
-      } catch {
-        existing = undefined; // corrupt record: treat as missing
-      }
-      if (!existing) return undefined;
-      const session: Session = { ...existing, passTransactionId: transactionId };
-      write(key.session(id), session);
-      addSpent([transactionId]);
       changed();
       return session;
     },

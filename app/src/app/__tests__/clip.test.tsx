@@ -8,7 +8,7 @@ jest.mock('../../payments', () => ({
   payments: {
     subscribe: () => () => {},
     version: () => 0,
-    tierFor: jest.fn(() => 'pro'),
+    nextPlan: jest.fn(() => 'free'),
     showPaywall: jest.fn(async () => 'dismissed'),
   },
 }));
@@ -40,15 +40,18 @@ jest.mock('../../share/ZoomableVideo', () => {
 jest.mock('../../data/mmkv', () => {
   let clip: any;
   let others: any[] | undefined;
+  let plan: object = { paid: true };
   return {
     __setClip: (c: any) => (clip = c),
+    /** The recording's own plan ('pass' = an older session holding a Pass, without `paid`). */
+    __setTier: (tier: string) => (plan = tier === 'free' ? { paid: false } : tier === 'pass' ? { passTransactionId: 'tx-1' } : { paid: true }),
     __setOthers: (o?: any[]) => (others = o),
     removeFile: jest.fn(),
     repo: {
       getClip: () => clip,
       listClips: () => (clip ? (others ? [others[0], clip, ...others.slice(1)] : [{ id: 'c0' }, clip]) : []),
       getPrefs: () => jest.requireActual('../../data/schema').DEFAULT_PREFS,
-      getSession: () => ({ id: 's1', sport: clip?.durationMs > 60000 ? 'musculacao' : 'beachTennis', startedAt: 0 }),
+      getSession: () => ({ id: 's1', sport: clip?.durationMs > 60000 ? 'musculacao' : 'beachTennis', startedAt: 0, ...plan }),
       updateClip: jest.fn((id: string, patch: object) => (clip = { ...clip, ...patch })),
       renameClip: jest.fn(),
       deleteClip: jest.fn(),
@@ -59,7 +62,7 @@ jest.mock('../../data/mmkv', () => {
 });
 
 const { payments } = jest.requireMock('../../payments');
-const { repo, __setClip, __setOthers, removeFile } = jest.requireMock('../../data/mmkv');
+const { repo, __setClip, __setOthers, __setTier, removeFile } = jest.requireMock('../../data/mmkv');
 const { router } = jest.requireMock('expo-router');
 const { __player: player } = jest.requireMock('expo-video');
 const camera = jest.requireMock('../../../modules/replay-camera');
@@ -73,7 +76,7 @@ const base = {
 
 beforeEach(() => {
   jest.clearAllMocks();
-  payments.tierFor.mockImplementation(() => 'pro');
+  __setTier('pro');
   __setClip({ ...base });
   __setOthers(undefined);
   // jest-expo's ImageLoader mock predates RN 0.88's promise-based getSize.
@@ -226,7 +229,7 @@ test('Compartilhar exports with the cut, speed, zoom and no app mark (pro), then
 });
 
 test.each(['pass', 'pro'])('on %s the overlay has no app mark', async (tier) => {
-  payments.tierFor.mockImplementation(() => tier);
+  __setTier(tier);
   await open();
   expect(screen.queryByText('feito com LANCE')).toBeNull();
 });
@@ -376,7 +379,7 @@ describe('a black start', () => {
 });
 
 describe('on the free plan', () => {
-  beforeEach(() => payments.tierFor.mockImplementation(() => 'free'));
+  beforeEach(() => __setTier('free'));
 
   test('the export overlay carries the app mark and the export asks for it', async () => {
     await open();
@@ -415,7 +418,7 @@ describe('on the free plan', () => {
   test('0.5x opens the paywall and leaves the speed alone', async () => {
     await open();
     await fireEvent.press(screen.getByRole('button', { name: 'Velocidade 0.5x' }));
-    expect(payments.showPaywall).toHaveBeenCalledWith('s1');
+    expect(payments.showPaywall).toHaveBeenCalledWith();
     expect(repo.updateClip).not.toHaveBeenCalled();
   });
 
@@ -437,7 +440,7 @@ test('on pro, 0.5x changes the speed', async () => {
 });
 
 test.each(['pass', 'pro'])('on %s, 0.5x changes the speed and the export is 1080x1920 without the mark', async (tier) => {
-  payments.tierFor.mockImplementation(() => tier);
+  __setTier(tier);
   await open();
   await fireEvent.press(screen.getByRole('button', { name: 'Velocidade 0.5x' }));
   expect(repo.updateClip).toHaveBeenCalledWith('c1', { edit: { speed: 0.5, muted: false } });

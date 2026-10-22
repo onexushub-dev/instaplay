@@ -1,15 +1,4 @@
-import { PASS_PRODUCT_ID, type PassTransaction, type Plan, type Snapshot, type StartDecision, type Tier } from './types';
-
-export function tierFor(snapshot: Snapshot, session?: { passTransactionId?: string }): Tier {
-  if (snapshot.proActive) return 'pro';
-  if (session?.passTransactionId) return 'pass';
-  return 'free';
-}
-
-/** The watch as a save trigger is Pro only (global tier). Gates turning it on, never a tap mid-recording. */
-export function watchTriggerAllowed(tier: Tier): boolean {
-  return tier === 'pro';
-}
+import { PASS_PRODUCT_ID, type PassTransaction, type Plan, type Snapshot, type StartDecision } from './types';
 
 export function availableCredit(snapshot: Snapshot, spent: ReadonlySet<string>): PassTransaction | undefined {
   return snapshot.passTransactions

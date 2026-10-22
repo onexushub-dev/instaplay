@@ -1,10 +1,16 @@
 import { act, renderHook } from '@testing-library/react-native';
 
-import { useEntitlement } from '../entitlement';
+import { usePlan } from '../entitlement';
 
 const mockStore = {
   v: 0,
-  tier: 'free' as 'free' | 'pass' | 'pro',
+  plan: 'free' as 'free' | 'paid',
+  listeners: new Set<() => void>(),
+};
+
+const mockRepo = {
+  v: 0,
+  sessions: {} as Record<string, { paid?: boolean; passTransactionId?: string }>,
   listeners: new Set<() => void>(),
 };
 
@@ -15,22 +21,61 @@ jest.mock('../../payments', () => ({
       return () => mockStore.listeners.delete(l);
     },
     version: () => mockStore.v,
-    tierFor: jest.fn((id?: string) => (id === 's1' ? mockStore.tier : 'free')),
+    nextPlan: jest.fn(() => mockStore.plan),
   },
 }));
 
-test('returns the tier the store gives for the session', async () => {
-  const { result } = await renderHook(() => useEntitlement('s1'));
-  expect(result.current.tier).toBe('free');
+jest.mock('../../data/mmkv', () => ({
+  repo: {
+    subscribe: (l: () => void) => {
+      mockRepo.listeners.add(l);
+      return () => mockRepo.listeners.delete(l);
+    },
+    version: () => mockRepo.v,
+    getSession: jest.fn((id: string) => mockRepo.sessions[id]),
+  },
+}));
+
+beforeEach(() => {
+  mockStore.plan = 'free';
+  mockRepo.sessions = { s1: { paid: true }, s2: { paid: false }, old: { passTransactionId: 'tx' } };
 });
 
-test('re-renders when the store notifies', async () => {
-  const { result } = await renderHook(() => useEntitlement('s1'));
-  expect(result.current.tier).toBe('free');
+test('a session plays with the plan it was recorded with, even with Pro inactive', async () => {
+  const { result } = await renderHook(() => usePlan('s1'));
+  expect(result.current).toBe('paid');
+});
+
+test('a free session stays free even when the next start would be paid', async () => {
+  mockStore.plan = 'paid';
+  const { result } = await renderHook(() => usePlan('s2'));
+  expect(result.current).toBe('free');
+});
+
+test('an old session without `paid` is paid when it holds a Pass; a missing one is free', async () => {
+  expect((await renderHook(() => usePlan('old'))).result.current).toBe('paid');
+  expect((await renderHook(() => usePlan('nope'))).result.current).toBe('free');
+});
+
+test('without a session it is the next start plan and follows the store', async () => {
+  const { result } = await renderHook(() => usePlan());
+  expect(result.current).toBe('free');
   await act(async () => {
-    mockStore.tier = 'pass';
+    mockStore.plan = 'paid'; // a credit arrived
     mockStore.v += 1;
     mockStore.listeners.forEach((l) => l());
   });
-  expect(result.current.tier).toBe('pass');
+  expect(result.current).toBe('paid');
+});
+
+test('re-renders when the repo notifies (a credit spent)', async () => {
+  mockStore.plan = 'paid';
+  const { result } = await renderHook(() => usePlan());
+  expect(result.current).toBe('paid');
+  await act(async () => {
+    mockStore.plan = 'free';
+    mockRepo.v += 1;
+    mockRepo.listeners.forEach((l) => l());
+  });
+  expect(result.current).toBe('free');
 });

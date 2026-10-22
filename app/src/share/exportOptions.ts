@@ -1,5 +1,5 @@
 import type { Clip } from '../data/schema';
-import type { Tier } from './entitlement';
+import type { Plan } from '../payments/types';
 import { cropRect, readEdit } from './editing';
 
 export type ExportOptions = {
@@ -16,7 +16,10 @@ export type ExportOptions = {
   watermark: boolean;
 };
 
-/** Free: 720x1280 (spec 6). Paid tiers (pass, pro): 1080x1920 without the app mark; free exports carry it. Any speed other than 1x plays without sound. */
+/** Legacy tier names still accepted until the export takes only a `Plan`. */
+type Tier = Plan | 'pass' | 'pro';
+
+/** Free: 720x1280 (spec 6). Paid (a paid plan, pass, pro): 1080x1920 without the app mark; free exports carry it. Any speed other than 1x plays without sound. */
 export function exportOptions(tier: Tier, edit: Clip['edit'], trim: Clip['trim']): ExportOptions {
   const paid = tier !== 'free';
   const { speed, muted, zoom, rotation } = readEdit(edit);

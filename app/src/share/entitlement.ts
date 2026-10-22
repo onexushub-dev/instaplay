@@ -1,15 +1,22 @@
 import { useSyncExternalStore } from 'react';
 
+import { repo } from '../data/mmkv';
 import { payments } from '../payments';
-import type { Tier } from '../payments/types';
-
-export type { Tier };
+import { sessionPlan } from '../payments/rules';
+import type { Plan } from '../payments/types';
 
 /**
- * The single place that decides what a player may use (HD, no watermark, slow motion, templates).
- * Reads the payments store, so it re-renders when a purchase or restore changes the tier.
+ * The single place that says which plan applies. With a session, the plan it was recorded with (fixed at its start);
+ * without one, the plan the next start would get. Re-renders on the payments store and on the repo (spent Passes,
+ * sessions).
  */
-export function useEntitlement(sessionId?: string): { tier: Tier } {
+export function usePlan(sessionId?: string): Plan {
   useSyncExternalStore(payments.subscribe, payments.version);
-  return { tier: payments.tierFor(sessionId) };
+  useSyncExternalStore(repo.subscribe, repo.version);
+  if (sessionId === undefined) return payments.nextPlan();
+  try {
+    return sessionPlan(repo.getSession(sessionId) ?? {});
+  } catch {
+    return 'free';
+  }
 }

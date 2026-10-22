@@ -179,25 +179,6 @@ test('renameClip on a deleted clip does nothing', () => {
   expect(repo.renameClip('gone', 'x')).toBeUndefined();
 });
 
-test('setSessionPass persists the transaction id and notifies subscribers', () => {
-  const repo = setup();
-  const s = repo.startSession('quadra', 0, { paid: false });
-  const fn = jest.fn();
-  repo.subscribe(fn);
-  const updated = repo.setSessionPass(s.id, 'tx-1');
-  expect(updated?.passTransactionId).toBe('tx-1');
-  expect(repo.getSession(s.id)?.passTransactionId).toBe('tx-1');
-  expect(fn).toHaveBeenCalledTimes(1);
-});
-
-test('setSessionPass returns undefined for a missing game', () => {
-  const repo = setup();
-  const fn = jest.fn();
-  repo.subscribe(fn);
-  expect(repo.setSessionPass('nope', 'tx')).toBeUndefined();
-  expect(fn).not.toHaveBeenCalled();
-});
-
 test('a clip stored with the old locked: true lists normally', () => {
   const map = new Map<string, string>();
   const repo = createRepo(memoryKV(map), fakeFiles({ '/a.mp4': 1 }), () => 'id-1');
@@ -218,15 +199,6 @@ test('deleteSession removes the game, its clips and the index entry, and returns
   expect(repo.getSession(s.id)).toBeUndefined();
   expect(repo.listClips(s.id)).toEqual([]);
   expect(repo.listSessions()).toEqual([]);
-});
-
-test('setSessionPass spends the transaction; a missing session spends nothing', () => {
-  const repo = setup();
-  const s = repo.startSession('quadra', 1, { paid: false });
-  repo.setSessionPass(s.id, 'tx-2');
-  expect(repo.spentPasses().has('tx-2')).toBe(true);
-  repo.setSessionPass('nope', 'tx-3');
-  expect(repo.spentPasses().has('tx-3')).toBe(false);
 });
 
 test('spentPasses migrates from existing sessions when the key is missing', () => {
@@ -270,14 +242,12 @@ test('spentPasses rebuilds from games when the ledger is corrupt or not an array
   }
 });
 
-test('a corrupt game record does not break migration, startSession or setSessionPass', () => {
+test('a corrupt game record does not break migration or startSession', () => {
   const map = legacy();
   map.set('lance:v1:session:bad', '{oops');
   const repo = repoOver(map);
   expect(() => repo.startSession('quadra', 5, { paid: true, passTransactionId: 'tx-9' })).not.toThrow();
   expect(repo.spentPasses().has('old')).toBe(true);
-  expect(repo.setSessionPass('bad', 'tx-x')).toBeUndefined();
-  expect(repo.spentPasses().has('tx-x')).toBe(false);
 });
 
 test('fresh install: empty ledger', () => {

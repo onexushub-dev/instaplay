@@ -31,9 +31,9 @@ import { ZoomBubble } from '../components/ZoomBubble';
 import { ZoomButton } from '../components/ZoomButton';
 import { repo } from '../data/mmkv';
 import { useStartPreview } from '../payments/useStartPreview';
-import { openPaywall, openProPaywall } from '../payments/feedback';
-import { watchTriggerAllowed } from '../payments/rules';
-import { useEntitlement } from '../share/entitlement';
+import { openPaywall } from '../payments/feedback';
+import { triggerAllowed } from '../payments/limits';
+import { usePlan } from '../share/entitlement';
 import { type MessageKey, VOICE_WORDS, voiceLocale } from '../i18n';
 import { useT } from '../i18n/useT';
 import { remoteDeviceView } from '../devices/remoteDevice';
@@ -136,10 +136,8 @@ export default function Setup() {
   }, []);
   const watchStatus =
     watch === 'ready' ? t('setup.watchReady') : watch === 'notInstalled' ? t('setup.watchNotInstalled') : t('setup.watchNone');
-  // The watch trigger is paid. Before a game the tier is the global one, so in practice only Pro opens it; the lock
-  // opens the Pro-only paywall (here, outside any recording; there is no game yet to bind a Pass to).
-  const { tier } = useEntitlement();
-  const watchAllowed = watchTriggerAllowed(tier);
+  // The watch trigger is paid: before a game the next start's plan decides; the lock opens the paywall.
+  const watchAllowed = triggerAllowed('watch', usePlan());
   const watchOn = watchAllowed && watch === 'ready';
   // The phone remote (a second iPhone that taps Salvar for this one). The camera phone waits for its paired remotes for
   // as long as the app is open (see the root layout); pairing happens on its own sheet (/pairing).
@@ -248,7 +246,7 @@ export default function Setup() {
     busy.current = true;
     try {
       if ((await session.start(modeId)) !== 'needsPayment') return;
-      const outcome = await openPaywall(undefined, t);
+      const outcome = await openPaywall(t);
       // One retry right after a purchase: the player already asked to start. A purchase that shows up later
       // (SDK lag) only changes the status line; the next tap starts.
       if (outcome === 'purchased' || outcome === 'restored') await session.start(modeId);
@@ -388,7 +386,7 @@ export default function Setup() {
               disabled={watchAllowed && watch === 'unsupported'}
               lockedBadge={watchAllowed ? undefined : t('setup.watchProBadge')}
               lockedHint={watchAllowed ? undefined : t('setup.watchProOnly')}
-              onPress={watchAllowed ? undefined : () => void openProPaywall(t)}
+              onPress={watchAllowed ? undefined : () => void openPaywall(t)}
             />
           </View>
         </View>

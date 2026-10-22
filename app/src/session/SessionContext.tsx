@@ -5,8 +5,8 @@ import * as camera from '../../modules/replay-camera';
 import { removeFile, repo } from '../data/mmkv';
 import { currentLocale } from '../i18n';
 import { payments } from '../payments';
-import { watchTriggerAllowed } from '../payments/rules';
-import { useEntitlement } from '../share/entitlement';
+import { triggerAllowed } from '../payments/limits';
+import { usePlan } from '../share/entitlement';
 import { useVolumeRemote } from '../triggers/useVolumeRemote';
 import { type ReplaySession, type SessionDeps, useReplaySession } from './useReplaySession';
 import { useWatchTriggerGate } from './useWatchTriggerGate';
@@ -27,9 +27,11 @@ const SessionContext = createContext<ReplaySession | null>(null);
 /** One game at a time, shared by setup, recording and end-of-game screens. */
 export function SessionProvider({ children }: { children: ReactNode }) {
   const session = useReplaySession(appDeps);
-  // The watch trigger is paid: the global tier (Pro) decides, held for the whole of a recording that has started.
-  const { tier } = useEntitlement();
-  useWatchTriggerGate(session.state.phase === 'recording', watchTriggerAllowed(tier), camera.watchSetSaveAllowed);
+  // The watch trigger is paid: the recording's own plan decides (the next start's outside one), held for the whole of a
+  // recording that has started.
+  const recording = session.state.phase === 'recording';
+  const plan = usePlan(recording ? session.state.sessionId : undefined);
+  useWatchTriggerGate(recording, triggerAllowed('watch', plan), camera.watchSetSaveAllowed);
   return <SessionContext.Provider value={session}>{children}</SessionContext.Provider>;
 }
 
