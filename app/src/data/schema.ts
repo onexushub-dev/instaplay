@@ -3,8 +3,8 @@ import type { TriggerSource } from '../../modules/replay-camera/src/ReplayCamera
 export type { TriggerSource };
 
 /**
- * A usage mode. The app offers `quadra` and `academia`; the sport ids are kept so games saved with
- * them stay valid (they follow their group's settings).
+ * A usage mode. The app has a single free mode (`quadra`); the other ids are kept only so games saved with
+ * them stay valid and keep their label.
  */
 export type ModeId =
   | 'quadra'
@@ -20,12 +20,20 @@ export type ModeId =
 /** Kept as the field type name: Session.sport and Prefs.sport hold a mode id. */
 export type Sport = ModeId;
 
+/** How far back the camera keeps video for a save. Fixed: the player picks the clip length, not the buffer. */
+export const BUFFER_SECONDS = 60;
+
+/** The clip lengths the player can pick on the setup screen (seconds). */
+export const CLIP_SECONDS_OPTIONS = [15, 30, 45, 60] as const;
+export const DEFAULT_CLIP_SECONDS = 30;
+
 /** 0.5 = the ultra-wide lens, 1 = the wide lens, above 1 a digital crop. */
 export type ModeSettings = {
   zoom: number;
   gestureEnabled: boolean;
   voiceEnabled: boolean;
-  bufferSeconds: 60 | 120;
+  bufferSeconds: typeof BUFFER_SECONDS;
+  /** The clip length the player picked: each save cuts at most this much, never reaching back before the previous clip. */
   cutSeconds: number;
   quality: '1080p60' | '1080p30';
 };
@@ -46,6 +54,14 @@ export type Clip = {
   path: string;
   durationMs: number;
   trim: { startMs: number; endMs: number };
+  /** Its place in the recording when saved; kept when earlier clips are deleted. Absent on older clips (their place in the list is used). */
+  number?: number;
+  /**
+   * The part of the saved file this clip may show: the cut it was first saved with. The editor can shorten the cut
+   * inside it but never reach the rest of the buffer, which holds moments already in other clips.
+   * Absent on clips saved before this existed: those can use the whole file.
+   */
+  bounds?: { startMs: number; endMs: number };
   /** Where the useful video starts after a black start (0 = from the beginning); unset until the editor first checked. */
   contentStartMs?: number;
   /** Editor choices; absent = normal speed, with sound, no zoom. `slowmo` is how clips saved before speeds were stored. */
@@ -84,4 +100,4 @@ export const DEFAULT_PREFS: Prefs = {
 };
 
 /** Default cut: the last 30s of the saved 60s window (spec 3.3). */
-export const DEFAULT_TRIM_MS = 30_000;
+export const DEFAULT_TRIM_MS = DEFAULT_CLIP_SECONDS * 1000;

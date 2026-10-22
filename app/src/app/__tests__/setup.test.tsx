@@ -408,9 +408,44 @@ test('the summary tells which triggers are on without opening', async () => {
   await render(<Setup />);
   expect(
     screen.getByRole('button', {
-      name: 'Ajustes: voz ligada, acenar com os braços desligado, controle não conectado',
+      name: 'Ajustes: clipes de até 30 segundos, voz ligada, acenar com os braços desligado, controle não conectado',
     }),
   ).toBeTruthy();
+});
+
+test('the summary shows the clip length without opening', async () => {
+  session({});
+  await render(<Setup />);
+  expect(screen.getByText('Clipes de até 30s')).toBeTruthy();
+});
+
+test('the clip length options sit in the settings, with 30s picked by default', async () => {
+  session({});
+  await render(<Setup />);
+  await openSettings();
+  expect(screen.getByText('TAMANHO DO CLIPE')).toBeTruthy();
+  for (const label of ['15s', '30s', '45s', '60s']) expect(screen.getByRole('button', { name: label })).toBeTruthy();
+  expect(screen.getByRole('button', { name: '30s' })).toBeSelected();
+  expect(screen.getByRole('button', { name: '15s' })).not.toBeSelected();
+});
+
+test('picking a clip length saves it for the next recordings', async () => {
+  session({});
+  await render(<Setup />);
+  await openSettings();
+  await fireEvent.press(screen.getByRole('button', { name: '45s' }));
+  expect(repo.setPrefs).toHaveBeenCalledWith({ modeSettings: { quadra: { cutSeconds: 45 } } });
+  expect(screen.getByRole('button', { name: '45s' })).toBeSelected();
+  expect(screen.getByRole('button', { name: '30s' })).not.toBeSelected();
+});
+
+test('the clip length picked before is the one selected when the screen opens', async () => {
+  repo.setPrefs({ modeSettings: { quadra: { cutSeconds: 15 } } });
+  session({});
+  await render(<Setup />);
+  expect(screen.getByText('Clipes de até 15s')).toBeTruthy();
+  await openSettings();
+  expect(screen.getByRole('button', { name: '15s' })).toBeSelected();
 });
 
 test('a remote press while collapsed shows the remote works', async () => {

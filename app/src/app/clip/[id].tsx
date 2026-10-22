@@ -22,7 +22,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { createThumbnail, exportClip, findContentStart } from '../../../modules/replay-camera';
 import { ExportProgress, type ExportJob } from '../../components/ExportProgress';
-import { seconds, timeOfDay } from '../../components/format';
+import { clipNumber, seconds, timeOfDay } from '../../components/format';
 import {
   BackIcon,
   CloseIcon,
@@ -41,6 +41,7 @@ import { MAX_CLIP_NAME } from '../../data/schema';
 import { effectiveSettings } from '../../modes/registry';
 import { captureOverlay } from '../../share/captureOverlay';
 import { contentFloor, nextRotation, outputMs, raiseToFloor, readEdit, SPEEDS, turnedSize } from '../../share/editing';
+import { clipWindow } from '../../share/trim';
 import { useEntitlement } from '../../share/entitlement';
 import { exportOptions } from '../../share/exportOptions';
 import { frameLayout } from '../../share/layout';
@@ -110,6 +111,8 @@ function ClipEditor({ id }: { id: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- version is the change signal
     [clip, id, version],
   );
+  // `number` is the place in the swipe list ("2 de 3"); the clip's own number is the one it was saved with.
+  const ownNumber = clip ? clipNumber(clip, number - 1) : 0;
   const siblings = useMemo(
     () => (clip ? repo.listClips(clip.sessionId) : []),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- version is the change signal
@@ -122,6 +125,9 @@ function ClipEditor({ id }: { id: string }) {
   const [trim, setTrim] = useState(() => clip?.trim ?? { startMs: 0, endMs: 0 });
   const edit = readEdit(clip?.edit);
   const floor = clip?.contentStartMs ?? 0;
+  // The track covers only what the clip was first saved with, so the cut can be shortened but never reach moments
+  // that already belong to the previous clip.
+  const win = clip ? clipWindow(clip, floor) : { startMs: 0, endMs: 0 };
   // Bumped to start the zoomed video over from the saved zoom (reset, or switching to/from full screen).
   const [zoomKey, setZoomKey] = useState(0);
   const [full, setFull] = useState(false);
@@ -211,7 +217,8 @@ function ClipEditor({ id }: { id: string }) {
         const current = repo.getClip(id);
         if (!current) return;
         const floor = contentFloor(contentMs, current.durationMs);
-        const raised = raiseToFloor(current.trim, floor, current.durationMs);
+        const own = clipWindow(current, floor);
+        const raised = raiseToFloor(current.trim, own.startMs, own.endMs);
         if (raised === current.trim) return void repo.updateClip(id, { contentStartMs: floor });
         repo.updateClip(id, { contentStartMs: floor, trim: raised });
         setTrim(raised);
@@ -498,7 +505,7 @@ function ClipEditor({ id }: { id: string }) {
             onChangeText={setName}
             onSubmitEditing={saveName}
             onBlur={saveName}
-            placeholder={`Clipe #${number} · ${timeOfDay(clip.createdAt)}`}
+            placeholder={`Clipe #${ownNumber} · ${timeOfDay(clip.createdAt)}`}
             placeholderTextColor={colors.soft}
             maxLength={MAX_CLIP_NAME}
             returnKeyType="done"
@@ -577,7 +584,7 @@ function ClipEditor({ id }: { id: string }) {
             <Text style={styles.position}>{`${number} de ${siblings.length} · deslize para trocar`}</Text>
           ) : null}
           <View style={styles.trimLabels}>
-            <Text style={styles.small}>{`-${seconds(clip.durationMs - floor)}`}</Text>
+            <Text style={styles.small}>{`-${seconds(win.endMs - win.startMs)}`}</Text>
             <Text style={styles.cut}>{`Corte: ${seconds(outputMs(trim, edit.speed))}`}</Text>
             <Text style={styles.small}>gatilho</Text>
           </View>
@@ -587,16 +594,16 @@ function ClipEditor({ id }: { id: string }) {
             </IconButton>
             <View style={styles.trimBar}>
               <TrimBar
-                durationMs={clip.durationMs}
-                floorMs={floor}
+                durationMs={win.endMs}
+                floorMs={win.startMs}
                 trim={trim}
                 maxMs={maxMs}
                 onChange={scrub}
                 onCommit={commitTrim}>
                 <Playhead
                   player={player}
-                  durationMs={clip.durationMs}
-                  floorMs={floor}
+                  durationMs={win.endMs}
+                  floorMs={win.startMs}
                   trim={trim}
                   speed={edit.speed}
                   scrubMs={scrubMs}

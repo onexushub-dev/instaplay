@@ -5,7 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Button } from '../../components/Button';
 import { ClipCard } from '../../components/ClipCard';
-import { dayAndTime, megabytes, recordedLabel, sessionLabel, SPORT_LABEL } from '../../components/format';
+import { clipNumber, dayAndTime, megabytes, recordedLabel, sessionLabel, SPORT_LABEL } from '../../components/format';
 import { removeFile, repo } from '../../data/mmkv';
 import { MAX_GAME_NAME } from '../../data/schema';
 import { useSession } from '../../session/SessionContext';
@@ -197,7 +197,7 @@ export default function SessionSummary() {
         renderItem={({ item, index }) => (
           <ClipCard
             clip={item}
-            number={index + 1}
+            number={clipNumber(item, index)}
             selecting={selecting}
             selected={picked.includes(item.id)}
             onPress={() => (selecting ? toggle(item.id) : router.push(`/clip/${item.id}`))}

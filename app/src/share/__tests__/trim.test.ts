@@ -1,4 +1,4 @@
-import { clampTrim } from '../trim';
+import { clampTrim, clipWindow } from '../trim';
 
 test('clampTrim keeps the window inside the clip', () => {
   expect(clampTrim({ startMs: -5000, endMs: 20000 }, 60000, 'start')).toEqual({ startMs: 0, endMs: 20000 });
@@ -33,4 +33,30 @@ test('with a floor the longest cut counts from the floor and the clip end still 
 
 test('the shortest cut still applies next to the floor', () => {
   expect(clampTrim({ startMs: 12000, endMs: 13000 }, 57000, 'start', 60000, 11000)).toEqual({ startMs: 10000 + 1000, endMs: 14000 });
+});
+
+test('a clip can only use the part of the file it was first saved with', () => {
+  const clip = { durationMs: 60000, bounds: { startMs: 47000, endMs: 60000 } };
+  expect(clipWindow(clip)).toEqual({ startMs: 47000, endMs: 60000 });
+});
+
+test('the window starts after the black start when that is later, and never past the bounds end', () => {
+  const clip = { durationMs: 60000, bounds: { startMs: 47000, endMs: 60000 } };
+  expect(clipWindow(clip, 50000)).toEqual({ startMs: 50000, endMs: 60000 });
+  expect(clipWindow(clip, 10000)).toEqual({ startMs: 47000, endMs: 60000 });
+  expect(clipWindow(clip, 90000)).toEqual({ startMs: 60000, endMs: 60000 });
+});
+
+test('a clip saved before bounds existed can use the whole file', () => {
+  expect(clipWindow({ durationMs: 60000 })).toEqual({ startMs: 0, endMs: 60000 });
+  expect(clipWindow({ durationMs: 60000 }, 11000)).toEqual({ startMs: 11000, endMs: 60000 });
+});
+
+test('inside a clip window the cut can shrink but never reach the rest of the file', () => {
+  const win = clipWindow({ durationMs: 60000, bounds: { startMs: 47000, endMs: 60000 } });
+  // dragging the start handle earlier than the window, or the end later
+  expect(clampTrim({ startMs: 30000, endMs: 60000 }, win.endMs, 'start', 60000, win.startMs)).toEqual({ startMs: 47000, endMs: 60000 });
+  expect(clampTrim({ startMs: 47000, endMs: 75000 }, win.endMs, 'end', 60000, win.startMs)).toEqual({ startMs: 47000, endMs: 60000 });
+  // shrinking from the start works
+  expect(clampTrim({ startMs: 52000, endMs: 60000 }, win.endMs, 'start', 60000, win.startMs)).toEqual({ startMs: 52000, endMs: 60000 });
 });

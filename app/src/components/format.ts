@@ -40,6 +40,11 @@ export function dayAndTime(at: number, now = Date.now()): string {
   return `${today ? 'hoje' : `${pad(d.getDate())}/${pad(d.getMonth() + 1)}`}, ${timeOfDay(at)}`;
 }
 
+/** The number a clip shows in its recording: the one it was saved with, or its place in the list for older clips. */
+export function clipNumber(clip: { number?: number }, index: number): number {
+  return clip.number !== undefined ? clip.number : index + 1;
+}
+
 export function seconds(ms: number): string {
   const s = Math.round(ms / 1000);
   return `${Math.floor(s / 60)}:${pad(s % 60)}`;

@@ -6,13 +6,13 @@ import { Button } from './Button';
 import { CheckIcon } from './icons';
 import { SOURCE_LABEL } from './sourceLabel';
 
-type Props = { number: number; source: TriggerSource; onUndo: () => void };
+type Props = { number: number; source: TriggerSource; /** The length the clip actually has. */ cutMs: number; onUndo: () => void };
 
 /**
  * Confirmation shown for ~2s after each save: an accent frame around the screen and a compact card,
  * so the camera picture stays visible and the rest of the screen still saves on tap.
  */
-export function SavedOverlay({ number, source, onUndo }: Props) {
+export function SavedOverlay({ number, source, cutMs, onUndo }: Props) {
   return (
     <View pointerEvents="box-none" style={styles.frame}>
       <View style={styles.card} accessibilityLiveRegion="assertive">
@@ -22,10 +22,9 @@ export function SavedOverlay({ number, source, onUndo }: Props) {
           </View>
           <View style={styles.text}>
             <Text style={styles.title}>{`CLIPE #${number} SALVO`}</Text>
-            <Text style={styles.via}>{`via ${SOURCE_LABEL[source]} · últimos 30s`}</Text>
+            <Text style={styles.via}>{`via ${SOURCE_LABEL[source]} · ${Math.round(cutMs / 1000)}s`}</Text>
           </View>
         </View>
-        <Text style={styles.hint}>Dá para ajustar o corte depois, dentro dos 60s guardados.</Text>
         <Button label="Desfazer" variant="secondary" onPress={onUndo} />
       </View>
     </View>

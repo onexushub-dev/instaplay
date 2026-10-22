@@ -24,12 +24,13 @@ test('saved increments the count and sets lastSaved', () => {
     clipId: 'c1',
     source: 'gesture',
     at: 5,
+    cutMs: 7000,
   });
-  expect(s).toMatchObject({ saving: false, clipCount: 1, lastSaved: { clipId: 'c1', number: 1, source: 'gesture', at: 5 } });
+  expect(s).toMatchObject({ saving: false, clipCount: 1, lastSaved: { clipId: 'c1', number: 1, source: 'gesture', at: 5, cutMs: 7000 } });
 });
 
 test('undone decrements the count and clears lastSaved', () => {
-  const saved = reducer(recording({ clipCount: 2 }), { type: 'saved', sessionId: 's1', clipId: 'c3', source: 'screen', at: 1 });
+  const saved = reducer(recording({ clipCount: 2 }), { type: 'saved', sessionId: 's1', clipId: 'c3', source: 'screen', at: 1, cutMs: 30000 });
   const s = reducer(saved, { type: 'undone', clipId: 'c3' });
   expect(s.clipCount).toBe(2);
   expect(s.lastSaved).toBeUndefined();
@@ -63,7 +64,7 @@ test('reset goes back to idle', () => {
 
 test('a save that finishes after the game changed is ignored', () => {
   const next = { ...recording(), sessionId: 's2', clipCount: 0 };
-  const s = reducer(next, { type: 'saved', sessionId: 's1', clipId: 'old', source: 'screen', at: 1 });
+  const s = reducer(next, { type: 'saved', sessionId: 's1', clipId: 'old', source: 'screen', at: 1, cutMs: 30000 });
   expect(s.clipCount).toBe(0);
   expect(s.lastSaved).toBeUndefined();
 });

@@ -76,6 +76,14 @@ test('the name field shows which clip it is until the player names it', async ()
   expect(screen.getByText('Corte: 0:30')).toBeTruthy();
 });
 
+test('the clip keeps the number it was saved with, not its place in the list', async () => {
+  // Second in the list (clip 1 was deleted), but saved as number 5 of the recording.
+  __setClip({ ...base, number: 5 });
+  await open();
+  expect(screen.getByLabelText('Nome do clipe').props.placeholder).toBe('Clipe #5 · 19:40');
+  expect(screen.getByText('2 de 2 · deslize para trocar')).toBeTruthy();
+});
+
 test('a named clip shows its name', async () => {
   __setClip({ ...base, name: 'Ace no fundo' });
   await open();
@@ -167,10 +175,28 @@ test('the play button pauses and resumes, and a paused clip stays paused after a
   expect(player.play).toHaveBeenCalled();
 });
 
-test('a gym clip allows cuts up to 120s', async () => {
-  __setClip({ ...base, durationMs: 120000, trim: { startMs: 60000, endMs: 120000 } });
+test('a clip allows cuts up to the 60s buffer', async () => {
+  __setClip({ ...base, durationMs: 60000, trim: { startMs: 30000, endMs: 60000 } });
   await open();
-  expect(jest.requireMock('../../components/TrimBar').__props.last.maxMs).toBe(120000);
+  expect(jest.requireMock('../../components/TrimBar').__props.last.maxMs).toBe(60000);
+});
+
+test('the trim track covers only the cut the clip was saved with, not the rest of the buffer', async () => {
+  const cut = { startMs: 47000, endMs: 60000 };
+  __setClip({ ...base, durationMs: 60000, trim: cut, bounds: cut });
+  await open();
+  const bar = jest.requireMock('../../components/TrimBar').__props.last;
+  expect(bar.floorMs).toBe(47000);
+  expect(bar.durationMs).toBe(60000);
+  expect(screen.getByText('-0:13')).toBeTruthy();
+});
+
+test('a clip saved before bounds existed still shows its whole file', async () => {
+  __setClip({ ...base });
+  await open();
+  const bar = jest.requireMock('../../components/TrimBar').__props.last;
+  expect(bar.floorMs).toBe(0);
+  expect(bar.durationMs).toBe(60000);
 });
 
 test('a missing clip shows the message instead of the editor', async () => {

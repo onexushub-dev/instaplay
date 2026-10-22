@@ -31,7 +31,7 @@ import { repo } from '../data/mmkv';
 import { remoteDeviceView } from '../devices/remoteDevice';
 import { clearRemotePress } from '../devices/remoteTest';
 import { useRemoteSheetOpen, useRemoteTest } from '../devices/useRemoteTest';
-import type { ModeSettings, Prefs } from '../data/schema';
+import { CLIP_SECONDS_OPTIONS, type ModeSettings, type Prefs } from '../data/schema';
 import { effectiveSettings, modeById, offeredMode, withModeOverride } from '../modes/registry';
 import { clampZoom, lensFor, nextZoomStep } from '../modes/zoom';
 import { useSession } from '../session/SessionContext';
@@ -181,6 +181,7 @@ export default function Setup() {
   }
 
   const summary = `Ajustes: ${[
+    `clipes de até ${settings.cutSeconds} segundos`,
     `voz ${voiceOn ? 'ligada' : 'desligada'}`,
     `acenar com os braços ${settings.gestureEnabled ? 'ligado' : 'desligado'}`,
     `controle ${remoteView.state === 'connected' ? 'conectado' : remoteView.state === 'offline' ? 'pareado' : 'não conectado'}`,
@@ -224,7 +225,7 @@ export default function Setup() {
     <View style={styles.root}>
       <ReplayCameraView style={StyleSheet.absoluteFill} />
       {inGame ? (
-        <RecordingPanel bufferSeconds={settings.bufferSeconds} gesture={settings.gestureEnabled} voice={voiceOn} />
+        <RecordingPanel clipSeconds={settings.cutSeconds} gesture={settings.gestureEnabled} voice={voiceOn} />
       ) : (
         renderSetupControls()
       )}
@@ -301,6 +302,7 @@ export default function Setup() {
           <WatchIcon color={iconColor(watch === 'ready')} size={32} />
           {remoteSupported ? <QrIcon color={iconColor(remoteLinked > 0)} size={32} /> : null}
         </View>
+        <Text style={styles.summaryClip}>{`Clipes de até ${settings.cutSeconds}s`}</Text>
       </Pressable>
     );
   }
@@ -308,6 +310,20 @@ export default function Setup() {
   function renderSettings() {
     return (
       <>
+        <View style={styles.clipLength}>
+          <Text style={styles.section}>TAMANHO DO CLIPE</Text>
+          <View style={styles.chips}>
+            {CLIP_SECONDS_OPTIONS.map((seconds) => (
+              <Chip
+                key={seconds}
+                label={`${seconds}s`}
+                selected={settings.cutSeconds === seconds}
+                onPress={() => updateMode({ cutSeconds: seconds })}
+              />
+            ))}
+          </View>
+        </View>
+
         <Text style={styles.section}>GATILHOS</Text>
         <View style={styles.grid}>
           <View style={styles.gridRow}>
@@ -459,6 +475,9 @@ const styles = StyleSheet.create({
   summaryHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
   summaryChevron: { fontSize: 12, color: colors.muted },
   summaryIcons: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-evenly', minHeight: 48 },
+  summaryClip: { fontFamily: fonts.bodySemi, fontSize: 13, color: colors.soft, textAlign: 'center' },
+  clipLength: { gap: 8 },
+  clipLengthHint: { fontFamily: fonts.body, fontSize: 12, color: colors.soft },
   section: {
     fontFamily: fonts.bodyBold,
     fontSize: 12,

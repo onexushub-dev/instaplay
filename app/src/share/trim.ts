@@ -4,7 +4,7 @@ export const MAX_CUT_MS = 60_000;
 type Cut = { startMs: number; endMs: number };
 
 /**
- * Keeps an edited cut valid: inside the clip, between 3s and `maxMs` (the mode's buffer) long. When the length is out of bounds,
+ * Keeps an edited cut valid: inside the clip, between 3s and `maxMs` long. When the length is out of bounds,
  * the handle the player dragged is the one moved back, so the other edge stays where they left it.
  * `floorMs`: where the useful video starts (a black start is not part of the clip); the cut never begins before it.
  */
@@ -30,5 +30,16 @@ export function clampTrim(
   // Pushing past an end slides the window back inside.
   if (startMs < floorMs) [startMs, endMs] = [floorMs, endMs + (floorMs - startMs)];
   if (endMs > durationMs) [startMs, endMs] = [startMs - (endMs - durationMs), durationMs];
+  return { startMs, endMs };
+}
+
+/**
+ * The part of a clip's file the player may cut from: the clip as it was first saved (never the rest of the buffer,
+ * which holds moments already in other clips), after any black start at `floorMs`. Clips saved before
+ * `bounds` existed can use the whole file.
+ */
+export function clipWindow(clip: { durationMs: number; bounds?: Cut }, floorMs: number = 0): Cut {
+  const endMs = clip.bounds ? Math.min(clip.bounds.endMs, clip.durationMs) : clip.durationMs;
+  const startMs = Math.min(Math.max(floorMs, clip.bounds ? clip.bounds.startMs : 0), endMs);
   return { startMs, endMs };
 }

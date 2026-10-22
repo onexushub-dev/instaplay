@@ -24,14 +24,14 @@ function clock(ms: number): string {
  * game screen and is never recreated, so starting the game is instant (and Android keeps its preview).
  */
 type Props = {
-  /** How far back a save reaches in this mode. */
-  bufferSeconds?: number;
+  /** The clip length the player picked: how far back a save reaches. */
+  clipSeconds?: number;
   /** Which hands-free triggers are on in this mode. */
   gesture?: boolean;
   voice?: boolean;
 };
 
-export function RecordingPanel({ bufferSeconds = 60, gesture = true, voice = false }: Props) {
+export function RecordingPanel({ clipSeconds = 30, gesture = true, voice = false }: Props) {
   const { state, trigger, undoLast, stop } = useSession();
   const [now, setNow] = useState(() => Date.now());
   const [dismissed, setDismissed] = useState<string>();
@@ -85,7 +85,7 @@ export function RecordingPanel({ bufferSeconds = 60, gesture = true, voice = fal
 
   const showOverlay = last !== undefined && dismissed !== last.clipId;
   const hintSub = [
-    `Últimos ${bufferSeconds}s prontos`,
+    `Últimos ${clipSeconds}s prontos`,
     ...(voice ? ['ou diga “salvar”'] : []),
     ...(gesture ? ['ou acene com os braços'] : []),
     'ou use o controle',
@@ -150,7 +150,7 @@ export function RecordingPanel({ bufferSeconds = 60, gesture = true, voice = fal
         </View>
       </SafeAreaView>
 
-      {showOverlay ? <SavedOverlay number={last.number} source={last.source} onUndo={undoLast} /> : null}
+      {showOverlay ? <SavedOverlay number={last.number} source={last.source} cutMs={last.cutMs} onUndo={undoLast} /> : null}
     </View>
   );
 }

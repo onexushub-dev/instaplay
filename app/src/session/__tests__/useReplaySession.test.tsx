@@ -152,25 +152,25 @@ test('prepare turns the camera on so starting the game is immediate', async () =
   expect(view.result.current.state.phase).toBe('recording');
 });
 
-test('prepare opens the camera with the mode\'s lens, quality and buffer', async () => {
+test('a saved sport opens the same camera as the free mode: wide framing, 1080p60, the fixed 60s buffer', async () => {
   const f = fakeDeps();
   const view = await renderHook(() => useReplaySession(f.deps));
   await act(() => view.result.current.prepare('musculacao'));
-  expect(f.camera.startSession).toHaveBeenLastCalledWith({ lens: 'wide', zoom: 1, maxQuality: '1080p30', bufferSeconds: 120 });
+  expect(f.camera.startSession).toHaveBeenLastCalledWith({ lens: 'ultraWide', zoom: 0.5, maxQuality: '1080p60', bufferSeconds: 60 });
 });
 
-test('switching mode reapplies lens, buffer and triggers', async () => {
+test('every sport id runs with the same settings, so switching between them does not reopen the camera', async () => {
   const f = fakeDeps();
   const view = await renderHook(() => useReplaySession(f.deps));
   await act(() => view.result.current.prepare('beachTennis'));
   await act(() => view.result.current.prepare('musculacao'));
 
-  expect(f.camera.stopSession).toHaveBeenCalledTimes(1);
-  expect(f.camera.startSession).toHaveBeenLastCalledWith({ lens: 'wide', zoom: 1, maxQuality: '1080p30', bufferSeconds: 120 });
+  expect(f.camera.stopSession).not.toHaveBeenCalled();
+  expect(f.camera.startSession).toHaveBeenCalledTimes(1);
 
   await act(() => view.result.current.start('musculacao'));
-  expect(f.camera.setGestureEnabled).toHaveBeenLastCalledWith(false);
-  expect(f.camera.setVoiceEnabled).toHaveBeenLastCalledWith(true);
+  expect(f.camera.setGestureEnabled).toHaveBeenLastCalledWith(true);
+  expect(f.camera.setVoiceEnabled).toHaveBeenLastCalledWith(false);
 });
 
 test('with two fixed lenses (Android), a zoom that crosses 1x reopens the camera with the other lens', async () => {
@@ -339,14 +339,98 @@ test('release turns the camera off while idle, but never during a game', async (
   expect(f.camera.stopSession).toHaveBeenCalledTimes(1);
 });
 
-test("saved clips get the mode's default cut", async () => {
+/** Moves the clock, triggers a save and finishes it with a file `durationMs` long. */
+async function saveAfter(f: ReturnType<typeof fakeDeps>, view: Awaited<ReturnType<typeof started>>['view'], afterMs: number, durationMs: number) {
+  f.advance(afterMs);
+  await act(async () => view.result.current.trigger('screen'));
+  await act(async () => f.finishSave({ clipPath: `/c${f.deps.now()}.mp4`, durationMs }));
+}
+
+const trims = (f: ReturnType<typeof fakeDeps>, view: Awaited<ReturnType<typeof started>>['view']) =>
+  f.deps.repo.listClips(view.result.current.state.sessionId!).map((c) => c.trim);
+
+test('each clip is cut to the chosen length, but never back past the previous clip (30s, saves at 0:30, 0:45, 1:00, 2:47)', async () => {
   const f = fakeDeps();
   const view = await renderHook(() => useReplaySession(f.deps));
-  await act(() => view.result.current.start('musculacao'));
-  await act(async () => view.result.current.trigger('screen'));
-  await act(async () => f.finishSave({ clipPath: '/g.mp4', durationMs: 120000 }));
-  const [clip] = f.deps.repo.listClips(view.result.current.state.sessionId!);
-  expect(clip.trim).toEqual({ startMs: 60000, endMs: 120000 });
+  await act(() => view.result.current.start('quadra'));
+
+  await saveAfter(f, view, 30_000, 30_000); // 0:30 → 30s
+  await saveAfter(f, view, 15_000, 45_000); // 0:45 → 15s
+  await saveAfter(f, view, 15_000, 60_000); // 1:00 → 15s
+  await saveAfter(f, view, 107_000, 60_000); // 2:47 → 30s
+
+  expect(trims(f, view)).toEqual([
+    { startMs: 0, endMs: 30_000 },
+    { startMs: 30_000, endMs: 45_000 },
+    { startMs: 45_000, endMs: 60_000 },
+    { startMs: 30_000, endMs: 60_000 },
+  ]);
+});
+
+test('the saved state carries the length the clip really got, for the popup', async () => {
+  const f = fakeDeps();
+  const view = await renderHook(() => useReplaySession(f.deps));
+  await act(() => view.result.current.start('quadra'));
+
+  await saveAfter(f, view, 30_000, 30_000);
+  await saveAfter(f, view, 7_000, 37_000); // 7s after the last clip
+
+  expect(view.result.current.state.lastSaved).toMatchObject({ number: 2, cutMs: 7_000 });
+});
+
+test('the clip length the player picked is the longest cut', async () => {
+  const f = fakeDeps();
+  f.deps.repo.setPrefs({ modeSettings: { quadra: { cutSeconds: 15 } } });
+  const view = await renderHook(() => useReplaySession(f.deps));
+  await act(() => view.result.current.start('quadra'));
+
+  await saveAfter(f, view, 40_000, 40_000); // 40s into the recording, but only 15s asked for
+  await saveAfter(f, view, 8_000, 48_000); // 8s later: only the 8s since the last clip
+
+  expect(trims(f, view)).toEqual([
+    { startMs: 25_000, endMs: 40_000 },
+    { startMs: 40_000, endMs: 48_000 },
+  ]);
+});
+
+test('a save right after another still cuts at least the debounce window, never an empty clip', async () => {
+  const f = fakeDeps();
+  const view = await renderHook(() => useReplaySession(f.deps));
+  await act(() => view.result.current.start('quadra'));
+
+  await saveAfter(f, view, 500, 60_000); // half a second into the recording
+
+  expect(trims(f, view)).toEqual([{ startMs: 57_000, endMs: 60_000 }]);
+});
+
+test('undoing a clip gives its span back to the next save', async () => {
+  const f = fakeDeps();
+  const view = await renderHook(() => useReplaySession(f.deps));
+  await act(() => view.result.current.start('quadra'));
+
+  await saveAfter(f, view, 30_000, 30_000); // 0:30
+  await saveAfter(f, view, 15_000, 45_000); // 0:45
+  await act(async () => view.result.current.undoLast());
+  await saveAfter(f, view, 5_000, 50_000); // 0:50 → back to the 0:30 clip: 20s
+
+  expect(trims(f, view)).toEqual([
+    { startMs: 0, endMs: 30_000 },
+    { startMs: 30_000, endMs: 50_000 },
+  ]);
+});
+
+test('a new recording starts counting from its own start', async () => {
+  const f = fakeDeps();
+  const view = await renderHook(() => useReplaySession(f.deps));
+  await act(() => view.result.current.start('quadra'));
+  await saveAfter(f, view, 45_000, 45_000);
+  await act(() => view.result.current.stop());
+
+  f.advance(100_000);
+  await act(() => view.result.current.start('quadra'));
+  await saveAfter(f, view, 10_000, 60_000); // 10s after the new start, not 110s after the last clip
+
+  expect(trims(f, view)).toEqual([{ startMs: 50_000, endMs: 60_000 }]);
 });
 
 test('voice stays off natively when the phone may not listen', async () => {

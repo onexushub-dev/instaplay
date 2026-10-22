@@ -67,10 +67,11 @@ export function Playhead({ player, durationMs, floorMs = 0, trim, speed, scrubMs
       <View
         testID="playhead"
         {...pan.panHandlers}
-        hitSlop={{ left: 18, right: 18, top: 10, bottom: 10 }}
+        hitSlop={{ top: 16, bottom: 16 }}
         accessibilityRole="adjustable"
         accessibilityLabel="Posição do vídeo"
-        style={[styles.line, { left: `${share * 100}%` }]}>
+        style={[styles.hit, { left: `${share * 100}%` }]}>
+        <View pointerEvents="none" style={styles.line} />
         <View pointerEvents="none" style={styles.pill}>
           <Text style={styles.time}>{`${elapsed.toFixed(1)}s`}</Text>
         </View>
@@ -80,15 +81,24 @@ export function Playhead({ player, durationMs, floorMs = 0, trim, speed, scrubMs
 }
 
 const PILL = 44;
+/** The touch area around the cursor: wide enough for a thumb (the thin line itself is only a mark). */
+const HIT = 56;
 const styles = StyleSheet.create({
+  hit: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    width: HIT,
+    marginLeft: -HIT / 2,
+    alignItems: 'center',
+  },
   line: {
     position: 'absolute',
     top: 0,
     bottom: 0,
-    width: 2,
-    marginLeft: -1,
+    width: 4,
+    borderRadius: 2,
     backgroundColor: colors.text,
-    alignItems: 'center',
   },
   pill: {
     position: 'absolute',

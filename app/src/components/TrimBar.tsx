@@ -6,11 +6,12 @@ import { colors } from '../theme/tokens';
 
 type Cut = { startMs: number; endMs: number };
 type Props = {
+  /** Where the track ends: the end of the part of the clip that may be cut from. */
   durationMs: number;
   trim: Cut;
-  /** Longest cut allowed: the mode's buffer (60s court, 120s gym). */
+  /** Longest cut allowed. */
   maxMs?: number;
-  /** Where the useful video starts: the track begins here, so a black start can neither be seen nor cut into. */
+  /** Where the track begins: the start of the part that may be cut from, so neither a black start nor an earlier clip's moments can be reached. */
   floorMs?: number;
   /** `moved`: which edge the player is dragging, so the preview can follow it. */
   onChange: (trim: Cut, moved: 'start' | 'end') => void;
