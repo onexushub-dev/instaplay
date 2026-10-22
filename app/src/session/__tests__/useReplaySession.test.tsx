@@ -538,12 +538,12 @@ describe('start gate', () => {
     return { ...f, view };
   };
 
-  test('the first session starts without a pass and marks the free game used', async () => {
+  test('a free start records paid: false and no pass', async () => {
     const f = await setup();
     let r: unknown;
     await act(async () => void (r = await f.view.result.current.start('futevolei')));
     expect(r).toBe('started');
-    expect(f.deps.repo.isFirstSessionUsed()).toBe(true);
+    expect(f.deps.repo.getSession(f.view.result.current.state.sessionId!)).toMatchObject({ paid: false });
     expect(f.deps.repo.getSession(f.view.result.current.state.sessionId!)?.passTransactionId).toBeUndefined();
   });
 
@@ -587,13 +587,13 @@ describe('start gate', () => {
     expect([...f.deps.repo.spentPasses()]).toEqual(['tx-1']);
   });
 
-  test('a camera failure fails the start and does not use the free game', async () => {
+  test('a camera failure fails the start and records no game', async () => {
     const f = await setup();
     f.camera.startSession.mockRejectedValueOnce(Object.assign(new Error('x'), { code: 'LOW_STORAGE' }));
     let r: unknown;
     await act(async () => void (r = await f.view.result.current.start('futevolei')));
     expect(r).toBe('failed');
-    expect(f.deps.repo.isFirstSessionUsed()).toBe(false);
+    expect(f.deps.repo.listSessions()).toEqual([]);
   });
 
   test('Pro lapsing mid-game never interrupts it', async () => {
@@ -625,7 +625,7 @@ describe('start gate', () => {
     expect(f.view.result.current.state.error).toBeDefined();
     f.startDecision.mockResolvedValue({ kind: 'free' });
     if (_n === 'repo.startSession') {
-      expect(f.deps.repo.isFirstSessionUsed()).toBe(false);
+      expect(f.deps.repo.listSessions()).toEqual([]);
       expect(f.deps.repo.spentPasses().size).toBe(0);
     }
   });

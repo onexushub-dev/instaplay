@@ -106,7 +106,7 @@ export function createRepo(kv: KV, files: FileProbe, newId: () => string) {
       return version;
     },
 
-    /** True once any game was ever started. A marker of its own: deleting games never resets it. */
+    /** Legacy marker, no longer written (read-only until Task 3 removes the payments store's use of it). */
     isFirstSessionUsed(): boolean {
       return kv.getString(key.firstSessionUsed) === '1';
     },
@@ -120,13 +120,13 @@ export function createRepo(kv: KV, files: FileProbe, newId: () => string) {
       if (addSpent(ids)) changed();
     },
 
-    startSession(sport: Sport, now: number, passTransactionId?: string): Session {
+    startSession(sport: Sport, now: number, plan: { paid: boolean; passTransactionId?: string }): Session {
       const ids = sessionIds(); // before writing, so a first-time rebuild doesn't list this game twice
       spentList(); // build the ledger from existing games before this one exists
-      const session: Session = { id: newId(), sport, startedAt: now, ...(passTransactionId ? { passTransactionId } : {}) };
+      const { passTransactionId } = plan;
+      const session: Session = { id: newId(), sport, startedAt: now, paid: plan.paid, ...(passTransactionId ? { passTransactionId } : {}) };
       write(key.session(session.id), session);
       write(key.sessions, [...ids, session.id]);
-      kv.set(key.firstSessionUsed, '1');
       if (passTransactionId) addSpent([passTransactionId]);
       changed();
       return session;

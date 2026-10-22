@@ -40,7 +40,7 @@ const { repo } = jest.requireMock('../../data/mmkv');
 
 
 function seed(startedAt: number) {
-  const s = repo.startSession('quadra', startedAt);
+  const s = repo.startSession('quadra', startedAt, { paid: false });
   repo.endSession(s.id, startedAt + 1000);
   return s;
 }

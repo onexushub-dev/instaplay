@@ -228,7 +228,10 @@ export function useReplaySession(deps: SessionDeps) {
           const session = deps.repo.startSession(
             sport,
             deps.now(),
-            decision.kind === 'credit' ? decision.passTransactionId : undefined,
+            {
+              paid: decision.kind !== 'free',
+              ...(decision.kind === 'credit' ? { passTransactionId: decision.passTransactionId } : {}),
+            },
           );
           const settings = effectiveSettings(sport, deps.repo.getPrefs());
           deps.camera.setGestureEnabled(settings.gestureEnabled);
