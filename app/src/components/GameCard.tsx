@@ -13,19 +13,17 @@ type Props = {
   clips: number;
   firstClip?: Clip;
   recordedMs: number;
-  lockedClips?: number;
   onPress: () => void;
   onLongPress?: () => void;
   onDelete?: () => void;
 };
 
 /** One past game in "My recordings": first lance's frame, name (or sport + date), lances and time. */
-export function GameCard({ session, clips, firstClip, recordedMs, lockedClips = 0, onPress, onLongPress, onDelete }: Props) {
+export function GameCard({ session, clips, firstClip, recordedMs, onPress, onLongPress, onDelete }: Props) {
   const thumb = useClipThumbnail(firstClip?.path ?? '', firstClip?.trim.startMs ?? 0);
   const { t, locale } = useT();
   const label = sessionLabel(session, undefined, locale);
-  const base = t('games.detail', { clips: t('summary.clips', { count: clips }), time: recordedLabel(recordedMs, locale) });
-  const detail = lockedClips > 0 ? t('games.lockedDetail', { detail: base, count: lockedClips }) : base;
+  const detail = t('games.detail', { clips: t('summary.clips', { count: clips }), time: recordedLabel(recordedMs, locale) });
   return (
     <View style={styles.card}>
       <Pressable

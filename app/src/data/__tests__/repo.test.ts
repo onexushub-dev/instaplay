@@ -198,26 +198,15 @@ test('setSessionPass returns undefined for a missing game', () => {
   expect(fn).not.toHaveBeenCalled();
 });
 
-test('addClip persists locked', () => {
-  const repo = setup({ '/a.mp4': 1 });
+test('a clip stored with the old locked: true lists normally', () => {
+  const map = new Map<string, string>();
+  const repo = createRepo(memoryKV(map), fakeFiles({ '/a.mp4': 1 }), () => 'id-1');
   const s = repo.startSession('quadra', 0);
-  const c = repo.addClip({ sessionId: s.id, createdAt: 1, source: 'screen', path: '/a.mp4', durationMs: 1, locked: true });
-  expect(repo.getClip(c.id)?.locked).toBe(true);
-});
-
-test('unlockedClipCount and lockedCount count only existing clips and respect deleteClip', () => {
-  const repo = setup({ '/a.mp4': 1, '/b.mp4': 1, '/c.mp4': 1 });
-  const s = repo.startSession('quadra', 0);
-  const base = { sessionId: s.id, source: 'screen' as const, durationMs: 1 };
-  repo.addClip({ ...base, createdAt: 1, path: '/a.mp4' });
-  repo.addClip({ ...base, createdAt: 2, path: '/b.mp4', locked: false });
-  const l = repo.addClip({ ...base, createdAt: 3, path: '/c.mp4', locked: true });
-  repo.addClip({ ...base, createdAt: 4, path: '/gone.mp4', locked: true });
-  repo.addClip({ ...base, createdAt: 5, path: '/gone2.mp4' });
-  expect(repo.unlockedClipCount(s.id)).toBe(2);
-  expect(repo.lockedCount(s.id)).toBe(1);
-  repo.deleteClip(l.id);
-  expect(repo.lockedCount(s.id)).toBe(0);
+  const c = repo.addClip({ sessionId: s.id, createdAt: 1, source: 'screen', path: '/a.mp4', durationMs: 1 });
+  const k = [...map.keys()].find((x) => map.get(x)?.includes(c.path) && x.includes(c.id))!;
+  map.set(k, JSON.stringify({ ...JSON.parse(map.get(k)!), locked: true }));
+  expect(repo.listClips(s.id).map((x) => x.id)).toEqual([c.id]);
+  expect(repo.sessionStats(s.id).clips).toBe(1);
 });
 
 test('deleteSession removes the game, its clips and the index entry, and returns the files to delete', () => {

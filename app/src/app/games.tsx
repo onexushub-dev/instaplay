@@ -9,7 +9,6 @@ import { BackIcon } from '../components/icons';
 import { sessionLabel } from '../components/format';
 import { removeFile, repo } from '../data/mmkv';
 import { useT } from '../i18n/useT';
-import { payments } from '../payments';
 import { restorePurchases } from '../payments/feedback';
 import { useSession } from '../session/SessionContext';
 import { colors, fonts } from '../theme/tokens';
@@ -19,16 +18,14 @@ export default function Games() {
   const { t, locale } = useT();
   const { reset, state } = useSession();
   const version = useSyncExternalStore(repo.subscribe, repo.version);
-  const paymentsVersion = useSyncExternalStore(payments.subscribe, payments.version);
   const games = useMemo(
     () =>
       repo.listSessions().map((g) => ({
         ...g,
         recordedMs: repo.sessionStats(g.session.id).recordedMs,
-        lockedClips: payments.tierFor(g.session.id) === 'free' ? repo.lockedCount(g.session.id) : 0,
       })),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- versions are the change signals
-    [version, paymentsVersion],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- version is the change signal
+    [version],
   );
 
   // A game still being recorded has no end yet: it is never offered for deleting.
@@ -81,7 +78,6 @@ export default function Games() {
               clips={item.clips}
               firstClip={item.firstClip}
               recordedMs={item.recordedMs}
-              lockedClips={item.lockedClips}
               onPress={() => router.push(`/session/${item.session.id}`)}
               onLongPress={ended ? ask : undefined}
               onDelete={ended ? ask : undefined}

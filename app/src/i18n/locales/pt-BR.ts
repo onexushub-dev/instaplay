@@ -141,7 +141,6 @@ export const ptBR: Messages = {
     title: 'MINHAS GRAVAÇÕES',
     empty: 'Nenhuma gravação com clipes ainda.',
     detail: '%{clips} · %{time}',
-    lockedDetail: { one: '%{detail} · %{count} bloqueado', other: '%{detail} · %{count} bloqueados' },
     restore: 'Restaurar compras',
     deleteRecording: 'Apagar gravação',
     deleteRecordingNamed: 'Apagar gravação %{name}',

@@ -52,8 +52,6 @@ export type Clip = {
   edit?: { slowmo?: boolean; speed?: 0.5 | 1 | 1.5 | 2; muted: boolean; zoom?: { scale: number; cx: number; cy: number }; rotation?: 0 | 90 | 180 | 270 };
   /** Optional name the player gives the clip (like a recording's name). */
   name?: string;
-  /** True when the clip was recorded over the free limit and is locked until the game has a pass. */
-  locked?: boolean;
   /** When the edited video was last saved to Photos / sent through the share sheet (the clip itself stays inside the app). */
   savedAt?: number;
   sharedAt?: number;

@@ -143,7 +143,6 @@ export const en = {
     title: 'MY RECORDINGS',
     empty: 'No recordings with clips yet.',
     detail: '%{clips} · %{time}',
-    lockedDetail: { one: '%{detail} · %{count} locked', other: '%{detail} · %{count} locked' },
     restore: 'Restore purchases',
     deleteRecording: 'Delete recording',
     deleteRecordingNamed: 'Delete recording %{name}',

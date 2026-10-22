@@ -11,7 +11,6 @@ jest.mock('../../payments', () => ({
 }));
 jest.mock('../../data/mmkv', () => ({
   repo: {
-    lockedCount: jest.fn(() => 0),
     listSessions: jest.fn(),
     sessionStats: jest.fn(),
     deleteSession: jest.fn(() => ['/c1.mp4']),
@@ -31,7 +30,6 @@ const clip = { id: 'c1', sessionId: 's1', createdAt: 1, source: 'screen', path: 
 beforeEach(() => {
   jest.clearAllMocks();
   payments.tierFor.mockReturnValue('free');
-  repo.lockedCount.mockReturnValue(0);
   useSession.mockReturnValue({ reset: jest.fn(), state: { phase: 'idle' } });
 });
 
@@ -80,19 +78,11 @@ const oneGame = () => {
   repo.sessionStats.mockReturnValue({ clips: 7, bytes: 1, recordedMs: 60_000 });
 };
 
-test('a free game shows how many clipes are locked', async () => {
+test.each(['free', 'pass', 'pro'])('no game shows bloqueado on the %s plan', async (tier) => {
   oneGame();
-  repo.lockedCount.mockReturnValue(2);
+  payments.tierFor.mockReturnValue(tier);
   await render(<Games />);
-  expect(screen.getByText(/ · 2 bloqueados$/)).toBeTruthy();
-});
-
-test('a pass game does not show locked clipes', async () => {
-  oneGame();
-  repo.lockedCount.mockReturnValue(2);
-  payments.tierFor.mockReturnValue('pass');
-  await render(<Games />);
-  expect(screen.queryByText(/bloqueados/)).toBeNull();
+  expect(screen.queryByText(/bloqueado/)).toBeNull();
 });
 
 test('Restaurar compras restores purchases', async () => {
@@ -100,13 +90,6 @@ test('Restaurar compras restores purchases', async () => {
   await render(<Games />);
   await fireEvent.press(screen.getByRole('button', { name: 'Restaurar compras' }));
   expect(payments.restore).toHaveBeenCalled();
-});
-
-test('a single locked clipe uses the singular', async () => {
-  oneGame();
-  repo.lockedCount.mockReturnValue(1);
-  await render(<Games />);
-  expect(screen.getByText(/ · 1 bloqueado$/)).toBeTruthy();
 });
 
 test('holding a finished game offers to delete it, and deleting removes its files', async () => {
