@@ -1,163 +1,188 @@
-# Pagamentos com RevenueCat: primeira gravação grátis, Passe Avulso e Pro
+# Pagamentos com RevenueCat: plano grátis com limites, Passe Avulso e Pro
 
-> Revisado em 2026-10-22: nova estratégia de venda (primeira gravação grátis e sem limite; da segunda em diante paga-se antes de começar; Passe Avulso vira crédito). Substitui o modelo de 10 lances liberados por jogo com lances bloqueados.
+> Revisado em 2026-10-23: nova estratégia de venda (gravações ilimitadas no plano grátis, com limites de clipe; o pago libera os limites). Substitui a versão de 2026-10-22 (primeira gravação grátis, pagar antes da segunda). Plano de implementação: `docs/superpowers/plans/2026-10-23-payments-free-limits.md`.
 
 ## Objetivo
 Ligar a cobrança do spec principal (`2026-10-17-lance-design.md`, seção 6) ao app:
-- **A primeira gravação (sessão) do aparelho é grátis e sem limite de lances.**
-- **Da segunda em diante**, o usuário precisa do **Passe Avulso** (R$ 4,90, consumível, vale para uma sessão — jogo ou treino) ou do **Pro** (R$ 19,90/mês, com 7 dias grátis para quem tem direito) **antes de começar**. O paywall aparece no botão "Começar gravação" da preparação, fora de qualquer gravação.
+- **Plano grátis:** grava quantas vezes quiser e salva quantos clipes quiser. Limites: clipe de no máximo **15 s**, **sem som** (o clipe não tem trilha de áudio), **HD (720p)** na captura e na exportação, e só três gatilhos: **toque na tela, gesto e voz**.
+- **Plano pago** (Pro mensal ou Passe Avulso): libera tudo o que o grátis limita — duração do clipe acima de 15 s (as opções de corte/buffer de cada modo, como hoje), som, **Full HD (1080p)** na captura e na exportação, e os gatilhos **Apple Watch, controle Bluetooth e celular controle**.
+- Todo o resto vale para os dois planos: câmera lenta, edição (corte, velocidade, zoom, giro), exportação, compartilhamento, todas as lentes.
 
-Princípio: **a experiência do usuário vem primeiro. O app nunca para de gravar e nunca perde um lance por causa de pagamento.** Nada pago é pedido durante a gravação; a cobrança acontece antes de a sessão existir.
-
-Este spec substitui o paywall "no 6º lance, com a gravação por trás" (seção 3.5) e a validade de 4h do Passe (seção 6) do spec principal, e também o modelo de 2026-10-20 (10 lances liberados por jogo, do 11º em diante bloqueados).
+Princípio: **a experiência do usuário vem primeiro. O app nunca bloqueia uma gravação e nunca perde um lance por causa de pagamento.** Nada pago é pedido durante a gravação.
 
 ## Decisões
+
 **Marcus, 2026-10-20 (continuam valendo):**
 - **Só RevenueCat** sobre Apple IAP e Google Play Billing. Sem Stripe e sem arquitetura híbrida por ora.
-- **Sem backend e sem login na v1.** Usuário anônimo (ID do RevenueCat); nenhuma compra exige conta. Login pode vir depois, como convite opcional após a compra do Pro (`Purchases.logIn()` junta o histórico anônimo).
-- **Moeda e preço vêm sempre da loja.** O país da conta da Apple/Google decide a moeda (BR: BRL, EUA: USD), independente do idioma do aparelho; o app mostra só o texto de preço devolvido pela loja/RevenueCat e nunca converte nem fixa símbolo. Os valores em R$ citados neste spec são os preços do Brasil; os preços dos outros países são definidos nas lojas.
-- **Paywall do RevenueCat**, hospedado e montado no painel, exibido com `RevenueCatUI.presentPaywall()`. Se o resultado não for bom, troca-se por paywall próprio sem mexer nas regras de plano.
+- **Sem backend e sem login na v1.** Usuário anônimo (ID do RevenueCat). Login pode vir depois, como convite opcional após a compra do Pro (`Purchases.logIn()` junta o histórico anônimo).
+- **Moeda e preço vêm sempre da loja.** O país da conta da Apple/Google decide a moeda, independente do idioma do aparelho; o app mostra só o texto de preço da loja/RevenueCat e nunca converte nem fixa símbolo. Nenhum valor nem símbolo de moeda em código ou catálogo. Os valores em R$ deste spec são os preços do Brasil.
+- **Paywall do RevenueCat**, hospedado e montado no painel, exibido com `RevenueCatUI.presentPaywall()`. O app não chama `purchasePackage`.
 - **O Passe é validado no aparelho** (resultado da compra + `nonSubscriptionTransactions`), sem servidor.
 
-**Marcus, 2026-10-22 (nova estratégia):**
-- **Primeira sessão grátis e sem limite.** A marca de "primeira sessão usada" é persistida no aparelho (MMKV, chave `lance:v1:firstSessionUsed`) e gravada quando a primeira sessão **começa**. Não é derivada das sessões existentes: apagar o jogo não devolve a sessão grátis. Reinstalar o app zera a marca (risco aceito na v1, sem login).
-- **Paga-se antes da segunda sessão.** O botão "Começar gravação" da preparação decide (ver "Portão de início"). O paywall nunca aparece durante a gravação.
-- **O Passe Avulso é um crédito.** Uma compra de `single_pass` (entrada em `nonSubscriptionTransactions`) que ainda não está ligada a nenhuma sessão é um **crédito disponível**. Começar uma sessão sem Pro consome o crédito mais antigo, gravando o id da transação em `Session.passTransactionId` na criação da sessão.
-  - Comprado num contexto de sessão (resumo ou editor da primeira sessão, grátis, via `showPaywall(sessionId)`), o Passe se liga na hora àquela sessão (comportamento que já existe).
-  - Comprado na preparação (sem sessão), fica como crédito até o próximo início.
-  - Créditos são validados no aparelho; um crédito não usado não viaja para outro aparelho (aceito).
-- **Um Passe usado nunca volta a ser crédito.** Os ids de Passe já ligados ficam numa lista persistida que só cresce (`lance:v1:spentPasses`), independente das sessões: apagar a sessão paga não devolve o crédito. Na primeira leitura, a lista é completada com os `passTransactionId` das sessões existentes (migração).
-- **Restauração não cria crédito.** Transações de Passe que aparecem por uma restauração (botão do paywall ou "Restaurar compras") entram direto na lista de usados. "Restaurar compras" serve para o Pro.
-- **Pro mensal com 7 dias grátis**, configurado nas lojas (oferta introdutória da Apple; oferta de teste grátis no plano base do Google). O paywall informa o teste ("7 dias grátis, depois …" com as variáveis do paywall). Quem tem direito ao teste é decidido pela loja/RevenueCat, nunca pelo app. O app não promete reembolso.
-- **Produtos e ofertas:** `pro_monthly` (assinatura, entitlement `pro`) e `single_pass` (consumível). Ofertas: `default` (Passe + Pro) e `pro_only` (só o Pro, usada pela trava do relógio na preparação).
-- **Lances bloqueados deixam de existir.** Saem `Clip.locked`, `isClipLocked`, `shouldLockOnSave`, `FREE_CLIPS`, as notas "último grátis"/"libere no fim do jogo", a etiqueta BLOQUEADO, o aviso de bloqueados em "Minhas gravações", o cartão de bloqueados do resumo e a tela de lance bloqueado do editor. Clipes antigos com `locked: true` passam a ser lances normais (o campo é ignorado).
-- **Relógio como gatilho: só Pro**, também na primeira sessão (regra de 2026-10-21 mantida, agora escrita como `tier === 'pro'`).
+**Marcus, 2026-10-23 (nova estratégia):**
+- **Produtos:** `pro_monthly` — Pro mensal, **R$ 14,90** (era 19,90), entitlement `pro`, **7 dias grátis** configurados nas lojas (o paywall informa o teste), sem plano anual. `single_pass` — Passe Avulso, consumível, **R$ 4,90**, libera tudo em **uma gravação**.
+- **Uma oferta só:** `default` (Passe + Pro) atende todos os pontos de entrada. A oferta `pro_only` e `showProPaywall` saem.
+- **`Session.paid: boolean`**, decidido no **início** da sessão (Pro ativo, ou um crédito consumido) e nunca recalculado. O plano de uma sessão é `session.paid ? 'paid' : 'free'`. Substitui o plano calculado na hora por `tierFor`/`passTransactionId`: se o Pro acabar depois, as sessões gravadas no Pro continuam pagas (os clipes já nasceram em Full HD com som). `passTransactionId` continua na sessão como registro do crédito gasto.
+- **O Passe é um crédito comprado antes de gravar.** Os clipes nascem limitados (720p, sem som, 15 s), então um Passe não melhora uma gravação já feita. No início de cada sessão:
+  1. Pro ativo → sessão paga, nenhum crédito gasto;
+  2. senão, existe crédito → consome o mais antigo, sessão paga;
+  3. senão → sessão grátis.
+  A preparação mostra a linha "Seu Passe Avulso será usado nesta gravação." quando o próximo início vai consumir um crédito.
+- **Mantidos do modelo anterior (invariantes que custaram caro):** a store de pagamentos, o crédito (`availableCredit`), o livro-razão `lance:v1:spentPasses` (só cresce; apagar a gravação não devolve o Passe), a compra pendente única (uma compra não explicada pelo snapshot ocupa o único lugar de pendência e nenhum outro paywall vende enquanto ela não se explica), a restauração que nunca cria crédito e a leitura antes da restauração.
+- **Saem:** o portão de início (`startGate`, `'needsPayment'`, `'startBlocked'`), a marca de primeira sessão (`isFirstSessionUsed`, `lance:v1:firstSessionUsed`), o paywall do "Começar gravação" e a nova tentativa automática da preparação, o cartão "Gravação no plano grátis" do resumo e seu botão, a trava de 0.5x no editor (câmera lenta é grátis), `pro_only`/`showProPaywall`/`openProPaywall`, `tierFor`, o tipo `Tier` com `'pass'`, a ligação de um Passe a uma sessão já gravada (`showPaywall(sessionId)`, `setSessionPass`).
+- **A marca "feito com LANCE" fica em todo vídeo exportado, nos dois planos** (o Marcus vai redesenhá-la depois). A regra antiga "pago exporta sem marca" foi apagada.
+- **Story sai do app.** Ver "Fim do Story".
+
+**Histórico:** 2026-10-20 — 10 lances liberados por jogo, do 11º em diante bloqueados. 2026-10-22 — primeira gravação grátis e sem limite, pagamento antes da segunda. 2026-10-23 — grátis ilimitado com limites de clipe (este spec). Nenhuma versão foi publicada; dados antigos só existem em aparelhos de desenvolvimento.
 
 ## Fora do escopo
-Login e contas, backend e webhooks, pagamento web (Stripe), link externo, paywall próprio, Customer Center, testes A/B, promoções e cupons, venda de pacotes de Passes, usar um crédito já comprado para liberar uma sessão antiga (o botão do resumo sempre abre o paywall), templates de Story (ainda não existem no código; quando existirem, o template pago abre o mesmo paywall do editor).
+Login e contas, backend e webhooks, pagamento web (Stripe), link externo, paywall próprio, Customer Center, testes A/B, promoções e cupons, pacotes de Passes, plano anual, melhorar uma gravação já feita, redesenho da marca d'água, Wear OS.
 
 ## Regras de plano
 
-| | Primeira sessão (grátis) | Passe (esta sessão) | Pro |
-|---|---|---|---|
-| Começar a sessão | sim, sem pagar | consome 1 crédito no início (ou foi comprado no resumo/editor da primeira sessão) | sim |
-| Lances por sessão | sem limite | sem limite | sem limite |
-| Exportação | 720p, com marca | 1080p 60fps, sem marca | 1080p 60fps, sem marca |
-| Câmera lenta (0.5x) | não | sim | sim |
-| Templates de Story | 1 | todos | todos |
-| Relógio como gatilho | não | não | sim |
+| | Grátis | Pago (Pro ou Passe) |
+|---|---|---|
+| Gravações | ilimitadas | ilimitadas (Passe: a gravação em que foi consumido) |
+| Clipes por gravação | ilimitados | ilimitados |
+| Duração do clipe (corte e buffer) | no máximo 15 s | a do modo (hoje: corte 30 s, buffer 60 s) |
+| Som no clipe | não (sem trilha de áudio) | sim (desligável na preparação) |
+| Captura e exportação | HD 720p | Full HD 1080p |
+| Gatilhos | tela, gesto, voz | + Apple Watch, controle Bluetooth, celular controle |
+| Câmera lenta, edição, compartilhar, lentes, zoom | sim | sim |
+| Marca "feito com LANCE" na exportação | sim | sim |
 
-- **Plano de uma sessão** = `pro` se o entitlement `pro` está ativo; senão `pass` se `session.passTransactionId` existe; senão `free`. Pro vale para todas as sessões; o Passe só para a sessão a que está ligado. O plano é calculado na hora: se o Pro acabar, as sessões sem Passe voltam às regras do grátis na exportação (e mostram o botão "Liberar"); a gravação em andamento não muda.
-- **Na prática, `free` só ocorre na primeira sessão** ou numa sessão gravada no Pro depois que a assinatura acabou.
-- **Portão de início** (`startGate`, função pura), avaliado ao tocar "Começar gravação":
-  1. primeira sessão ainda não usada → começa grátis;
-  2. senão, Pro ativo → começa;
-  3. senão, existe crédito disponível → começa e liga o crédito mais antigo à sessão;
-  4. senão → abre o paywall `default` sem sessão. A sessão não começa.
-- **Crédito disponível** (`availableCredit`, função pura) = a transação `single_pass` de menor `purchasedAt` cujo id não está na lista de usados. Enquanto uma compra feita num contexto de sessão espera ser ligada (atraso do SDK), só contam como crédito as transações que já existiam antes daquele paywall: a compra nova é da sessão que a pediu.
-- **Relógio como gatilho:** `watchTriggerAllowed(tier) = tier === 'pro'`, sempre com o plano global (sem sessão). A trava é sobre *ligar* o gatilho, nunca sobre um toque durante a gravação: o celular avisa o relógio quando a gravação começa e, até ela acabar, não tira a permissão (um Pro que vence no meio da sessão continua salvando pelo relógio); um toque do relógio que chega durante a gravação sempre vira lance. Sem Pro, o botão Salvar do relógio dá lugar a "Disponível no Pro" (tempo, contagem, Começar/Parar, câmera e widget continuam funcionando). Os outros gatilhos (voz, gesto, controle Bluetooth, celular controle, tela) valem em todos os planos. O relógio não entra nos benefícios do paywall `default`.
+- **Plano do próximo início** (`nextPlan`) = `'paid'` se o Pro está ativo ou há crédito disponível; senão `'free'`. Usado pela preparação (câmera, travas, linha do Passe) e pelos gatilhos fora de gravação.
+- **Plano de uma sessão** = `session.paid`. Sessões gravadas antes desta mudança (sem o campo) leem `paid = passTransactionId !== undefined`; nada é regravado.
+- **Limites de captura** (`captureConfig(settings, plan)`, função pura), aplicados ao abrir a câmera:
+  - grátis: qualidade HD na mesma taxa do modo (`1080p60 → 720p60`, `1080p30 → 720p30`), `cutSeconds = min(corte do modo, 15)`, `bufferSeconds = min(buffer do modo, 15)`, `audio = false`;
+  - pago: o que o modo e as escolhas do jogador dizem (`effectiveSettings`), com `audio = settings.audio` (padrão ligado).
+  - 720p60 mantém a câmera lenta (grátis) suave. Superaquecido, o nativo continua caindo para 720p30 nos dois planos.
+- **Exportação** (`exportOptions(plan, edit, trim)`): grátis 720x1280, sem som, e o trecho nunca passa de 15 s (se passar, mantém os 15 s finais); pago 1080x1920. Marca sempre.
+- **Gatilhos pagos** (`PAID_TRIGGERS = watch, remote, phone`; `triggerAllowed(source, plan)`). A trava é sobre **ligar** o gatilho, nunca sobre um toque: durante uma gravação vale `session.paid` (fixo); fora dela, `nextPlan`. Um toque de gatilho pago que chega durante a gravação sempre vira lance. Na prática:
+  - **Relógio:** o celular diz ao relógio se o Salvar funciona (`watchSetSaveAllowed`, já existe); sem permissão o botão dá lugar a "Disponível no Premium"; tempo, contagem, Começar/Parar e o widget continuam.
+  - **Celular controle:** o mesmo, por uma mensagem nova (`saveAllowed` no estado enviado ao controle; ausente = permitido). Parear, Começar/Parar e a imagem da câmera continuam em todos os planos.
+  - **Controle Bluetooth:** o app só escuta as teclas de volume numa sessão paga; numa grátis, as teclas voltam a ser volume.
+- **Começar pelo relógio ou pelo celular controle** funciona em todos os planos (começar não é gatilho de lance); o plano é decidido no início como qualquer outro.
 
 ## Experiência
-**Preparação ("Começar gravação"):**
-- Primeira sessão: uma linha discreta sob o botão, "Primeira gravação grátis, sem limite de clipes." Tocar começa na hora.
-- Com Pro: nada muda, começa na hora.
-- Com crédito: a linha diz "Você tem 1 Passe Avulso." (plural para mais); tocar começa e consome um.
-- Sem nada: a linha diz "Para gravar de novo, escolha o Passe Avulso ou o Pro."; tocar abre o paywall `default` (Passe pré-selecionado + Pro com "7 dias grátis, depois …").
-  - Comprou (Pro ou Passe) ou restaurou o Pro: o app reavalia o portão uma vez e, se liberado, **começa sozinho** (o usuário já tinha pedido para começar). Se a compra ainda não apareceu (atraso do SDK), fica na preparação; quando o crédito/Pro chegar pelo listener, a linha muda e o usuário toca de novo. Nunca começa sozinho depois, fora desse retorno imediato do paywall.
-  - "Agora não"/fechar/cancelar: fica na preparação, sem alerta, câmera ligada.
-  - Erro (sem rede, loja indisponível, oferta ausente): o aviso curto de sempre (`payments.paywallError`) e fica na preparação.
-- Início pelo relógio ou pelo celular controle quando o portão pede pagamento: o app traz a preparação para a frente e **não começa nem abre o paywall** (o jogador está longe do celular).
 
-**Durante a gravação:** nada de pagamento. Sem contador de grátis, sem notas, sem bloqueio. Um Pro que vence no meio não muda nada nessa sessão.
+**Preparação:**
+- "Começar gravação" sempre começa. Nenhum paywall nesse botão.
+- Com crédito e sem Pro: linha discreta acima do botão, "Seu Passe Avulso será usado nesta gravação." Sem nada ou com Pro: nenhuma linha.
+- Nova seção **"Clipe"** nas configurações (sheet aberto), com três escolhas em chips:
+  - **Duração:** "15 s" e "<corte do modo> s" (hoje 30 s);
+  - **Qualidade:** "HD" e "Full HD";
+  - **Som do clipe:** "Sem som" e "Com som".
+  No grátis o valor grátis aparece selecionado e o valor pago tem cadeado e o selo "Premium"; tocar nele abre o paywall `default` (`openPaywall(t)`; sem sessão, o parâmetro de sessão saiu). No pago as duas opções de cada linha são escolhas do jogador, salvas por modo (`cutSeconds`, `quality`, `audio`).
+- Blocos de gatilho **Controle Bluetooth, Relógio e Conectar um celular controle**: no grátis, cadeado + selo "Premium" + "Disponível no Premium"; tocar abre o paywall `default`. "Usar este celular como controle" fica livre (o plano que conta é o do celular da câmera).
+- Depois de comprar ou restaurar, a opção simplesmente fica disponível: nada começa sozinho. A câmera reabre com a configuração paga quando o plano do próximo início muda (e volta para a grátis se o Pro acabar antes de começar).
+- Cancelar/fechar o paywall: nada muda, sem alerta. Erro: o aviso curto de sempre (`payments.paywallError`).
 
-**Depois da gravação (sessão com plano `free`):**
-- Resumo: um cartão discreto "Esta gravação está no plano grátis: 720p com a marca e sem câmera lenta." com o botão "Liberar HD e recursos", que abre o paywall `default` com `showPaywall(sessionId)`: o Passe comprado aí se liga a esta sessão; o Pro libera tudo. Sessões `pass`/`pro` não mostram o cartão.
-- Editor: tocar em 0.5x numa sessão `free` abre o mesmo paywall da sessão (`showPaywall(sessionId)`) e não muda a velocidade. 1.5x/2x funcionam em todos os planos.
-- "Minhas gravações": sem avisos de plano. "Restaurar compras" continua no rodapé.
+**Durante a gravação:** nada de pagamento, sem notas de plano. A barra "Últimos Ns prontos" mostra o buffer da sessão (15 no grátis). Um Pro que vence no meio não muda nada nessa sessão. A câmera nunca é reaberta durante a gravação por mudança de plano.
+
+**Depois da gravação:** resumo sem cartão de plano. Editor igual para os dois planos (corte, 0.5x/1.5x/2x, zoom, giro, salvar na galeria, compartilhar). Numa sessão grátis o botão de som fica desligado em "Sem som" (o clipe não tem áudio) e a janela de corte é de 15 s. "Restaurar compras" continua em "Minhas gravações".
+
+## Fim do Story
+O Story (templates Placar/Minimal/Arena/Treino/Recorde pessoal, o fluxo "Postar no Story" e suas telas) sai do produto. No código de hoje sobra:
+- Nativo: `InstagramStory.swift`, `InstagramStory.kt`, a função `shareToInstagramStory` (iOS, Android, `ReplayCameraModule.ts`, `ReplayCamera.ts`), o `<queries>` do Instagram e o `FileProvider` + `replay_file_paths.xml` do Android (só o Instagram usava), `LSApplicationQueriesSchemes: instagram-stories` e `extra.metaAppId` no `app.json`.
+- JS: `ShareOverlay` (nome, comentários e `SAFE_BOTTOM` justificados pelo Instagram), testes que procuram `story-*`.
+- O registro de modos e os catálogos já não têm templates nem textos de Story (removidos antes); nada a fazer lá além da varredura.
+
+Fica: o editor, a exportação no quadro vertical 9:16 com faixas (como hoje), "Salvar na galeria" e a folha de compartilhar do sistema (`expo-sharing`).
+
+**Marca d'água depois do Story:** um caminho só. `src/share/ExportOverlay.tsx` (o antigo `ShareOverlay`, sem a prop `watermark`) desenha faixas e degradê e sempre inclui `src/share/MadeWithMark.tsx`, o único lugar que desenha a marca. O mesmo componente faz a prévia do editor e, capturado em PNG, a camada da exportação. Redesenhar a marca = mexer só em `MadeWithMark.tsx`. `ExportOptions.watermark` sai.
 
 ## Arquitetura (`app/src/payments/`)
 
 | Unidade | Função |
 |---|---|
-| `client.ts` | Interface `PaymentsClient`: `configure`, `getSnapshot`, `onSnapshot`, `restore`, `showPaywall(offering?)` (sem oferta, a `default`; com oferta, aquela, e erro se ela não existir). |
-| `revenuecatClient.ts` | Implementação real com `react-native-purchases` e `react-native-purchases-ui`. Único arquivo que importa o SDK. |
-| `fakeClient.ts` | Cliente falso para Jest e para desenvolvimento sem loja. |
-| `snapshot.ts` | Converte `customerInfo` em `Snapshot { proActive, passTransactions[{id, productId, purchasedAt}] }`. |
-| `rules.ts` | Funções puras: `tierFor(snapshot, session)`, `availableCredit(snapshot, spent)`, `startGate({ firstSessionUsed, proActive, credit })`, `detectPurchase(before, after)`, `watchTriggerAllowed(tier)`. |
-| `store.ts` | Store singleton (`payments`): snapshot atual, `tierFor(sessionId?)`, `startDecision()` (assíncrono, para começar), `peekStart()` (síncrono, para a linha de status), `showPaywall(sessionId?)`, `showProPaywall()`, `restore()`, `credits()`. |
-| `feedback.ts` | `openPaywall(sessionId \| undefined, t)`, `openProPaywall(t)`, `restorePurchases(t)`: abrem e mostram o aviso de erro. |
+| `client.ts` | `PaymentsClient`: `configure`, `getSnapshot`, `onSnapshot`, `restore`, `showPaywall()` (sempre a oferta `default`). |
+| `revenuecatClient.ts` | Implementação com `react-native-purchases` e `-ui`. Único arquivo que importa o SDK. |
+| `fakeClient.ts` | Cliente falso para Jest e desenvolvimento sem loja. |
+| `snapshot.ts` | `customerInfo` → `Snapshot { proActive, passTransactions[{id, productId, purchasedAt}] }`. |
+| `rules.ts` | Puras: `availableCredit`, `creditCount`, `startPlan({ proActive, credit })` → `StartDecision`, `planOf(decision)`, `sessionPlan(session)`, `detectPurchase`. |
+| `limits.ts` | Puras: `FREE_MAX_SECONDS = 15`, `hdQuality(q)`, `captureConfig(settings, plan)`, `PAID_TRIGGERS`, `triggerAllowed(source, plan)`. |
+| `store.ts` | `payments`: snapshot, `peekStart()`/`startDecision()` (nunca bloqueiam), `nextPlan()`, `credits()`, `showPaywall()`, `restore()`. |
+| `feedback.ts` | `openPaywall(t)`, `restorePurchases(t)`. |
 
-- `useEntitlement(sessionId?)` (em `src/share/entitlement.ts`) devolve `{ tier }` com `Tier = 'free' | 'pass' | 'pro'`. Sem `sessionId` só reconhece `pro`.
-- `exportOptions(tier, …)`: 1080x1920 e `watermark: false` quando `tier !== 'free'`; 720x1280 e `watermark: true` no `free`.
-- `useReplaySession.start(mode)` devolve `'started' | 'needsPayment' | 'failed' | 'busy'` e recebe por dependência `startDecision()`; a preparação abre o paywall quando recebe `'needsPayment'`. O portão é conferido antes de abrir a câmera e de novo logo antes de criar a sessão (o plano pode mudar no meio).
-- Chaves públicas por variável de ambiente (`.env.local`, fora do git), lidas em `app.config.js` para `extra`: `appl_…` (iOS), `goog_…` (Android) e `test_…` (Test Store, só em builds de debug). Nunca chave secreta no app.
+- `type Plan = 'free' | 'paid'`; `type StartDecision = { kind: 'pro' } | { kind: 'credit'; passTransactionId } | { kind: 'free' }`.
+- `usePlan(sessionId?)` (em `src/share/entitlement.ts`, troca `useEntitlement`): com sessão, `sessionPlan`; sem sessão, `nextPlan()`. Re-renderiza com a store e com o repo.
+- `useReplaySession`: `start(mode)` devolve `'started' | 'failed' | 'busy'`. Decide o plano antes de abrir a câmera, abre a câmera com `captureConfig`, decide de novo logo antes de criar a sessão e, se o plano mudou, reabre a câmera com o novo antes de criar a sessão (a sessão nunca fica com `paid` diferente da câmera). O crédito só é gasto em `repo.startSession`.
+- `prepare(mode, plan)`: a chave da câmera aberta inclui qualidade, buffer e som; não faz nada fora de `idle`/`ended` (nunca reabre durante a gravação).
+- Nativo `startSession({ lens, zoom, maxQuality, bufferSeconds, audio })` — `audio` novo, padrão `true`; `Quality` ganha `'720p60'`.
+- Chaves públicas por variável de ambiente (`.env.local`), lidas em `app.config.js`: `appl_…`, `goog_…`, `test_…` (só debug). Nunca chave secreta.
+
+## Áudio e voz (nativo)
+- **iOS hoje:** `CaptureController` liga o microfone na sessão de captura (se autorizado) e entrega as amostras a dois lugares: o `SegmentWriter` (trilha de áudio do clipe) e o `VoiceTrigger` (reconhecimento offline de "salvar"/"gravar"). A voz **depende do microfone da captura**, não da trilha do clipe.
+- **Plano:** o microfone continua na captura nos dois planos (a voz é grátis); só o `SegmentWriter` deixa de ter trilha de áudio quando `audio = false` (`withAudio: capture.hasAudio && clipAudio`). A regra fica pura no Core (`CapturePlan`, testada com `swift test`), junto com o alvo de formato (`720p60 → 1280@60`).
+- **Android hoje:** `SegmentEncoder` sempre grava áudio (`AudioRecord`) e o muxer espera o formato de áudio antes de começar cada pedaço; voz não existe no Android. **Plano:** `withAudio = false` não cria `AudioRecord` nem trilha de áudio, e o muxer começa só com o vídeo. 720p60 onde a câmera oferecer, senão 30.
+- **Riscos:** (1) no iOS o indicador de microfone continua aceso no grátis (já acontece hoje); (2) uma reconfiguração térmica recria o writer e precisa manter `clipAudio`; (3) o pedaço de 2 s faz o arquivo salvo ter até ~16 s com buffer de 15 s — o limite de 15 s é garantido pelo corte e pela exportação; (4) só um aparelho confirma: clipe grátis sem trilha de áudio, voz funcionando no grátis, 720p60 real, muxer Android sem áudio, exportação de clipe sem áudio. O Swift Core roda com `swift test`; os módulos iOS/Android não compilam neste ambiente.
 
 ## Dados
-- `Session.passTransactionId?: string` (já existe). Gravado na criação da sessão (crédito) ou depois (compra no resumo/editor).
-- MMKV `lance:v1:firstSessionUsed`: `'1'` depois que a primeira sessão começou. Gravado por `repo.startSession`, junto com a sessão.
-- MMKV `lance:v1:spentPasses`: lista de ids de Passe já usados (ligados a sessão ou vindos de restauração). Só cresce; `deleteSession` não mexe nela.
-- `Clip.locked` sai do tipo. Valores antigos gravados ficam no MMKV e são ignorados. Sem migração destrutiva.
+- `Session.paid?: boolean` (gravado por `repo.startSession`; ausente só em sessões antigas). `Session.passTransactionId?` gravado quando um crédito é consumido.
+- `repo.startSession(sport, now, { paid, passTransactionId? })`: grava a sessão e, com `passTransactionId`, o põe em `spentPasses`, num único `changed()`.
+- MMKV `lance:v1:spentPasses`: só cresce; `deleteSession` não mexe. A migração dos `passTransactionId` existentes continua.
+- `lance:v1:firstSessionUsed` deixa de ser lida e escrita (o valor velho fica no MMKV, ignorado).
+- `ModeSettings` ganha `audio: boolean` (padrão `true`) e `quality` aceita `'720p60' | '720p30'` (escolha "HD" do pago).
 
 ## Fluxo de compra
-1. **Na preparação (sem sessão):** "Começar gravação" → `startGate` pede pagamento → `openPaywall(undefined, t)` → `payments.showPaywall()` abre a oferta `default`. O paywall faz a compra sozinho; o app não chama `purchasePackage`.
-2. Em `purchased`/`restored`, a store lê o snapshot novo e notifica. Passe novo comprado fica como crédito; Passe que aparece em `restored` vai para a lista de usados. A preparação chama `start` de novo uma vez; o portão encontra o Pro ou o crédito e a sessão começa ligando o crédito.
-3. **Num contexto de sessão** (resumo/editor de uma sessão `free`): `showPaywall(S)`; em `purchased`, `detectPurchase(antes, depois)` encontra a transação nova e grava `passTransactionId` em `S` (e na lista de usados). Se o snapshot atrasar, a ligação fica pendente e se resolve no próximo `onSnapshot` (lógica existente).
-4. O listener `onCustomerInfo` atualiza o snapshot; `tierFor`/`startDecision` recalculam e a interface muda. Nada é liberado dentro do callback da compra.
-5. **Paywall só do Pro** (relógio na preparação): o bloco do Relógio, travado com cadeado e selo "Pro", chama `payments.showProPaywall()`, que abre a oferta `pro_only`. Oferta ausente ou erro: o aviso curto de sempre. A compra muda o plano pelo mesmo listener.
-6. "Restaurar compras": no paywall e em "Minhas gravações" (obrigatório no iOS). Restaura o Pro. Passes não são restaurados como crédito.
+1. Ponto de entrada (cadeado de uma opção paga na preparação) → `openPaywall(t)` → `payments.showPaywall()` abre a oferta `default`.
+2. `purchased`: a store lê o snapshot novo; o Pro muda o plano; o Passe vira crédito. Se o snapshot atrasar, a compra fica pendente (sem sessão) e se explica no próximo `onSnapshot`; `startDecision()` relê antes de decidir enquanto há pendência.
+3. `restored` / "Restaurar compras": volta o Pro; Passes que aparecem por restauração vão para `spentPasses`, nunca viram crédito.
+4. O listener `onCustomerInfo` atualiza; `nextPlan` muda; a preparação destrava e a câmera reabre. Nada é liberado dentro do callback da compra.
 
 ## Erros e situações-limite
 
 | Situação | Comportamento |
 |---|---|
-| Usuário cancela ou fecha o paywall | Volta à preparação sem alerta; a sessão não começa. |
-| Compra falha (recusada, sem rede, loja indisponível) | Aviso curto (`payments.paywallError`), fica na preparação. |
-| Compra conclui mas o snapshot atrasa | Fica na preparação; o crédito/Pro chega pelo listener e o próximo toque começa. Nunca cobra duas vezes por um início. |
-| Duplo toque em "Começar gravação" | Só um início/paywall por vez (`start` devolve `'busy'`; a store devolve `'cancelled'` a um segundo paywall aberto). |
-| Dois créditos | Cada início consome só o mais antigo; o outro continua disponível. |
-| Plano muda durante o início (Pro vence, crédito ligado no resumo) | O portão é reavaliado logo antes de criar a sessão; se agora pede pagamento, volta à preparação com `'needsPayment'`. |
-| Sem rede ao abrir | Usa o último `customerInfo` guardado pelo SDK. Sem nenhum snapshot: a primeira sessão começa normalmente; da segunda em diante não dá para começar (o paywall não abre sem loja) — risco aceito. Sessão com `passTransactionId` vale o que está gravado. |
-| Pro vence no meio da gravação | Nada muda nessa sessão: gravação, lances e relógio continuam até "Encerrar". |
-| Apagar a primeira sessão | `firstSessionUsed` continua gravado; a próxima sessão pede pagamento. |
-| Apagar uma sessão paga com Passe | O Passe continua na lista de usados; não vira crédito. |
-| Início pelo relógio/celular controle sem pagamento | Traz a preparação para a frente, não começa nem abre o paywall. |
-| App reinicia | `passTransactionId`, `firstSessionUsed` e `spentPasses` no MMKV mantêm tudo. |
-| Paywall sem oferta/preço | O RevenueCat mostra o layout padrão. O aceite exige o paywall do painel. |
-| Câmera falha ao começar (inclusive pouco espaço, `LOW_STORAGE`) | Nenhuma sessão é criada, então nenhum crédito é consumido e a marca de primeira sessão não é gravada (ambos só acontecem em `repo.startSession`). Um Passe comprado no paywall do início fica como crédito. |
+| Cancela ou fecha o paywall | Nada muda, sem alerta. |
+| Compra falha | Aviso curto, nada muda. |
+| Compra conclui mas o snapshot atrasa | Pendência única; o início relê; se o crédito ainda não apareceu, a sessão começa grátis e o Passe continua crédito para a próxima. Nunca cobra duas vezes. |
+| Duplo toque em "Começar gravação" | Só um início (`'busy'`); no máximo um crédito gasto. |
+| Dois créditos | Cada início pago gasta só o mais antigo. |
+| Pro ativo e crédito | Pro: o crédito não é gasto. |
+| Pro vence entre a preparação e o início | O início decide `free`, reabre a câmera em HD sem som e começa grátis. |
+| Pro vence no meio da gravação | Nada muda nessa sessão (paga até "Encerrar"). |
+| Plano muda durante a gravação (Pro vence, crédito chega) | A câmera não reabre; vale para a próxima. |
+| Sem rede e sem snapshot | Começa grátis (nunca bloqueia). Créditos só valem com snapshot. |
+| Falha ao ler o repo/store na decisão | Começa grátis; nenhum crédito gasto. |
+| Câmera falha ao começar (`LOW_STORAGE` etc.) | Nenhuma sessão, nenhum crédito gasto. |
+| Apagar uma gravação paga com Passe | O Passe continua em `spentPasses`. |
+| Toque de gatilho pago numa sessão grátis (relógio/celular controle com estado antigo) | Vira lance. |
+| Sessão antiga sem `paid` | `paid = !!passTransactionId`. |
 
 ## Testes
-- **Jest (unitários):** `tierFor` (grátis, Passe, Pro; Pro vence Passe), `availableCredit` (nenhum, o mais antigo de dois, ignora usados e outros produtos), `startGate` (as quatro saídas, primeira sessão vence tudo), `detectPurchase`, `watchTriggerAllowed` (só Pro), `snapshot` com `customerInfo` simulado, `exportOptions` por plano, repo (`firstSessionUsed` gravado no início e mantido após apagar a sessão; `spentPasses` só cresce e migra dos `passTransactionId`), store (crédito comprado sem sessão; Passe de restauração não vira crédito; compra pendente de uma sessão não vira crédito de outra), `useReplaySession` (primeira sessão com lances sem limite; segunda bloqueada sem pagamento e liberada por Pro/crédito; crédito consumido uma vez e ligado; Pro que vence no meio não interrompe), tela de preparação (paywall cancelado fica na preparação; compra começa sozinha; erro mostra aviso; sem snapshot não começa a segunda).
-- **Desenvolvimento:** Test Store do RevenueCat (chave `test_`), com compra bem-sucedida, falha, cancelamento e teste grátis.
-- **Aparelho:** sandbox da Apple e license tester do Google, no iOS e no Android. Conferir no painel do RevenueCat (visão Sandbox) que a transação aparece para o `appUserID` certo e que uma instalação nova não traz Passes antigos como crédito sem restauração.
+- **Jest:** `availableCredit`, `startPlan` (Pro sem gastar; crédito; grátis), `sessionPlan` (com e sem `paid`), `captureConfig` (grátis: 720p na taxa do modo, 15/15, sem som; pago: o modo + `audio`), `triggerAllowed`, `exportOptions` (720x1280 sem som e ≤ 15 s; 1080x1920; sem `watermark`), repo (`paid` gravado, crédito no ledger, apagar não devolve, sem marca de primeira sessão), store (nunca bloqueia, Pro não gasta, restauração não cria crédito, pendente sem sessão), `useReplaySession` (grátis grava ilimitado com corte/buffer em 15 s e sem som; pago com Pro ou crédito gasto uma vez; mudança de plano antes do início reabre a câmera; durante a gravação não reabre; Bluetooth só em sessão paga), preparação (travas, paywall nas travas, destrava após compra sem começar, linha do Passe), editor e `ExportOverlay` (marca em todos os planos), varredura de Story.
+- **Swift Core (`swift test`):** `CapturePlan` (720p60, áudio do writer vs. microfone), `RemoteMessage.state` com `saveAllowed`, `BufferPlan` com 15 s.
+- **Aparelho:** sandbox da Apple e license tester do Google; checklist do plano (Tarefa 11).
 
 ## Critérios de aceite
-1. A primeira gravação começa sem paywall, aceita mais de 10 lances e nenhum aparece bloqueado; nada de pagamento aparece durante a gravação.
-2. Na segunda gravação, sem Pro e sem crédito, "Começar gravação" abre o paywall do painel (não o padrão) com o teste de 7 dias informado; cancelar deixa na preparação.
-3. Comprar o Passe na preparação começa a gravação e grava o `passTransactionId` nela; a exportação sai em 1080p sem marca, inclusive depois de reiniciar o app; a gravação seguinte pede pagamento de novo.
-4. Assinar o Pro (com ou sem teste) libera todos os inícios; se a assinatura acabar, a próxima gravação pede pagamento e a que estava em andamento não para.
-5. Apagar a primeira gravação não devolve a gravação grátis.
-6. No resumo da primeira gravação, "Liberar HD e recursos" vende um Passe que vale só para ela.
-7. "Restaurar compras" em instalação limpa devolve o Pro e não cria crédito de Passe.
-8. `npm test`, `npx tsc --noEmit` e `npx expo lint` passam.
+1. Sem compra: grava várias vezes sem paywall; clipes de no máximo 15 s, 720p, sem trilha de áudio; voz, gesto e tela salvam; relógio, controle Bluetooth e celular controle não salvam (Salvar trocado por "Disponível no Premium"; volume é volume).
+2. Os cadeados da preparação abrem o paywall do painel com a tabela Grátis × Premium e o teste de 7 dias; cancelar não muda nada.
+3. Comprar o Passe: a linha "Seu Passe Avulso será usado nesta gravação." aparece, a câmera reabre em Full HD com som; a próxima gravação sai paga e consome o crédito; a seguinte volta ao grátis.
+4. Assinar o Pro: todas as gravações saem pagas sem gastar créditos; se o Pro acabar, a próxima sai grátis e a em andamento não muda.
+5. Apagar uma gravação paga com Passe não devolve o crédito; "Restaurar compras" em instalação limpa devolve o Pro e não cria crédito.
+6. Toda exportação tem a marca "feito com LANCE"; grátis em 720p, pago em 1080p.
+7. Nenhum resto de Story no app (varredura do plano).
+8. `npm test`, `npx tsc --noEmit`, `npx expo lint` e `swift test` (Core) passam.
 
 ## Passos fora do código (Marcus)
-1. App Store Connect e Play Console: contratos de apps pagos, dados bancários e fiscais; produtos `pro_monthly` (assinatura mensal) e `single_pass` (consumível).
-2. **Teste grátis de 7 dias no `pro_monthly`:**
-   - RevenueCat Test Store: marcar "Free trial" (7 dias) no produto `pro_monthly`.
-   - Apple: oferta introdutória "Teste grátis", 1 semana, no grupo de assinatura do `pro_monthly` (por país/região de venda).
-   - Google: no plano base mensal, oferta de teste grátis de 7 dias com elegibilidade "novos clientes".
-   - Quem tem direito ao teste é decidido pela loja; o app não guarda nada sobre isso.
-3. RevenueCat: projeto, apps iOS e Android, Test Store, entitlement `pro`, oferta `default` com os dois pacotes (Passe pré-selecionado), oferta `pro_only` só com o Pro (para o relógio), um paywall publicado no builder para cada oferta.
-4. **Texto do paywall:** informar o teste no pacote Pro com variáveis do builder, só para quem tem direito (texto condicional de oferta introdutória), por exemplo "{{ product.offer_period_with_unit }} grátis, depois {{ product.price_per_period }}" / "{{ product.offer_period_with_unit }} free, then {{ product.price_per_period }}" (conferir os nomes exatos das variáveis no builder). Nada de preço fixo no texto. O Passe: "Vale para uma gravação." / "Good for one recording."
-5. **Reembolso:** não prometer nada no paywall. Antes de publicar, conferir as regras de reembolso da Apple (o usuário pede à Apple) e do Google (reembolso pelo Play, e pelo desenvolvedor em até 48h) e só então decidir se algum texto de suporte vai para a página do app.
-6. Chaves públicas em `app/.env.local`.
-7. Build de desenvolvimento novo (módulos nativos): `react-native-purchases` e `react-native-purchases-ui` não rodam no Expo Go. Alvo atual do iOS: 16.4 (o paywall pede 15+). Android: `minSdkVersion` 24+.
+1. App Store Connect e Play Console: contratos de apps pagos, dados bancários e fiscais; `pro_monthly` (assinatura mensal) e `single_pass` (consumível).
+2. **Mudar o preço do `pro_monthly` para R$ 14,90** (Brasil) nas duas lojas e revisar os outros países. Manter o teste grátis de 7 dias (Apple: oferta introdutória "Teste grátis", 1 semana; Google: oferta de teste de 7 dias no plano base, "novos clientes"; RevenueCat Test Store: "Free trial" 7 dias). Quem tem direito ao teste é decidido pela loja.
+3. RevenueCat: entitlement `pro`, oferta `default` com os dois pacotes e um paywall publicado. **A oferta `pro_only` não é mais necessária** (pode ser arquivada).
+4. **Texto do paywall** (builder, pt-BR e en):
+   - Tabela **Grátis × Premium**: Duração do clipe "15 s" × "conforme o modo"; Som "Sem som" × "Com som"; Resolução "HD" × "Full HD"; Gatilhos "Toque, gesto e voz" × "+ Apple Watch, controle Bluetooth e celular controle".
+   - **Pro Mensal:** "7 dias grátis, depois {{ product.price_per_period }}" / "7 days free, then {{ product.price_per_period }}", só para quem tem direito (texto condicional de oferta introdutória; conferir os nomes das variáveis no builder). Sem preço fixo no texto.
+   - **Passe Avulso:** "Uma gravação" / "One recording", com o preço da variável da loja.
+   - Nenhuma promessa de reembolso.
+5. **Reembolso:** antes de publicar, conferir as regras da Apple (o usuário pede à Apple) e do Google (pelo Play, e pelo desenvolvedor em até 48h); decidir só depois se algum texto de suporte vai para a página do app.
+6. Meta App ID / Instagram: nada a configurar (o Story saiu).
+7. Chaves públicas em `app/.env.local`; build de desenvolvimento novo (módulos nativos mudaram).
 
 ## Riscos
-- **Reinstalar dá outra primeira gravação grátis** (marca local, sem login). Aceito na v1; rever com login ou com um marcador no RevenueCat (atributo do assinante) se o abuso aparecer nas métricas.
-- **Sem rede e sem snapshot, não dá para começar a segunda gravação** (o paywall precisa da loja). O SDK guarda o último `customerInfo`, então isso só acontece em aparelho que nunca leu a loja. Aceito.
-- **Crédito validado no aparelho:** um aparelho adulterado pode forjar créditos de R$ 4,90. Aceito na v1. Créditos não usados não passam para outro aparelho.
-- **Uma instalação nova poderia receber Passes antigos sem restauração** (se a loja/RevenueCat transferir o histórico ao configurar). Conferir no sandbox; se acontecer, a store passa a marcar como usados os Passes já presentes no primeiro snapshot da instalação.
-- **Pagar antes de experimentar a segunda vez pode afastar quem gostou da primeira.** A aposta é que a primeira gravação completa e sem limite convence mais do que 10 lances. Medir a conversão do paywall da segunda gravação e a volta em 30 dias.
-- O paywall hospedado tem o layout que o builder do RevenueCat permite.
-- Comissão das lojas (~15%) e RevenueCat (1% acima de ~US$ 2.500 de receita mensal, a confirmar no site deles) reduzem a margem; não afetam o design.
+- **Limites que não convencem:** grátis ilimitado pode converter menos que pagar antes da segunda gravação. Medir a conversão do paywall por ponto de entrada (cadeado de som, Full HD, duração, gatilho) e a volta em 30 dias.
+- **Crédito validado no aparelho:** aparelho adulterado pode forjar créditos. Aceito na v1. Créditos não passam para outro aparelho.
+- **Instalação nova recebendo Passes antigos sem restauração:** conferir no sandbox; se acontecer, marcar como usados os Passes do primeiro snapshot da instalação.
+- **Compra com atraso + início imediato** (sobretudo pelo relógio): a sessão pode começar grátis e o Passe ficar para a próxima. Aceito; a linha do Passe mostra quando ele está pronto.
+- **Áudio nativo** (ver "Áudio e voz"): só o aparelho confirma.
+- O paywall hospedado tem o layout que o builder permite. Comissões das lojas (~15%) e do RevenueCat reduzem a margem; não afetam o design.

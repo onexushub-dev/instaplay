@@ -1,5 +1,7 @@
 # Primeira gravação grátis, pagar antes da segunda, Passe como crédito — Implementation Plan
 
+> **Superseded** em 2026-10-23 por `2026-10-23-payments-free-limits.md` (plano grátis com limites no lugar da primeira gravação grátis).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Trocar o modelo "10 clipes liberados por jogo, do 11º em diante bloqueados" por: a primeira gravação do aparelho é grátis e sem limite; da segunda em diante o usuário precisa do Pro ativo ou de um Passe Avulso disponível (crédito) **antes** de começar, e o paywall abre no botão "Começar gravação" da preparação. Clipes bloqueados deixam de existir.

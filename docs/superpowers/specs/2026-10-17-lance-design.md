@@ -5,10 +5,10 @@
 
 ## 1. Objetivo
 
-Levar para o celular do praticante o sistema de "replay" que algumas quadras oferecem com câmera fixa e botão físico. O celular, preso na grade ou na areia, grava o jogo inteiro, mas guarda só os lances que o jogador escolher. O lance vai para o Instagram Stories em dois toques.
+Levar para o celular do praticante o sistema de "replay" que algumas quadras oferecem com câmera fixa e botão físico. O celular, preso na grade ou na areia, grava o jogo inteiro, mas guarda só os lances que o jogador escolher. O lance vai para a galeria ou para qualquer app pela folha de compartilhar em dois toques.
 
 - **Público inicial:** praticantes de esportes de areia (beach tennis, futevôlei, vôlei de praia). O app funciona em qualquer esporte de quadra (opção "Outro").
-- **Princípios:** sem cadastro, abre direto na câmera, "dois toques até o Story", app leve e rápido.
+- **Princípios:** sem cadastro, abre direto na câmera, "dois toques até compartilhar", app leve e rápido.
 
 ## 2. Decisões tomadas
 
@@ -19,12 +19,12 @@ Levar para o celular do praticante o sistema de "replay" que algumas quadras ofe
 | Buffer | Janela móvel de 60s. O que sai da janela é apagado na hora. Só os lances salvos ficam no celular |
 | Corte padrão | Últimos 30s até o gatilho, ajustável depois dentro dos 60s |
 | Dados | Só no celular, sem login. Modelo preparado para login futuro |
-| Receita | Primeira gravação grátis e sem limite; da segunda em diante, Passe Avulso (R$4,90, uma sessão — jogo ou treino) ou Pro (R$19,90/mês, 7 dias grátis), pagos antes de começar. Kit físico de fixação opcional, vendido fora do app |
+| Receita | Grátis ilimitado com limites (clipe de até 15 s, sem som, HD 720p, gatilhos tela/gesto/voz); Passe Avulso (R$4,90, uma gravação) ou Pro (R$14,90/mês, 7 dias grátis) liberam os limites. Kit físico de fixação opcional, vendido fora do app |
 | Câmera | Módulo nativo próprio `ReplayCamera` (Expo Modules), sem VisionCamera |
 
 ## 3. Experiência do usuário
 
-Fluxo: **Boas-vindas → Posicionar câmera → Gravando → Lance salvo (repete) → Fim de jogo → Editor → Story.** O paywall aparece antes de começar a segunda gravação (e quando o usuário pede um recurso pago numa gravação grátis), nunca durante a gravação.
+Fluxo: **Boas-vindas → Posicionar câmera → Gravando → Lance salvo (repete) → Fim de jogo → Editor → Salvar/Compartilhar.** O paywall só aparece quando o jogador toca numa opção paga travada na preparação, nunca durante a gravação.
 
 ### 3.1 Boas-vindas (só na primeira vez)
 - Promessa: "Grave o jogo inteiro. Guarde só o lance."
@@ -38,7 +38,8 @@ Fluxo: **Boas-vindas → Posicionar câmera → Gravando → Lance salvo (repete
 - Dica: "Atrás da linha de fundo, na altura do ombro".
 - Esporte: Beach tennis, Futevôlei, Vôlei de praia, Outro.
 - Status dos gatilhos: Tela (sempre ativa), Gesto X (ativo/inativo), Controle (conectado/não), Relógio (pareado/"Toque para parear").
-- Botão "Começar gravação". Bloqueado se houver menos de ~500 MB livres. Da segunda gravação em diante, sem Pro e sem Passe disponível, abre o paywall antes de começar (seção 3.5).
+- Seção "Clipe": duração (15 s / do modo), qualidade (HD / Full HD) e som do clipe; no plano grátis as opções pagas têm cadeado e selo "Premium" (seção 3.5).
+- Botão "Começar gravação". Bloqueado se houver menos de ~500 MB livres. Nunca bloqueado por pagamento.
 
 ### 3.3 Gravando
 - A tela escurece para economizar bateria, mas a gravação continua.
@@ -54,16 +55,17 @@ Fluxo: **Boas-vindas → Posicionar câmera → Gravando → Lance salvo (repete
 - "Lance #N salvo · via <origem> · últimos 30s".
 - Botão "Desfazer".
 
-### 3.5 Primeira gravação grátis e paywall (revisado em 2026-10-22)
-- A primeira gravação do aparelho é grátis e sem limite de lances (exporta em 720p com selo, sem câmera lenta, 1 template).
-- Da segunda em diante, "Começar gravação" exige o Pro ativo ou um Passe Avulso disponível (comprado e ainda não usado). Sem nenhum dos dois, abre o paywall (Passe Avulso R$4,90 pré-selecionado ou Pro R$19,90/mês com 7 dias grátis); comprando, a gravação começa; fechando, nada começa.
-- A gravação nunca para por causa do plano e nenhum paywall aparece durante a gravação. Não há lances bloqueados.
-- No resumo e no editor da gravação grátis, "Liberar HD e recursos" e a câmera lenta abrem o paywall; o Passe comprado ali vale para aquela gravação.
+### 3.5 Plano grátis e paywall (revisado em 2026-10-23)
+- Grátis: gravações e lances ilimitados; clipe de até 15 s, sem som, HD 720p (captura e exportação); gatilhos tela, gesto e voz.
+- Pago (Pro R$14,90/mês com 7 dias grátis, ou Passe Avulso R$4,90 para uma gravação): duração do modo, som, Full HD 1080p, e os gatilhos relógio, controle Bluetooth e celular controle.
+- O Passe é um crédito comprado antes: é consumido no início da próxima gravação sem Pro ("Seu Passe Avulso será usado nesta gravação."). O plano de cada gravação é fixado no início.
+- O paywall abre pelos cadeados da preparação; comprar destrava a opção (nada começa sozinho). Nenhum paywall durante a gravação; a gravação nunca para por causa do plano.
+- Câmera lenta, edição, compartilhar e lentes valem para todos. A marca "feito com LANCE" vai em toda exportação.
 - Pagamento pela App Store / Google Play. Detalhes em `2026-10-20-payments-revenuecat-design.md`.
 
 ### 3.6 Relógio (watchOS e Wear OS)
 - Uma tela só: tempo + número de lances e um botão grande "Salvar lance".
-- O relógio como gatilho é só do Pro (também na primeira gravação). Sem Pro o botão dá lugar a "Disponível no Pro" e o resto continua. Detalhes em `2026-10-20-payments-revenuecat-design.md`.
+- O relógio como gatilho é do plano pago (Pro ou gravação com Passe). No grátis o botão dá lugar a "Disponível no Premium" e o resto continua. Detalhes em `2026-10-20-payments-revenuecat-design.md`.
 - Vibração quando o lance é confirmado.
 
 ### 3.7 Fim de jogo
@@ -74,15 +76,13 @@ Fluxo: **Boas-vindas → Posicionar câmera → Gravando → Lance salvo (repete
 ### 3.8 Editor do lance
 - Preview com play.
 - Linha do tempo de 60s com a janela de corte ajustável (padrão: últimos 30s).
-- Ferramentas: Corte, Câmera lenta (Passe/Pro), Som.
-- Botão "Próximo: Story".
+- Ferramentas: Corte, Velocidade (inclui câmera lenta, todos os planos), Som (gravação grátis: sem som), Zoom e giro.
+- Botões "Salvar na galeria" e "Compartilhar".
 
-### 3.9 Postar no Story
-- Prévia 9:16 com template: esporte, data/hora, título, local opcional.
-- Templates: Placar, Minimal, Arena (o plano grátis tem 1).
-- Plano grátis: selo "feito com LANCE" + 720p. Passe/Pro: HD sem selo.
-- "Postar no Story" abre o Instagram direto no editor de Stories.
-- Também há "Salvar na galeria" e "Compartilhar" (folha de compartilhar do sistema).
+### 3.9 Exportar e compartilhar (revisado em 2026-10-23: o Story saiu)
+- Prévia do quadro vertical 9:16 exportado, com faixas e a marca "feito com LANCE" (todos os planos).
+- Grátis: 720p, sem som, até 15 s. Pago: 1080p.
+- "Salvar na galeria" e "Compartilhar" (folha de compartilhar do sistema). Sem templates e sem "Postar no Story".
 
 ### 3.10 Gesto
 - Braços cruzados em X acima da cabeça, mantidos por ~1s. É um gesto deliberado, para não confundir com comemoração.
@@ -118,16 +118,16 @@ Apps de relógio: watchOS (SwiftUI, via expo-apple-targets) · Wear OS (Compose)
 ### 4.1 Stack
 - Expo (SDK mais recente), New Architecture, Hermes, Expo Router.
 - Reanimated (feedback e editor de corte), MMKV (metadados), RevenueCat (compras).
-- Integração "Sharing to Stories" do Instagram (exige Facebook App ID), com a folha de compartilhar do sistema como alternativa.
+- Folha de compartilhar do sistema (`expo-sharing`) e galeria (`expo-media-library`). Sem integração com o Instagram.
 - Analytics de eventos anônimos (ferramenta a definir no plano).
 - EAS Build / EAS Update.
 
 ### 4.2 Interface do `ReplayCamera` (JS ↔ nativo)
 - **Comandos:**
-  - `startSession({ lens, maxQuality })`
+  - `startSession({ lens, zoom, maxQuality, bufferSeconds, audio })` (`audio: false` = clipe sem trilha de áudio; o microfone continua para a voz)
   - `stopSession()`
   - `saveClip({ source, at })` → `{ clipPath, durationMs }`
-  - `exportClip({ clipPath, trim, slowmo, template, resolution, watermark })` → `{ outputPath }`
+  - `exportClip({ clipPath, startMs, endMs, speed, muted, crop, rotation, width, height, overlayPngPath })` → `{ path }` (a camada PNG traz faixas e marca)
   - `setGestureEnabled(bool)`
 - **Eventos:**
   - `onTrigger({ source, at })`: vindo de gesto, controle ou relógio
@@ -146,17 +146,17 @@ Apps de relógio: watchOS (SwiftUI, via expo-apple-targets) · Wear OS (Compose)
 - Trava de 3s entre salvamentos, para que dois gatilhos quase juntos não salvem o lance em dobro.
 
 ### 4.5 Exportação
-- Recodifica aplicando corte, câmera lenta, template, resolução e selo de acordo com o plano.
-- A gravação é sempre na qualidade máxima suportada. O plano só limita o que sai na exportação.
+- Recodifica aplicando corte, velocidade, zoom, giro, resolução e a camada com a marca.
+- O plano da gravação, fixado no início, limita a captura e a exportação: grátis 720p, sem som, buffer e corte de até 15 s; pago a qualidade e o buffer do modo, com som.
 
 ## 5. Dados (no celular)
 
 ```
 UsuárioAnônimo { id: uuid, criadoEm, revenueCatId }
-Sessão         { id: uuid, esporte, início, fim, passeTransaçãoId? }
+Sessão         { id: uuid, esporte, início, fim, pago, passeTransaçãoId? }
 Lance          { id: uuid, sessãoId, criadoEm, origem: tela|gesto|controle|relógio,
                  arquivo, corte: { início, fim } }
-Pagamentos     { primeiraSessãoUsada, passesUsados: [transaçãoId] }
+Pagamentos     { passesUsados: [transaçãoId] }
 Preferências   { lente, duraçãoPadrão: 30, gestoAtivo, relógioPareado }
 ```
 
@@ -165,19 +165,19 @@ Preferências   { lente, duraçãoPadrão: 30, gestoAtivo, relógioPareado }
 
 ## 6. Monetização
 
-| Regra | Grátis | Passe Avulso (R$4,90) | Pro (R$19,90/mês) |
+| Regra | Grátis | Passe Avulso (R$4,90) | Pro (R$14,90/mês) |
 |---|---|---|---|
-| Começar uma gravação | Só a primeira do aparelho | Uma gravação por Passe | Todas |
-| Lances por gravação | Sem limite | Sem limite | Sem limite |
-| Exportação | 720p | 1080p 60fps | 1080p 60fps |
-| Selo/marca d'água | Sim | Não | Não |
-| Câmera lenta | Não | Sim | Sim |
-| Templates de Story | 1 | Todos | Todos |
-| Relógio como gatilho | Não | Não | Sim |
-| Validade | A primeira gravação, para sempre | A gravação a que foi ligado, para sempre | Mensal (7 dias grátis para quem tem direito) |
+| Gravações e lances | Ilimitados | Uma gravação paga por Passe | Todas pagas |
+| Duração do clipe | Até 15 s | A do modo | A do modo |
+| Som no clipe | Não | Sim | Sim |
+| Captura e exportação | 720p | 1080p | 1080p |
+| Gatilhos | Tela, gesto, voz | + relógio, controle Bluetooth, celular controle | + relógio, controle Bluetooth, celular controle |
+| Câmera lenta, edição, compartilhar | Sim | Sim | Sim |
+| Marca "feito com LANCE" | Sim | Sim | Sim |
+| Validade | Sempre | A gravação em que foi consumido | Mensal (7 dias grátis para quem tem direito) |
 
-- O Passe é uma compra avulsa (consumível) pela loja e funciona como crédito: comprado na preparação, é consumido ao começar a próxima gravação; comprado no resumo/editor da gravação grátis, vale para ela. Ligado a uma gravação, continua valendo se o app reiniciar e nunca volta a ser crédito.
-- A primeira gravação grátis é marcada no aparelho quando começa; apagar a gravação não a devolve (reinstalar sim, risco aceito sem login).
+- O Passe é uma compra avulsa (consumível) e funciona como crédito comprado antes de gravar: é consumido no início da próxima gravação sem Pro. Os clipes nascem com o plano da gravação; um Passe não melhora uma gravação já feita. Um Passe usado nunca volta a ser crédito, mesmo apagando a gravação.
+- O plano de cada gravação (`pago`) é fixado no início e não muda depois.
 - Conteúdo digital é vendido só pelas compras da loja (Apple/Google). O kit físico é vendido fora do app (link externo, Pix).
 - Hipótese a verificar: decisões regulatórias no Brasil (CADE vs. Apple) que permitam pagamento externo.
 
@@ -190,12 +190,11 @@ Preferências   { lente, duraçãoPadrão: 30, gestoAtivo, relógioPareado }
 | Pouco espaço | Bloqueia "Começar jogo" abaixo de ~500 MB e avisa durante o jogo |
 | Permissão negada | A tela explica o motivo e leva aos ajustes |
 | Relógio/controle desconectado | O indicador fica cinza e os outros gatilhos continuam funcionando |
-| Instagram não instalado | Usa a folha de compartilhar do sistema |
 | App fechado inesperadamente | Limpa a pasta temporária ao abrir e mantém os lances já salvos |
 
 ## 8. Testes
 
-- **JS (unitários):** trava de gatilhos, regras do Passe e do Pro, primeira gravação grátis e portão de início, estado da sessão.
+- **JS (unitários):** trava de gatilhos, regras do Passe e do Pro, plano fixado no início e limites do plano grátis, estado da sessão.
 - **Nativo:** testes do anel de pedaços (descarte e junção), em aparelho real.
 - **Campo:** sessões de 2h ao sol, num iPhone e num Android intermediário.
 
@@ -206,7 +205,7 @@ Preferências   { lente, duraçãoPadrão: 30, gestoAtivo, relógioPareado }
 - **Fora da v1:**
   - login, nuvem, compartilhar com parceiros e convite de amigos;
   - multi-ângulo, resumo automático do jogo, ranking "Lance da Semana";
-  - arenas (B2B) e patrocínio nos templates;
+  - arenas (B2B) e patrocínio na exportação;
   - loja do kit dentro do app.
 
 ### Ordem de entrega (atualizada em 2026-10-18)
@@ -215,17 +214,17 @@ Decisão do Marcus: entregar todas as funcionalidades antes de cobrar.
 
 1. Plano 1: motor de câmera (feito)
 2. Plano 2: telas, gatilhos e armazenamento (feito)
-3. Plano 3: editor, Story, nome do jogo e "Meus jogos"
+3. Plano 3: editor, Story (removido em 2026-10-23), nome do jogo e "Meus jogos"
 4. Plano 4: modos de uso baseados em predefinições. "Esporte" vira "Modo", agrupado em **Quadra** (beach tennis, futevôlei, vôlei de praia, outro) e **Academia** (musculação, crossfit, funcional, outro). Cada modo é uma entrada de um único registro de predefinições, que o resto do app só lê:
    - guia de posicionamento desenhado sobre a câmera (quadra em perspectiva, silhueta de pessoa, nenhum) e a dica em texto;
    - lente padrão (0.5x quadra, 1x academia);
    - gatilhos ligados por padrão (academia: voz, controle e tela; gesto "braços para cima" desligado, pois exercícios acima da cabeça o disparariam);
    - buffer e corte padrão (quadra 60s / 30s; academia 2 min / 60s);
-   - templates e textos do Story (quadra: Placar, Minimal, Arena; academia: Treino, Recorde pessoal, Minimal, com exercício e carga).
+   - ~~templates e textos do Story~~ (removido em 2026-10-23: o Story saiu do app).
    Ajustes que o usuário fizer ficam salvos por modo. Novos modos (skate, corrida, dança, família) = nova entrada no registro.
 5. Plano 5: apps de relógio
 6. Android no aparelho e teste de campo
-7. Último: pagamento e assinatura (seção 6). Até lá tudo fica liberado; `useEntitlement()` é o único ponto que decide o que é pago, e hoje responde "pro".
+7. Último: pagamento e assinatura (seção 6). `usePlan()` e `session.paid` decidem o que é pago (spec de pagamentos).
 
 ## 10. Métricas de sucesso (metas iniciais são hipóteses)
 
@@ -234,7 +233,7 @@ Decisão do Marcus: entregar todas as funcionalidades antes de cobrar.
 | % de jogos com ≥1 lance salvo | > 70% |
 | Lances postados / salvos | > 30% |
 | Uso por gatilho | descobrir |
-| Conversão do paywall da segunda gravação | > 5% |
+| Conversão do paywall (por ponto de entrada) | > 5% |
 | Volta em 30 dias | > 25% |
 
 ## 11. Lançamento
