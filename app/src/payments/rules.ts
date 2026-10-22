@@ -18,7 +18,17 @@ export function startPlan(input: { proActive: boolean; credit?: PassTransaction 
 }
 
 export function planOf(d: StartDecision): Plan {
-  return d.kind === 'free' ? 'free' : 'paid';
+  switch (d.kind) {
+    case 'pro':
+    case 'credit':
+      return 'paid';
+    case 'free':
+      return 'free';
+    default: {
+      const unknown: never = d; // a new kind must choose its plan here, never fall into 'paid'
+      return unknown;
+    }
+  }
 }
 
 /** The plan a stored session ran with: an explicit `paid` wins, else a bound Pass means paid. */

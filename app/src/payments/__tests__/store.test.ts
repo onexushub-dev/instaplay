@@ -173,42 +173,19 @@ describe('payments store', () => {
     expect(store.getSnapshot().proActive).toBe(true);
   });
 
-  it('restored with the before snapshot unknown spends what it brought', async () => {
+  it('with no snapshot and the pre-read failing, showPaywall returns error without opening the paywall', async () => {
     const client = createFakeClient();
     client.failSnapshot = true;
-    const repo = memRepo();
-    const store = createPaymentsStore(client, repo);
+    const store = createPaymentsStore(client, memRepo());
     store.start();
     await flush();
-    client.nextOutcome = 'restored';
-    client.snapshot = snap({ passTransactions: [tx('old')] });
-    // the read before the paywall fails, the one after succeeds
-    let calls = 0;
-    client.getSnapshot = async () => {
-      calls += 1;
-      if (calls === 1) throw new Error('x');
-      return client.snapshot;
-    };
-    await store.showPaywall();
-    expect(repo.spentPasses().has('old')).toBe(true);
-    expect(store.credits()).toBe(0);
-  });
-
-  it('purchased with the before snapshot unknown is still a credit', async () => {
-    const client = createFakeClient();
-    const repo = memRepo();
-    const store = createPaymentsStore(client, repo);
-    client.nextOutcome = 'purchased';
-    client.snapshot = snap({ passTransactions: [tx('new', 5)] });
-    let calls = 0;
-    client.getSnapshot = async () => {
-      calls += 1;
-      if (calls === 1) throw new Error('x');
-      return client.snapshot;
-    };
-    await store.showPaywall();
-    expect(store.peekStart()).toEqual({ kind: 'credit', passTransactionId: 'new' });
-    expect(repo.spendPasses).not.toHaveBeenCalled();
+    const spy = jest.spyOn(client, 'showPaywall');
+    await expect(store.showPaywall()).resolves.toBe('error');
+    expect(spy).not.toHaveBeenCalled();
+    // guard released: once a read works, the paywall opens
+    client.failSnapshot = false;
+    await expect(store.showPaywall()).resolves.toBe('cancelled');
+    expect(spy).toHaveBeenCalledTimes(1);
   });
 
   it('a throwing showPaywall maps to error and releases the guard', async () => {
@@ -562,6 +539,51 @@ describe('payments store', () => {
       await store.restore();
       expect(store.credits()).toBe(1);
       expect(store.peekStart()).toEqual({ kind: 'credit', passTransactionId: 'tx-2' });
+    });
+  });
+
+  describe('a failed ledger write during a restore (task 3 review)', () => {
+    async function withCredit() {
+      const t = await setup(snap({ passTransactions: [tx('tx-1')] }));
+      const real = t.repo.spendPasses.getMockImplementation()!;
+      t.repo.spendPasses.mockImplementation(() => {
+        throw new Error('storage');
+      });
+      t.client.snapshot = snap({ passTransactions: [tx('tx-1'), tx('old', 0)] });
+      return { ...t, real };
+    }
+
+    it('restore() reports failure and the restored Pass never becomes a credit', async () => {
+      const { client, repo, store, real } = await withCredit();
+      await expect(store.restore()).resolves.toBe(false);
+      expect(store.credits()).toBe(1);
+      expect(store.peekStart()).toEqual({ kind: 'credit', passTransactionId: 'tx-1' });
+      client.emit(snap({ passTransactions: [tx('tx-1'), tx('old', 0)] })); // the listener delivers it again
+      expect(store.credits()).toBe(1);
+      repo.spendPasses.mockImplementation(real); // storage back: the next update writes it
+      client.emit(snap({ passTransactions: [tx('tx-1'), tx('old', 0)] }));
+      expect(repo.spentPasses()).toEqual(new Set(['old']));
+      expect(store.credits()).toBe(1);
+    });
+
+    it('a restored paywall keeps the restored Pass out of the credits', async () => {
+      const { client, store } = await withCredit();
+      client.nextOutcome = 'restored';
+      await store.showPaywall();
+      expect(store.credits()).toBe(1);
+      expect(store.peekStart()).toEqual({ kind: 'credit', passTransactionId: 'tx-1' });
+      client.emit(snap({ passTransactions: [tx('tx-1'), tx('old', 0)] }));
+      expect(store.credits()).toBe(1);
+    });
+
+    it('a restored Pass the listener delivered during restore() stays out of the credits too', async () => {
+      const { client, store } = await withCredit();
+      client.restore = async () => {
+        client.emit(snap({ passTransactions: [tx('tx-1'), tx('old', 0)] }));
+        return client.snapshot;
+      };
+      await expect(store.restore()).resolves.toBe(false);
+      expect(store.credits()).toBe(1);
     });
   });
 

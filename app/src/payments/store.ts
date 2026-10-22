@@ -18,14 +18,32 @@ export function createPaymentsStore(client: PaymentsClient, repo: Pick<Repo, 'ge
   let started = false;
   const listeners = new Set<() => void>();
 
+  // Restored passes whose ledger write failed: counted as spent from here and written again at the next update, so a
+  // storage failure never turns a restore into credits (not even when the listener delivers the same passes again).
+  const unledgered = new Set<string>();
+
   function notify() {
     version += 1;
     listeners.forEach((fn) => fn());
   }
 
+  /** The ledger plus the restored passes it could not take yet. */
+  function spent(): Set<string> {
+    const ids = repo.spentPasses();
+    unledgered.forEach((id) => ids.add(id));
+    return ids;
+  }
+
+  /** Writes the held restored passes to the ledger; throws, keeping them held, if storage fails. */
+  function writeUnledgered() {
+    if (unledgered.size === 0) return;
+    repo.spendPasses([...unledgered]);
+    unledgered.clear();
+  }
+
   /** The oldest pass in `snapshot` that is neither in `before` nor in the ledger: what a purchase after `before` bought. */
   function purchasedSince(before: Snapshot, snapshot: Snapshot): string | undefined {
-    const known = repo.spentPasses(); // the ledger: a spent or restored pass is never a purchase
+    const known = spent(); // the ledger: a spent or restored pass is never a purchase
     before.passTransactions.forEach((t) => known.add(t.id));
     const fresh = snapshot.passTransactions.filter((t) => !known.has(t.id));
     if (fresh.length === 0) return undefined;
@@ -50,6 +68,11 @@ export function createPaymentsStore(client: PaymentsClient, repo: Pick<Repo, 'ge
   function apply(s: Snapshot) {
     current = s;
     resolvePending(s);
+    try {
+      writeUnledgered();
+    } catch {
+      // still held: counted as spent, written at the next update
+    }
     notify();
   }
 
@@ -57,18 +80,22 @@ export function createPaymentsStore(client: PaymentsClient, repo: Pick<Repo, 'ge
    * After a restore: explains a waiting purchase first (it is a purchase, not a restore), then puts every other pass
    * that is new against `before` (all unspent ones when `before` is unknown) in the ledger, so a restore never
    * creates a credit. `dropped` is a pending this paywall's pre-read dropped unexplained: its Pass is kept too. Notifies.
+   * The restored passes count as spent before `current` shows them; throws if the ledger write fails (they stay held).
    */
   function applyRestored(s: Snapshot, before: Snapshot | null, dropped?: Pending | null): { droppedExplained: boolean } {
-    current = s;
     const resolved = resolvePending(s);
     const droppedId = !resolved && dropped ? purchasedSince(dropped.before, s) : undefined;
     const kept = resolved ?? droppedId;
-    const known = repo.spentPasses();
+    const known = spent();
     before?.passTransactions.forEach((t) => known.add(t.id));
     if (kept) known.add(kept);
-    const restored = s.passTransactions.filter((t) => !known.has(t.id)).map((t) => t.id);
-    if (restored.length > 0) repo.spendPasses(restored);
-    notify();
+    s.passTransactions.filter((t) => !known.has(t.id)).forEach((t) => unledgered.add(t.id));
+    current = s;
+    try {
+      writeUnledgered();
+    } finally {
+      notify();
+    }
     return { droppedExplained: !!droppedId };
   }
 
@@ -78,7 +105,7 @@ export function createPaymentsStore(client: PaymentsClient, repo: Pick<Repo, 'ge
       const snap = current ?? EMPTY_SNAPSHOT;
       return startPlan({
         proActive: snap.proActive,
-        credit: availableCredit(snap, repo.spentPasses()),
+        credit: availableCredit(snap, spent()),
       });
     } catch {
       return { kind: 'free' };
@@ -146,13 +173,12 @@ export function createPaymentsStore(client: PaymentsClient, repo: Pick<Repo, 'ge
           } catch {
             return 'error'; // storage failed before selling anything
           }
-          if (fresh) {
-            dropped = pending;
-            pending = null; // still unexplained: dropped so it cannot capture this paywall's purchase
-            before = fresh;
-          } else if (pending) {
-            return 'error'; // never sell another pass while an earlier purchase is unexplained
-          }
+          // Never sell while an earlier purchase is unexplained, nor without a "before": with an unknown one an old
+          // credit could be taken for this purchase and the new Pass later ledgered by a restore.
+          if (!fresh) return 'error';
+          dropped = pending;
+          pending = null; // still unexplained: dropped so it cannot capture this paywall's purchase
+          before = fresh;
         }
         let outcome: PaywallOutcome;
         try {
@@ -169,7 +195,7 @@ export function createPaymentsStore(client: PaymentsClient, repo: Pick<Repo, 'ge
           } else if (outcome === 'purchased') {
             dropped = null; // the single slot now waits for this purchase
             // The marker keeps a lagging Pass a credit: a restore never spends it, a start re-reads.
-            pending = { before: before ?? EMPTY_SNAPSHOT };
+            pending = { before };
             const after = await read(() => client.getSnapshot());
             if (after) {
               current = after;
@@ -200,7 +226,7 @@ export function createPaymentsStore(client: PaymentsClient, repo: Pick<Repo, 'ge
       }
     },
 
-    /** Restores Pro. Passes it brings go to the ledger, never become credits. */
+    /** Restores Pro. Passes it brings go to the ledger, never become credits. False if that ledger write fails. */
     async restore(): Promise<boolean> {
       try {
         // Taken before the call: the listener may deliver the restored data before `restore` resolves.
@@ -243,7 +269,7 @@ export function createPaymentsStore(client: PaymentsClient, repo: Pick<Repo, 'ge
     /** Unused Passes, counted like `peekStart`. */
     credits(): number {
       try {
-        return creditCount(current ?? EMPTY_SNAPSHOT, repo.spentPasses());
+        return creditCount(current ?? EMPTY_SNAPSHOT, spent());
       } catch {
         return 0;
       }
