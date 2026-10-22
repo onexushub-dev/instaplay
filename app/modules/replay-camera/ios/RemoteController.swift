@@ -252,7 +252,10 @@ final class RemoteController: NSObject {
       emit?("onRemoteState", body)
     case let .result(saved):
       emit?("onRemoteResult", ["saved": saved])
-    case .save, .stop, .forget, .start, .preview:
+    case let .ping(token):
+      // The camera phone asks "are you there?" (its Verificar button): answer at once.
+      send(.pong(token: token))
+    case .save, .stop, .forget, .start, .preview, .pong:
       break
     }
   }

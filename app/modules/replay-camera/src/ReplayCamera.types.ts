@@ -27,10 +27,12 @@ export type WatchStatus = 'unsupported' | 'notInstalled' | 'ready';
 
 /** Second iPhone as a remote: idle · looking for the other phone · talking to it · Local Network not allowed. */
 export type RemoteLink = 'idle' | 'searching' | 'connected' | 'denied';
-export type RemotePeer = { id: string; name: string };
+/** `connected` is only filled in for the paired remotes of the camera phone (`remoteHostPeers`): is the link up right now. */
+export type RemotePeer = { id: string; name: string; connected?: boolean };
 /** What the camera phone shows to pair: the QR link, the 6-digit code, when both stop working (ms) and the QR image. */
 export type RemotePairing = { url: string; code: string; expiresAt: number; qrPath: string };
-export type RemotePairFailure = 'expired' | 'locked' | 'notFound' | 'wrong' | 'denied' | 'full';
+/** `expired` is only about time. `used`: another remote is pairing with this code. `closed`: the camera phone is not offering a pairing. */
+export type RemotePairFailure = 'expired' | 'locked' | 'notFound' | 'wrong' | 'denied' | 'full' | 'used' | 'closed';
 
 export type ReplayCameraModuleEvents = {
   onTrigger: (e: { source: TriggerSource; at: number }) => void;
@@ -46,7 +48,20 @@ export type ReplayCameraModuleEvents = {
   onRemoteStart: () => void;
   /** Remote phone only: one picture of the camera phone's view, a JPEG in base64. */
   onRemoteFrame: (e: { jpeg: string }) => void;
-  onRemotePairing: (e: { phase: 'paired'; peer: RemotePeer } | { phase: 'failed'; reason: RemotePairFailure }) => void;
+  /**
+   * `paired` / `failed`: the end of a pairing, on either phone. Camera phone only: `connecting` (a remote proved the code
+   * and is linking up), `released` (that link failed, the code is free again) and `offerEnded` (five wrong tries).
+   */
+  onRemotePairing: (
+    e:
+      | { phase: 'paired'; peer: RemotePeer }
+      | { phase: 'failed'; reason: RemotePairFailure }
+      | { phase: 'connecting'; peer: RemotePeer }
+      | { phase: 'released' }
+      | { phase: 'offerEnded'; reason: 'locked' },
+  ) => void;
+  /** Camera phone only: the answer to `remoteHostCheck`. `ms` is the round trip; 0 when `ok` is false. */
+  onRemoteCheck: (e: { id: string; ok: boolean; ms: number }) => void;
   onThermalChange: (e: { level: ThermalLevel; degraded: boolean }) => void;
   onInterrupted: () => void;
   onResumed: () => void;

@@ -21,6 +21,7 @@ import type { RemoteLink, RemotePairFailure, RemotePeer } from '../../modules/re
 import { Button } from '../components/Button';
 import { ConnectionBar } from '../components/ConnectionBar';
 import { QrScanner } from '../components/QrScanner';
+import { RequirementsChecklist } from '../components/RequirementsChecklist';
 import { RemotePreview } from '../components/RemotePreview';
 import { DeviceNameField } from '../components/DeviceNameField';
 import { HoldButton } from '../components/HoldButton';
@@ -57,6 +58,10 @@ function failureText(reason: RemotePairFailure): string {
       return 'Este controle não está mais pareado';
     case 'full':
       return 'O celular da câmera já tem 4 controles. Remova um lá para conectar este.';
+    case 'used':
+      return 'Outro celular está usando este código agora. Peça um novo no celular da câmera.';
+    case 'closed':
+      return 'O celular da câmera não está pareando agora. Toque em “Parear outro celular” lá e tente de novo.';
     default:
       return 'Código incorreto. Confira os números e tente de novo.';
   }
@@ -69,6 +74,24 @@ function Step({ n, text }: { n: number; text: string }) {
         <Text style={styles.stepNumberText}>{String(n)}</Text>
       </View>
       <Text style={styles.stepText}>{text}</Text>
+    </View>
+  );
+}
+
+/** Undoes the pairing with the camera phone. Looks like what it is (it forgets), and says whose pairing goes away. */
+function ForgetCamera({ name, onPress }: { name: string; onPress: () => void }) {
+  return (
+    <View style={styles.forget}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Esquecer esta câmera"
+        accessibilityHint={`Desfaz o pareamento com ${name}`}
+        hitSlop={8}
+        onPress={onPress}
+        style={styles.forgetButton}>
+        <Text style={styles.forgetText}>Esquecer esta câmera</Text>
+      </Pressable>
+      <Text style={styles.forgetHint}>{`Desfaz o pareamento com ${name} neste celular.`}</Text>
     </View>
   );
 }
@@ -144,6 +167,7 @@ export default function Remote() {
       );
     });
     const pairing = addReplayListener('onRemotePairing', (e) => {
+      if (e.phase !== 'paired' && e.phase !== 'failed') return; // the other phases are for the camera phone
       stopConnectTimer();
       setConnecting(false);
       if (e.phase === 'paired') {
@@ -237,12 +261,15 @@ export default function Remote() {
   };
 
   // Unpair from this side (the camera phone is told too, when it is in reach) and go back to asking for a code.
-  const useOtherCamera = () => {
-    const name = host === null ? '' : host.name;
-    Alert.alert(`Esquecer ${name}?`, 'Este celular deixa de ser o controle dessa câmera. Para usar de novo, é preciso parear outra vez.', [
+  const forgetCamera = () => {
+    const name = host === null || host.name.length === 0 ? 'a câmera' : host.name;
+    Alert.alert(
+      `Esquecer ${name}?`,
+      `Este celular deixa de controlar ${name}, e ${name} também remove este controle. Para usar de novo, será preciso parear outra vez.`,
+      [
       { text: 'Cancelar', style: 'cancel' },
       {
-        text: 'Esquecer',
+        text: 'Esquecer e parear outra',
         style: 'destructive',
         onPress: () => {
           remoteControllerForget();
@@ -252,7 +279,8 @@ export default function Remote() {
           setNotice(null);
         },
       },
-    ]);
+    ],
+    );
   };
 
   const save = () => {
@@ -289,6 +317,7 @@ export default function Remote() {
           {failure === 'notFound' && !connecting && lastCode !== null ? (
             <Button label="Tentar de novo" variant="secondary" onPress={retry} />
           ) : null}
+          <RequirementsChecklist />
           <Text style={styles.text}>Não consegue ler o QR? Digite aqui o código de 6 números:</Text>
           <TextInput
             accessibilityLabel="Código de 6 números"
@@ -352,7 +381,7 @@ export default function Remote() {
           <View style={styles.center}>
             <PulseRing color={colors.warning} />
             <Text style={styles.status}>{`Procurando ${screenModel.hostName === null ? hostLabel : screenModel.hostName}…`}</Text>
-            <Button label="Usar outra câmera" variant="secondary" onPress={useOtherCamera} />
+            <ForgetCamera name={hostLabel} onPress={forgetCamera} />
           </View>
         ) : null}
 
@@ -370,7 +399,17 @@ export default function Remote() {
             ) : (
               <Text style={styles.hint}>Ou comece pelo próprio celular da câmera.</Text>
             )}
-            <Button label="Usar outra câmera" variant="secondary" onPress={useOtherCamera} />
+            <ForgetCamera name={hostLabel} onPress={forgetCamera} />
+          </View>
+        ) : null}
+
+        {screenModel.kind === 'reconnecting' ? (
+          <View style={styles.center}>
+            <PulseRing color={colors.warning} size={64} />
+            <Text style={styles.status}>{`Reconectando a ${screenModel.hostName}…`}</Text>
+            <Text style={styles.hint}>Deixe o LANCE aberto nos dois celulares.</Text>
+            <Button label="Tentar agora" variant="secondary" onPress={retryNow} />
+            <ForgetCamera name={hostLabel} onPress={forgetCamera} />
           </View>
         ) : null}
 
@@ -378,10 +417,10 @@ export default function Remote() {
           <>
             <View style={styles.center}>
               <PulseRing color={colors.warning} size={64} />
-              <Text style={styles.status}>{`Sem conexão com ${screenModel.hostName}`}</Text>
-              <Text style={styles.sub}>Reconectando…</Text>
+              <Text style={styles.status}>{`Sem sinal de ${screenModel.hostName}`}</Text>
+              <Text style={styles.sub}>Verificando a conexão…</Text>
               <Button label="Tentar agora" variant="secondary" onPress={retryNow} />
-              <Button label="Usar outra câmera" variant="secondary" onPress={useOtherCamera} />
+              <ForgetCamera name={hostLabel} onPress={forgetCamera} />
             </View>
             <Pressable
               accessibilityRole="button"
@@ -454,6 +493,10 @@ const styles = StyleSheet.create({
   status: { fontFamily: fonts.bodySemi, fontSize: 22, lineHeight: 30, color: colors.text, textAlign: 'center' },
   sub: { fontFamily: fonts.bodySemi, fontSize: 16, color: colors.warning, textAlign: 'center' },
   hint: { fontFamily: fonts.body, fontSize: 15, color: colors.muted, textAlign: 'center' },
+  forget: { alignItems: 'center', gap: 2, marginTop: 8 },
+  forgetButton: { minHeight: 44, paddingHorizontal: 16, justifyContent: 'center', alignItems: 'center' },
+  forgetText: { fontFamily: fonts.bodyBold, fontSize: 16, color: colors.warning, textDecorationLine: 'underline' },
+  forgetHint: { fontFamily: fonts.body, fontSize: 13, color: colors.muted, textAlign: 'center' },
   connecting: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 },
   footer: { flexDirection: 'row', gap: 12 },
   footerItem: { flex: 1 },

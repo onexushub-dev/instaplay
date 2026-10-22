@@ -46,6 +46,21 @@ const START_ERRORS: Partial<Record<ReplayErrorCode, string>> = {
   CAMERA_PERMISSION: 'Sem câmera não dá para gravar os clipes. Libere em Ajustes.',
 };
 
+/** Under "Conectar um celular controle": how many remotes are linked right now. Nothing when none is. */
+function controllersStatus(linked: number): string | undefined {
+  if (linked <= 0) return undefined;
+  return linked === 1 ? '1 controle conectado' : `${linked} controles conectados`;
+}
+
+/**
+ * Under "Usar este celular como controle": the camera phone this one is paired with. It says "Pareado", not
+ * "Conectado": this screen cannot tell if the link is up, because the remote side only connects while its own screen is open.
+ */
+function cameraStatus(host: { name: string } | null): string | undefined {
+  if (host === null) return undefined;
+  return host.name.length > 0 ? `Pareado com ${host.name}` : 'Pareado';
+}
+
 export default function Setup() {
   const session = useSession();
   // This screen stays mounted under Minhas gravações, the editor and the save screen: only hold the camera,
@@ -368,12 +383,14 @@ export default function Setup() {
               <TriggerTile
                 icon={<QrIcon />}
                 title="Conectar um celular controle"
+                status={controllersStatus(remoteLinked)}
                 active={remoteLinked > 0}
                 onPress={() => router.push('/pairing')}
               />
               <TriggerTile
                 icon={<TapIcon />}
                 title="Usar este celular como controle"
+                status={cameraStatus(controlHost)}
                 active={controlHost !== null}
                 onPress={() => router.push('/remote')}
               />

@@ -13,6 +13,7 @@ import type { RemotePairFailure } from '../../modules/replay-camera/src/ReplayCa
 import { Button } from '../components/Button';
 import { CheckIcon, CloseIcon } from '../components/icons';
 import { PulseRing } from '../components/PulseRing';
+import { RequirementsChecklist } from '../components/RequirementsChecklist';
 import { parsePairLink } from '../remote/pairLink';
 import { colors, fonts } from '../theme/tokens';
 
@@ -37,6 +38,10 @@ function failureText(reason: RemotePairFailure): string {
       return 'Libere a rede local nos Ajustes para usar o controle.';
     case 'full':
       return 'O celular da câmera já tem 4 controles. Remova um lá para conectar este.';
+    case 'used':
+      return 'Outro celular está usando este código agora. Peça um novo no celular da câmera.';
+    case 'closed':
+      return 'O celular da câmera não está pareando agora. Toque em “Parear outro celular” lá e tente de novo.';
     default:
       return 'Código incorreto. Peça um novo no celular da câmera.';
   }
@@ -67,7 +72,7 @@ export default function Pair() {
         setHostName(e.peer.name);
         setFailure(null);
         setPaired(true);
-      } else {
+      } else if (e.phase === 'failed') {
         setFailure(e.reason);
       }
     });
@@ -132,6 +137,7 @@ export default function Pair() {
               <CloseIcon color={colors.ground} size={56} />
             </View>
             <Text style={styles.warning}>{failureText(failure)}</Text>
+            {failure === 'notFound' ? <RequirementsChecklist /> : null}
             {failure === 'notFound' ? <Button label="Tentar de novo" onPress={retry} /> : null}
             {failure === 'denied' ? <Button label="Abrir Ajustes" onPress={() => Linking.openSettings()} /> : null}
             {failure !== 'notFound' && failure !== 'denied' ? (

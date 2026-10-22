@@ -559,13 +559,42 @@ test('"Usar este celular como controle" opens the remote screen', async () => {
   expect(router.push).toHaveBeenCalledWith('/remote');
 });
 
-test('a phone already paired as a remote shows which camera phone it will connect to', async () => {
+test('a phone already paired as a remote says which camera phone it is paired with, under the title', async () => {
   session({});
   camera().isRemoteSupported.mockReturnValue(true);
   camera().remoteControllerHost.mockReturnValue({ id: 'h1', name: 'iPhone XR#1234' });
   await render(<Setup />);
   await openSettings();
+  expect(screen.getByRole('button', { name: 'Usar este celular como controle, Pareado com iPhone XR#1234' })).toBeTruthy();
+  expect(screen.getByText('Pareado com iPhone XR#1234')).toBeTruthy();
+});
+
+test('with nobody paired neither phone tile has a subtitle', async () => {
+  enableRemote([]);
+  camera().remoteControllerHost.mockReturnValue(null);
+  camera().remoteHostControllers.mockReturnValue(0);
+  session({});
+  await render(<Setup />);
+  await openSettings();
+  expect(screen.getByRole('button', { name: 'Conectar um celular controle' })).toBeTruthy();
   expect(screen.getByRole('button', { name: 'Usar este celular como controle' })).toBeTruthy();
+});
+
+test('"Conectar um celular controle" says how many remotes are connected, and the title stays neutral', async () => {
+  enableRemote([{ id: 'a', name: 'iPhone da Ana' }]);
+  camera().remoteHostControllers.mockReturnValue(1);
+  session({});
+  await render(<Setup />);
+  await openSettings();
+  expect(screen.getByRole('button', { name: 'Conectar um celular controle, 1 controle conectado' })).toBeTruthy();
+  const title = screen.getByText('Conectar um celular controle');
+  expect(JSON.stringify(title.props.style)).not.toContain('#D6F23F');
+  // The count follows the link.
+  const listener = camera().addReplayListener.mock.calls.filter((c: any[]) => c[0] === 'onRemoteStatus').map((c: any[]) => c[1]);
+  await act(async () => listener.forEach((l: any) => l({ link: 'connected', controllers: 2 })));
+  expect(screen.getByRole('button', { name: 'Conectar um celular controle, 2 controles conectados' })).toBeTruthy();
+  await act(async () => listener.forEach((l: any) => l({ link: 'searching', controllers: 0 })));
+  expect(screen.getByRole('button', { name: 'Conectar um celular controle' })).toBeTruthy();
 });
 
 test('"Desconectar deste celular" asks first, then forgets the camera phone and goes back to the first state', async () => {

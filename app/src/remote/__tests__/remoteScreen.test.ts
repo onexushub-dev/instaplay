@@ -64,8 +64,25 @@ test('news older than 12 s is not believed, and a fresh state brings it back', (
   expect(at(1)).toBe('recording');
 });
 
-test('losing the link after hearing from the camera phone is stale, not searching', () => {
+test('losing the link after hearing from the camera phone is reconnecting, not searching and not stale', () => {
   expect(remoteScreen({ link: 'searching', hostName: 'Quadra 1', state: state() })).toEqual({
+    kind: 'reconnecting',
+    hostName: 'Quadra 1',
+  });
+  expect(remoteScreen({ link: 'idle', hostName: 'Quadra 1', state: state({ ageSec: 40 }) }).kind).toBe('reconnecting');
+});
+
+test('waiting for the game never turns into a failure while the beats keep coming', () => {
+  // The camera phone beats every 5 s, so the age of a connected, idle link never passes ~5 s.
+  for (const ageSec of [0, 2, 4.9, 5.1, 9]) {
+    expect(
+      remoteScreen({ link: 'connected', hostName: 'Quadra 1', state: state({ recording: false, clipCount: 0, startedAt: null, ageSec }) }).kind,
+    ).toBe('waiting');
+  }
+});
+
+test('a connected link that has gone silent is stale, whether or not it was recording', () => {
+  expect(remoteScreen({ link: 'connected', hostName: 'Quadra 1', state: state({ recording: false, ageSec: 30 }) })).toEqual({
     kind: 'stale',
     hostName: 'Quadra 1',
   });
@@ -91,6 +108,7 @@ describe('connectionTone', () => {
     expect(tone({ link: 'connected', hostName: 'Q', state: state({ recording: false }) })).toBe('ok');
     expect(tone({ link: 'searching', hostName: 'Q', state: null })).toBe('warn');
     expect(tone({ link: 'connected', hostName: 'Q', state: state({ ageSec: 20 }) })).toBe('warn');
+    expect(tone({ link: 'searching', hostName: 'Q', state: state() })).toBe('warn');
     expect(tone({ link: 'denied', hostName: 'Q', state: null })).toBe('bad');
   });
 });

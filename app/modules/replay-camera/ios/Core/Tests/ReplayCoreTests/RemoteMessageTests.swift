@@ -16,6 +16,8 @@ final class RemoteMessageTests: XCTestCase {
     XCTAssertEqual(RemoteMessage.result(saved: false).payload["result"] as? String, "failed")
     XCTAssertEqual(RemoteMessage.unpaired.payload["unpaired"] as? Bool, true)
     XCTAssertEqual(RemoteMessage.refused(reason: .locked).payload["refused"] as? String, "locked")
+    XCTAssertEqual(RemoteMessage.ping(token: "t").payload["ping"] as? String, "t")
+    XCTAssertEqual(RemoteMessage.pong(token: "t").payload["pong"] as? String, "t")
     let paired = RemoteMessage.paired(hostId: "h1", hostName: "Quadra", pairKey: key).payload["paired"] as? [String: Any]
     XCTAssertEqual(Set((paired ?? [:]).keys), ["hostId", "hostName", "key"])
     XCTAssertEqual(paired?["key"] as? String, key.base64EncodedString())
@@ -38,6 +40,10 @@ final class RemoteMessageTests: XCTestCase {
       .refused(reason: .expired),
       .refused(reason: .locked),
       .refused(reason: .wrong),
+      .refused(reason: .used),
+      .refused(reason: .closed),
+      .ping(token: "a1b2"),
+      .pong(token: "a1b2"),
     ]
     for message in cases {
       XCTAssertEqual(RemoteMessage.decode(message.payload), message)
@@ -58,6 +64,9 @@ final class RemoteMessageTests: XCTestCase {
     XCTAssertNil(RemoteMessage.decode(["result": "maybe"]))
     XCTAssertNil(RemoteMessage.decode(["unpaired": false]))
     XCTAssertNil(RemoteMessage.decode(["refused": "other"]))
+    XCTAssertNil(RemoteMessage.decode(["ping": ""]))
+    XCTAssertNil(RemoteMessage.decode(["pong": 7]))
+    XCTAssertNil(RemoteMessage.decode(["ping": String(repeating: "x", count: 65)]))
     XCTAssertNil(RemoteMessage.decode(["paired": ["hostId": "h1", "hostName": "Quadra"]]))
     XCTAssertNil(RemoteMessage.decode(["paired": ["hostId": "h1", "hostName": "Quadra", "key": "not base64!"]]))
     let shortKey = Data(repeating: 1, count: 16).base64EncodedString()

@@ -2,6 +2,10 @@ import Foundation
 
 /// One pairing attempt on the camera phone: a QR secret and a 6-digit code that stop working after two minutes or
 /// after five wrong proofs. The remote phone proves it knows one of them with `RemoteProof` (purpose `.pair`).
+///
+/// A good proof only *reserves* the offer for that remote; the host spends it (drops the offer) when the pairing is
+/// complete. If the connection never comes up the reservation is released, and the same remote (or another one) can
+/// try again until the two minutes are over. Spending it on the proof alone made every retry look like an expired code.
 public struct PairingOffer {
   public static let validFor = 120.0
   public static let maxAttempts = 5
@@ -11,6 +15,8 @@ public struct PairingOffer {
     case wrongProof(attemptsLeft: Int)
     case expired
     case locked
+    /// A good proof, but another remote is already pairing with this offer.
+    case taken
   }
 
   public let hostId: String
@@ -20,6 +26,8 @@ public struct PairingOffer {
   /// ms since 1970.
   public let createdAt: Double
   public private(set) var failedAttempts = 0
+  /// The remote whose good proof is being turned into a pairing right now.
+  public private(set) var reservedFor: String?
 
   public init(hostId: String, hostName: String, secret: Data, code: String, createdAt: Double) {
     self.hostId = hostId
@@ -36,17 +44,29 @@ public struct PairingOffer {
   }
 
   /// `at` is the timestamp the remote used in its proof; `now` is this phone's clock (both ms since 1970).
-  /// Only a wrong proof uses up an attempt.
+  /// Only a wrong proof uses up an attempt. A good proof from the remote that already holds the reservation is accepted
+  /// again (its first try may have been lost on the way); a good proof from a different remote is `.taken`.
   public mutating func check(proof: String, remoteId: String, at: Double, now: Double) -> Verdict {
-    if now - createdAt > Self.validFor * 1000 { return .expired }
+    if isExpired(now: now) { return .expired }
     if failedAttempts >= Self.maxAttempts { return .locked }
     for key in [secret, Data(code.utf8)]
     where RemoteProof.verify(proof, key: key, purpose: .pair, remoteId: remoteId, at: at, now: now) {
+      if let holder = reservedFor, holder != remoteId { return .taken }
+      reservedFor = remoteId
       return .accepted
     }
     failedAttempts += 1
     return .wrongProof(attemptsLeft: Self.maxAttempts - failedAttempts)
   }
+
+  /// The connection of the reserving remote failed: let it (or another remote) try again.
+  public mutating func release(remoteId: String) {
+    if reservedFor == remoteId { reservedFor = nil }
+  }
+
+  public func isExpired(now: Double) -> Bool { now - createdAt > Self.validFor * 1000 }
+
+  public var isLocked: Bool { failedAttempts >= Self.maxAttempts }
 
   public func secondsLeft(now: Double) -> Double {
     max(0, Self.validFor - (now - createdAt) / 1000)

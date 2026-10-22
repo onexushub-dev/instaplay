@@ -41,6 +41,7 @@ declare class ReplayCameraModule extends NativeModule<ReplayCameraModuleEvents> 
   remoteHostEndPairing?(): void;
   remoteHostPeers?(): RemotePeer[];
   remoteHostRemove?(id: string): void;
+  remoteHostCheck?(id: string): void;
   remoteHostControllers?(): number;
   remoteSync?(recording: boolean, clipCount: number, startedAt: number | null): void;
   remoteSignal?(saved: boolean): void;

@@ -144,6 +144,11 @@ export function remoteHostRemove(id: string): void {
   if (ReplayCameraModule.remoteHostRemove) ReplayCameraModule.remoteHostRemove(id);
 }
 
+/** Camera phone: ask one paired remote "are you there?". The answer arrives as `onRemoteCheck`. */
+export function remoteHostCheck(id: string): void {
+  if (ReplayCameraModule.remoteHostCheck) ReplayCameraModule.remoteHostCheck(id);
+}
+
 /** Camera phone: how many remotes are connected right now. */
 export function remoteHostControllers(): number {
   return ReplayCameraModule.remoteHostControllers ? ReplayCameraModule.remoteHostControllers() : 0;
