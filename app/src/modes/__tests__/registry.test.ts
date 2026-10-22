@@ -17,6 +17,7 @@ test('the free mode defaults to 0.5x (ultra-wide), 60s, gesture on, last 30s', (
     bufferSeconds: 60,
     cutSeconds: 30,
     quality: '1080p60',
+    audio: true,
   });
 });
 

@@ -25,6 +25,7 @@ const COURT: Omit<Mode, 'id'> = {
     bufferSeconds: 60,
     cutSeconds: 30,
     quality: '1080p60',
+    audio: true,
   },
 };
 
@@ -41,6 +42,7 @@ const GYM: Omit<Mode, 'id'> = {
     bufferSeconds: 120,
     cutSeconds: 60,
     quality: '1080p30',
+    audio: true,
   },
 };
 

@@ -1,6 +1,6 @@
 import type { Repo } from '../data/repo';
 import type { PaymentsClient, PaywallOutcome } from './client';
-import { availableCredit, creditCount, detectPurchase, startGate, tierFor as ruleTier } from './rules';
+import { availableCredit, creditCount, detectPurchase, startPlan, tierFor as ruleTier } from './rules';
 import { EMPTY_SNAPSHOT, PRO_ONLY_OFFERING, type Snapshot, type StartDecision, type Tier } from './types';
 
 /** A paywall purchase not seen yet (SDK lag). With `sessionId` its Pass binds to that game; without one it is a credit. */
@@ -85,17 +85,16 @@ export function createPaymentsStore(
     return spent;
   }
 
-  /** Never throws: a storage failure decides 'paywall' (blocks rather than gives a start away). */
+  /** Never throws: a storage failure decides 'free'. */
   function decide(): StartDecision {
     try {
       const snap = current ?? EMPTY_SNAPSHOT;
-      return startGate({
-        firstSessionUsed: repo.isFirstSessionUsed(),
+      return startPlan({
         proActive: snap.proActive,
         credit: availableCredit(snap, effectiveSpent()),
       });
     } catch {
-      return { kind: 'paywall' };
+      return { kind: 'free' };
     }
   }
 
@@ -273,7 +272,7 @@ export function createPaymentsStore(
         }
         return decide();
       } catch {
-        return { kind: 'paywall' };
+        return { kind: 'free' };
       }
     },
 

@@ -241,13 +241,7 @@ export default function Setup() {
 
   const preview = useStartPreview();
   const startNote =
-    preview.decision.kind === 'firstSession'
-      ? t('setup.firstFree')
-      : preview.decision.kind === 'credit'
-        ? t('setup.passCredits', { count: preview.credits })
-        : preview.decision.kind === 'paywall'
-          ? t('setup.needsPayment')
-          : null;
+    preview.decision.kind === 'credit' ? t('setup.passCredits', { count: preview.credits }) : null;
   const busy = useRef(false);
   async function onStart() {
     if (busy.current) return;

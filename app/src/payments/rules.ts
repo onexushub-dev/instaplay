@@ -1,4 +1,4 @@
-import { PASS_PRODUCT_ID, type PassTransaction, type Snapshot, type StartDecision, type Tier } from './types';
+import { PASS_PRODUCT_ID, type PassTransaction, type Plan, type Snapshot, type StartDecision, type Tier } from './types';
 
 export function tierFor(snapshot: Snapshot, session?: { passTransactionId?: string }): Tier {
   if (snapshot.proActive) return 'pro';
@@ -21,12 +21,21 @@ export function creditCount(snapshot: Snapshot, spent: ReadonlySet<string>): num
   return snapshot.passTransactions.filter((t) => t.productId === PASS_PRODUCT_ID && !spent.has(t.id)).length;
 }
 
-/** Decides "Começar gravação": the first session is free, then Pro, then the oldest unused Pass, else the paywall. */
-export function startGate(input: { firstSessionUsed: boolean; proActive: boolean; credit?: PassTransaction }): StartDecision {
-  if (!input.firstSessionUsed) return { kind: 'firstSession' };
+/** Decides "Começar gravação": Pro, else the oldest unused Pass, else the free plan. A credit is not spent with Pro. */
+export function startPlan(input: { proActive: boolean; credit?: PassTransaction }): StartDecision {
   if (input.proActive) return { kind: 'pro' };
   if (input.credit) return { kind: 'credit', passTransactionId: input.credit.id };
-  return { kind: 'paywall' };
+  return { kind: 'free' };
+}
+
+export function planOf(d: StartDecision): Plan {
+  return d.kind === 'free' ? 'free' : 'paid';
+}
+
+/** The plan a stored session ran with: an explicit `paid` wins, else a bound Pass means paid. */
+export function sessionPlan(s: { paid?: boolean; passTransactionId?: string }): Plan {
+  if (s.paid !== undefined) return s.paid ? 'paid' : 'free';
+  return s.passTransactionId ? 'paid' : 'free';
 }
 
 export function detectPurchase(before: Snapshot, after: Snapshot): { pro: boolean; passTransactionId?: string } {

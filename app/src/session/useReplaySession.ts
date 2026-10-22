@@ -210,13 +210,11 @@ export function useReplaySession(deps: SessionDeps) {
       try {
         // Payment is settled before the camera work: nothing paid is ever asked once recording.
         // A decision that cannot be read fails safe: no game starts and nothing was touched.
-        let first: StartDecision;
         try {
-          first = await deps.startDecision();
+          await deps.startDecision();
         } catch {
           return 'needsPayment';
         }
-        if (first.kind === 'paywall') return 'needsPayment';
         dispatch({ type: 'startRequested' });
         try {
           if (!(await prepare(sport))) {
@@ -225,10 +223,6 @@ export function useReplaySession(deps: SessionDeps) {
           }
           // The tier can change while the camera opens (Pro lapsing, a credit spent elsewhere): this check decides.
           const decision = await deps.startDecision();
-          if (decision.kind === 'paywall') {
-            dispatch({ type: 'startBlocked' });
-            return 'needsPayment';
-          }
           gameMode.current = sport;
           // The write comes first: if it throws, no gesture or voice toggle was left on without a session.
           const session = deps.repo.startSession(

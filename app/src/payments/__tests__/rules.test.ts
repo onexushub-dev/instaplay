@@ -1,4 +1,4 @@
-import { availableCredit, creditCount, detectPurchase, startGate, tierFor, watchTriggerAllowed } from '../rules';
+import { availableCredit, creditCount, detectPurchase, planOf, sessionPlan, startPlan, tierFor, watchTriggerAllowed } from '../rules';
 import { EMPTY_SNAPSHOT, type PassTransaction, type Snapshot } from '../types';
 
 const tx = (id: string, purchasedAt: number): PassTransaction => ({ id, productId: 'single_pass', purchasedAt });
@@ -45,11 +45,22 @@ test('creditCount counts unspent Passes', () => {
   expect(creditCount(snap(false, [tx('A', 1), tx('B', 2)]), new Set(['A']))).toBe(1);
 });
 
-test('startGate: free first session, then Pro, then credit, else paywall', () => {
+test('startPlan: Pro, then the oldest credit, else free (a credit is not spent with Pro)', () => {
   const A = tx('A', 1);
-  expect(startGate({ firstSessionUsed: false, proActive: false })).toEqual({ kind: 'firstSession' });
-  expect(startGate({ firstSessionUsed: false, proActive: true, credit: A })).toEqual({ kind: 'firstSession' });
-  expect(startGate({ firstSessionUsed: true, proActive: true, credit: A })).toEqual({ kind: 'pro' });
-  expect(startGate({ firstSessionUsed: true, proActive: false, credit: A })).toEqual({ kind: 'credit', passTransactionId: 'A' });
-  expect(startGate({ firstSessionUsed: true, proActive: false })).toEqual({ kind: 'paywall' });
+  expect(startPlan({ proActive: true, credit: A })).toEqual({ kind: 'pro' });
+  expect(startPlan({ proActive: false, credit: A })).toEqual({ kind: 'credit', passTransactionId: 'A' });
+  expect(startPlan({ proActive: false })).toEqual({ kind: 'free' });
+});
+
+test('planOf: free only for the free decision', () => {
+  expect(planOf({ kind: 'pro' })).toBe('paid');
+  expect(planOf({ kind: 'credit', passTransactionId: 'A' })).toBe('paid');
+  expect(planOf({ kind: 'free' })).toBe('free');
+});
+
+test('sessionPlan: an explicit paid flag beats the pass id', () => {
+  expect(sessionPlan({ paid: true })).toBe('paid');
+  expect(sessionPlan({ paid: false, passTransactionId: 'x' })).toBe('free');
+  expect(sessionPlan({ passTransactionId: 'x' })).toBe('paid');
+  expect(sessionPlan({})).toBe('free');
 });

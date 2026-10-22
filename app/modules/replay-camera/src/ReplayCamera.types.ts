@@ -1,7 +1,7 @@
 import type { StyleProp, ViewStyle } from 'react-native';
 
 export type Lens = 'ultraWide' | 'wide';
-export type Quality = '1080p60' | '1080p30' | '720p30';
+export type Quality = '1080p60' | '1080p30' | '720p60' | '720p30';
 export type TriggerSource = 'screen' | 'gesture' | 'remote' | 'watch' | 'voice' | 'phone';
 /** The language the voice command listens in (iOS speech recognizer locale). */
 export type VoiceLocale = 'pt-BR' | 'en-US';

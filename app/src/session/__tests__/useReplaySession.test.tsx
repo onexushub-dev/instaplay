@@ -7,7 +7,7 @@ import { type SessionDeps, useReplaySession } from '../useReplaySession';
 type Listener = (e: any) => void;
 
 function fakeDeps() {
-  const startDecision = jest.fn(async (): Promise<StartDecision> => ({ kind: 'firstSession' }));
+  const startDecision = jest.fn(async (): Promise<StartDecision> => ({ kind: 'free' }));
   const listeners = new Map<string, Listener>();
   const map = new Map<string, string>();
   const kv: KV = { getString: (k) => map.get(k), set: (k, v) => void map.set(k, v), delete: (k) => void map.delete(k) };
@@ -559,17 +559,6 @@ describe('start gate', () => {
     expect(f.deps.repo.listClips(f.view.result.current.state.sessionId!)).toHaveLength(12);
   });
 
-  test('a blocked second session does not touch the camera nor create a session', async () => {
-    const f = await setup();
-    f.startDecision.mockResolvedValue({ kind: 'paywall' });
-    let r: unknown;
-    await act(async () => void (r = await f.view.result.current.start('futevolei')));
-    expect(r).toBe('needsPayment');
-    expect(f.camera.startSession).not.toHaveBeenCalled();
-    expect(f.deps.repo.isFirstSessionUsed()).toBe(false);
-    expect(f.view.result.current.state.phase).toBe('idle');
-  });
-
   test('Pro starts without a pass', async () => {
     const f = await setup();
     f.startDecision.mockResolvedValue({ kind: 'pro' });
@@ -585,16 +574,6 @@ describe('start gate', () => {
     await act(() => f.view.result.current.start('futevolei'));
     expect(f.deps.repo.getSession(f.view.result.current.state.sessionId!)?.passTransactionId).toBe('tx-1');
     expect(f.deps.repo.spentPasses()).toContain('tx-1');
-  });
-
-  test('the plan changing while the camera opens blocks the start', async () => {
-    const f = await setup();
-    f.startDecision.mockResolvedValueOnce({ kind: 'pro' }).mockResolvedValueOnce({ kind: 'paywall' });
-    let r: unknown;
-    await act(async () => void (r = await f.view.result.current.start('futevolei')));
-    expect(r).toBe('needsPayment');
-    expect(f.view.result.current.state.phase).toBe('idle');
-    expect(f.deps.repo.isFirstSessionUsed()).toBe(false);
   });
 
   test('a double tap starts one session and spends one credit', async () => {
@@ -621,7 +600,7 @@ describe('start gate', () => {
     const f = await setup();
     f.startDecision.mockResolvedValue({ kind: 'pro' });
     await act(() => f.view.result.current.start('futevolei'));
-    f.startDecision.mockResolvedValue({ kind: 'paywall' });
+    f.startDecision.mockResolvedValue({ kind: 'free' });
     for (let i = 0; i < 3; i++) {
       await act(async () => f.view.result.current.trigger('screen'));
       await act(async () => f.finishSave({ clipPath: `/c${i}.mp4`, durationMs: 60000 }));
@@ -633,7 +612,7 @@ describe('start gate', () => {
   });
 
   test.each([
-    ['the second decision', (f: ReturnType<typeof fakeDeps>) => f.startDecision.mockResolvedValueOnce({ kind: 'firstSession' }).mockRejectedValueOnce(new Error('x'))],
+    ['the second decision', (f: ReturnType<typeof fakeDeps>) => f.startDecision.mockResolvedValueOnce({ kind: 'free' }).mockRejectedValueOnce(new Error('x'))],
     ['setVoiceEnabled', (f: ReturnType<typeof fakeDeps>) => f.camera.setVoiceEnabled.mockImplementationOnce(() => { throw new Error('x'); })],
     ['repo.startSession', (f: ReturnType<typeof fakeDeps>) => { f.deps.repo.startSession = () => { throw new Error('x'); }; }],
   ])('a throw from %s fails the start without sticking in starting', async (_n, arm) => {
@@ -644,7 +623,7 @@ describe('start gate', () => {
     expect(r).toBe('failed');
     expect(f.view.result.current.state).toMatchObject({ phase: 'idle', error: expect.any(String) });
     expect(f.view.result.current.state.error).toBeDefined();
-    f.startDecision.mockResolvedValue({ kind: 'firstSession' });
+    f.startDecision.mockResolvedValue({ kind: 'free' });
     if (_n === 'repo.startSession') {
       expect(f.deps.repo.isFirstSessionUsed()).toBe(false);
       expect(f.deps.repo.spentPasses().size).toBe(0);

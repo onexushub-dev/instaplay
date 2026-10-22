@@ -653,14 +653,11 @@ test('the Dispositivos sheet over the setup keeps the camera and the volume butt
   jest.requireMock('expo-router').useIsFocused.mockReturnValue(true);
 });
 
-const FIRST_FREE = 'Primeira gravação grátis, sem limite de clipes.';
-const NEEDS_PAYMENT = 'Para gravar de novo, escolha o Passe Avulso ou o Pro.';
-
 test('the status line follows the start decision', async () => {
   session({});
-  payments.peekStart.mockReturnValue({ kind: 'firstSession' });
+  payments.peekStart.mockReturnValue({ kind: 'free' });
   const view = await render(<Setup />);
-  expect(screen.getByText(FIRST_FREE)).toBeTruthy();
+  expect(screen.queryByText(/Passe/)).toBeNull();
   payments.peekStart.mockReturnValue({ kind: 'credit', passTransactionId: 'p1' });
   payments.credits.mockReturnValue(2);
   await view.rerender(<Setup />);
@@ -668,13 +665,8 @@ test('the status line follows the start decision', async () => {
   payments.credits.mockReturnValue(1);
   await view.rerender(<Setup />);
   expect(screen.getByText('Você tem 1 Passe Avulso.')).toBeTruthy();
-  payments.peekStart.mockReturnValue({ kind: 'paywall' });
-  await view.rerender(<Setup />);
-  expect(screen.getByText(NEEDS_PAYMENT)).toBeTruthy();
   payments.peekStart.mockReturnValue({ kind: 'pro' });
   await view.rerender(<Setup />);
-  expect(screen.queryByText(FIRST_FREE)).toBeNull();
-  expect(screen.queryByText(NEEDS_PAYMENT)).toBeNull();
   expect(screen.queryByText(/Passe/)).toBeNull();
 });
 

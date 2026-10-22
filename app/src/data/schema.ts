@@ -1,4 +1,4 @@
-import type { TriggerSource } from '../../modules/replay-camera/src/ReplayCamera.types';
+import type { Quality, TriggerSource } from '../../modules/replay-camera/src/ReplayCamera.types';
 
 export type { TriggerSource };
 
@@ -25,9 +25,10 @@ export type ModeSettings = {
   zoom: number;
   gestureEnabled: boolean;
   voiceEnabled: boolean;
-  bufferSeconds: 60 | 120;
+  bufferSeconds: number;
   cutSeconds: number;
-  quality: '1080p60' | '1080p30';
+  quality: Quality;
+  audio: boolean;
 };
 
 /** What was saved for a mode: before zoom existed it held `lens` (read, never written). */
