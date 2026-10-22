@@ -1,3 +1,4 @@
+import { Alert } from 'react-native';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 
 import Setup from '../setup';
@@ -55,16 +56,32 @@ jest.mock('../../data/mmkv', () => {
     repo: {
       getPrefs: () => prefs,
       setPrefs: jest.fn((p: object) => (prefs = { ...prefs, ...p })),
+      subscribe: jest.fn(() => () => {}),
+      version: jest.fn(() => 0),
     },
   };
 });
 jest.mock('../../session/SessionContext', () => ({ useSession: jest.fn() }));
 jest.mock('../../share/entitlement', () => ({ useEntitlement: jest.fn(() => ({ tier: 'pro' })) }));
-jest.mock('../../payments/feedback', () => ({ openProPaywall: jest.fn(async () => {}) }));
+jest.mock('../../payments/feedback', () => ({
+  openProPaywall: jest.fn(async () => {}),
+  openPaywall: jest.fn(async () => 'cancelled'),
+}));
+jest.mock('../../payments', () => ({
+  payments: {
+    peekStart: jest.fn(() => ({ kind: 'pro' })),
+    credits: jest.fn(() => 0),
+    subscribe: jest.fn(() => () => {}),
+    version: jest.fn(() => 0),
+    tierFor: jest.fn(() => 'pro'),
+  },
+}));
 
 const { repo } = jest.requireMock('../../data/mmkv');
 const { useSession } = jest.requireMock('../../session/SessionContext');
 const { router } = jest.requireMock('expo-router');
+const { payments } = jest.requireMock('../../payments');
+const { openPaywall } = jest.requireMock('../../payments/feedback');
 
 function session(state: object) {
   const value = {
@@ -77,7 +94,7 @@ function session(state: object) {
       thermal: { level: 'nominal', degraded: false },
       ...state,
     },
-    start: jest.fn(async () => {}),
+    start: jest.fn(async (): Promise<string | void> => {}),
     prepare: jest.fn(async () => true),
     release: jest.fn(async () => {}),
     trigger: jest.fn(),
@@ -104,6 +121,9 @@ beforeEach(() => {
   module.remoteHostPeers.mockReturnValue([]);
   module.remoteControllerHost.mockReturnValue(null);
   jest.requireMock('../../share/entitlement').useEntitlement.mockReturnValue({ tier: 'pro' });
+  payments.peekStart.mockReturnValue({ kind: 'pro' });
+  payments.credits.mockReturnValue(0);
+  openPaywall.mockResolvedValue('cancelled');
 });
 
 test('keeps the screen awake while the phone is being positioned', async () => {
@@ -579,7 +599,7 @@ test('"Desconectar deste celular" asks first, then forgets the camera phone and 
   session({});
   camera().isRemoteSupported.mockReturnValue(true);
   camera().remoteControllerHost.mockReturnValue({ id: 'h1', name: 'iPhone XR#1234' });
-  const alert = jest.spyOn(require('react-native').Alert, 'alert').mockImplementation(() => {});
+  const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
   await render(<Setup />);
   await openSettings();
   await fireEvent.press(screen.getByRole('button', { name: 'Desconectar deste celular' }));
@@ -631,6 +651,86 @@ test('the Dispositivos sheet over the setup keeps the camera and the volume butt
   await act(async () => setRemoteSheetOpen(false));
   expect(useVolumeRemote).toHaveBeenLastCalledWith(false, expect.any(Function));
   jest.requireMock('expo-router').useIsFocused.mockReturnValue(true);
+});
+
+const FIRST_FREE = 'Primeira gravação grátis, sem limite de clipes.';
+const NEEDS_PAYMENT = 'Para gravar de novo, escolha o Passe Avulso ou o Pro.';
+
+test('the status line follows the start decision', async () => {
+  session({});
+  payments.peekStart.mockReturnValue({ kind: 'firstSession' });
+  const view = await render(<Setup />);
+  expect(screen.getByText(FIRST_FREE)).toBeTruthy();
+  payments.peekStart.mockReturnValue({ kind: 'credit', passTransactionId: 'p1' });
+  payments.credits.mockReturnValue(2);
+  await view.rerender(<Setup />);
+  expect(screen.getByText('Você tem 2 Passes Avulsos.')).toBeTruthy();
+  payments.credits.mockReturnValue(1);
+  await view.rerender(<Setup />);
+  expect(screen.getByText('Você tem 1 Passe Avulso.')).toBeTruthy();
+  payments.peekStart.mockReturnValue({ kind: 'paywall' });
+  await view.rerender(<Setup />);
+  expect(screen.getByText(NEEDS_PAYMENT)).toBeTruthy();
+  payments.peekStart.mockReturnValue({ kind: 'pro' });
+  await view.rerender(<Setup />);
+  expect(screen.queryByText(FIRST_FREE)).toBeNull();
+  expect(screen.queryByText(NEEDS_PAYMENT)).toBeNull();
+  expect(screen.queryByText(/Passe/)).toBeNull();
+});
+
+const pressStart = () => fireEvent.press(screen.getByRole('button', { name: 'Começar gravação' }));
+
+test('a started recording never opens the paywall', async () => {
+  const s = session({});
+  s.start.mockResolvedValue('started');
+  await render(<Setup />);
+  await pressStart();
+  expect(s.start).toHaveBeenCalledTimes(1);
+  expect(openPaywall).not.toHaveBeenCalled();
+});
+
+test('a cancelled paywall keeps the player on the setup screen', async () => {
+  const s = session({});
+  s.start.mockResolvedValue('needsPayment');
+  openPaywall.mockResolvedValue('cancelled');
+  const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+  await render(<Setup />);
+  await pressStart();
+  expect(openPaywall).toHaveBeenCalledWith(undefined, expect.any(Function));
+  expect(s.start).toHaveBeenCalledTimes(1);
+  expect(router.push).not.toHaveBeenCalled();
+  expect(router.replace).not.toHaveBeenCalled();
+  expect(router.navigate).not.toHaveBeenCalled();
+  expect(alert).not.toHaveBeenCalled();
+  alert.mockRestore();
+});
+
+test.each(['purchased', 'restored'])('after %s it starts once more, and does not ask again if still unpaid', async (outcome) => {
+  const s = session({});
+  s.start.mockResolvedValue('needsPayment');
+  openPaywall.mockResolvedValue(outcome);
+  await render(<Setup />);
+  await pressStart();
+  expect(s.start).toHaveBeenCalledTimes(2);
+  expect(openPaywall).toHaveBeenCalledTimes(1);
+});
+
+test('a paywall error does not start again', async () => {
+  const s = session({});
+  s.start.mockResolvedValue('needsPayment');
+  openPaywall.mockResolvedValue('error');
+  await render(<Setup />);
+  await pressStart();
+  expect(s.start).toHaveBeenCalledTimes(1);
+});
+
+test('a double tap while start is pending starts once', async () => {
+  const s = session({});
+  s.start.mockReturnValue(new Promise(() => {}));
+  await render(<Setup />);
+  await pressStart();
+  await pressStart();
+  expect(s.start).toHaveBeenCalledTimes(1);
 });
 
 test('coming back from another app, a remote shown as connected goes back to paired until it is pressed again', async () => {

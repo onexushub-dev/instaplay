@@ -30,7 +30,8 @@ import { TriggerTile } from '../components/TriggerTile';
 import { ZoomBubble } from '../components/ZoomBubble';
 import { ZoomButton } from '../components/ZoomButton';
 import { repo } from '../data/mmkv';
-import { openProPaywall } from '../payments/feedback';
+import { useStartPreview } from '../payments/useStartPreview';
+import { openPaywall, openProPaywall } from '../payments/feedback';
 import { watchTriggerAllowed } from '../payments/rules';
 import { useEntitlement } from '../share/entitlement';
 import { type MessageKey, VOICE_WORDS, voiceLocale } from '../i18n';
@@ -238,6 +239,30 @@ export default function Setup() {
     return () => sub.remove();
   }, []);
 
+  const preview = useStartPreview();
+  const startNote =
+    preview.decision.kind === 'firstSession'
+      ? t('setup.firstFree')
+      : preview.decision.kind === 'credit'
+        ? t('setup.passCredits', { count: preview.credits })
+        : preview.decision.kind === 'paywall'
+          ? t('setup.needsPayment')
+          : null;
+  const busy = useRef(false);
+  async function onStart() {
+    if (busy.current) return;
+    busy.current = true;
+    try {
+      if ((await session.start(modeId)) !== 'needsPayment') return;
+      const outcome = await openPaywall(undefined, t);
+      // One retry right after a purchase: the player already asked to start. A purchase that shows up later
+      // (SDK lag) only changes the status line; the next tap starts.
+      if (outcome === 'purchased' || outcome === 'restored') await session.start(modeId);
+    } finally {
+      busy.current = false;
+    }
+  }
+
   const opening = camera === 'starting';
   const starting = phase === 'starting' || opening;
   const errorText = error ? t(START_ERRORS[error] ?? 'setup.cameraFailed') : null;
@@ -296,11 +321,12 @@ export default function Setup() {
             {expanded ? renderSettings() : renderSummary()}
 
             {errorText ? <Text style={styles.error}>{errorText}</Text> : null}
+            {startNote ? <Text style={styles.startNote}>{startNote}</Text> : null}
             <Button
               label={opening ? t('setup.openingCamera') : t('setup.start')}
               icon={starting ? <ActivityIndicator color={colors.onAccent} /> : undefined}
               disabled={starting}
-              onPress={() => session.start(modeId)}
+              onPress={() => void onStart()}
             />
           </SafeAreaView>
         </View>
@@ -505,6 +531,7 @@ const styles = StyleSheet.create({
   grid: { gap: 8 },
   gridRow: { flexDirection: 'row', gap: 8 },
   error: { fontFamily: fonts.bodySemi, fontSize: 14, color: colors.warning },
+  startNote: { fontFamily: fonts.body, fontSize: 13, color: colors.soft, textAlign: 'center' },
   feedbackRow: {
     flexDirection: 'row',
     alignItems: 'center',
