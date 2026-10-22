@@ -89,3 +89,9 @@ test('saved keeps locked and lastFree in lastSaved', () => {
   });
   expect(s.lastSaved).toMatchObject({ locked: true, lastFree: false });
 });
+
+test('startBlocked after startRequested goes back to idle keeping the camera, without an error', () => {
+  const on = reducer(initialState, { type: 'cameraOn' });
+  const s = reducer(reducer(on, { type: 'startRequested' }), { type: 'startBlocked' });
+  expect(s).toEqual({ ...initialState, camera: 'on' });
+});

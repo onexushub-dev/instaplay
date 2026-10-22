@@ -18,6 +18,7 @@ const appDeps: SessionDeps = {
   haptic: () => void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success),
   now: Date.now,
   locale: currentLocale,
+  startDecision: payments.startDecision,
   tierFor: payments.tierFor,
   useRemote: useVolumeRemote,
 };

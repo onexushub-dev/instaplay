@@ -13,7 +13,7 @@ import type { Repo } from '../data/repo';
 import type { ModeId, Sport, TriggerSource } from '../data/schema';
 import { type AppLocale, voiceLocale } from '../i18n/locale';
 import { shouldLockOnSave } from '../payments/rules';
-import { FREE_CLIPS, type Tier } from '../payments/types';
+import { FREE_CLIPS, type StartDecision, type Tier } from '../payments/types';
 import { effectiveSettings } from '../modes/registry';
 import { clampZoom, lensFor } from '../modes/zoom';
 import { createTriggerBus } from '../triggers/bus';
@@ -47,11 +47,15 @@ export type SessionDeps = {
   now(): number;
   /** The app's language now: the voice command listens in it. */
   locale(): AppLocale;
+  /** Whether a game may start now: the first is free, then Pro or a Pass credit. */
+  startDecision: () => Promise<StartDecision>;
   /** The tier that applies to this game right now (free, pass or pro). */
   tierFor: (sessionId: string) => Tier;
   /** Bluetooth remote: calls onPress per press while enabled (useVolumeRemote in the app). */
   useRemote(enabled: boolean, onPress: () => void): void;
 };
+
+export type StartResult = 'started' | 'needsPayment' | 'failed' | 'busy';
 
 const errorCode = (e: unknown): ReplayErrorCode =>
   ((e as { code?: ReplayErrorCode })?.code ?? 'CAMERA_UNAVAILABLE') as ReplayErrorCode;
@@ -206,23 +210,44 @@ export function useReplaySession(deps: SessionDeps) {
     [deps]
   );
 
+  const startingRef = useRef(false);
   const start = useCallback(
-    async (sport: Sport) => {
-      dispatch({ type: 'startRequested' });
-      if (!(await prepare(sport))) {
-        dispatch({ type: 'startFailed', code: cameraError.current ?? 'CAMERA_UNAVAILABLE' });
-        return;
+    async (sport: Sport): Promise<StartResult> => {
+      const phase = stateRef.current.phase;
+      if (startingRef.current || phase === 'starting' || phase === 'recording' || phase === 'stopping') return 'busy';
+      startingRef.current = true;
+      try {
+        // Payment is settled before the camera work: nothing paid is ever asked once recording.
+        if ((await deps.startDecision()).kind === 'paywall') return 'needsPayment';
+        dispatch({ type: 'startRequested' });
+        if (!(await prepare(sport))) {
+          dispatch({ type: 'startFailed', code: cameraError.current ?? 'CAMERA_UNAVAILABLE' });
+          return 'failed';
+        }
+        // The tier can change while the camera opens (Pro lapsing, a credit spent elsewhere): this check decides.
+        const decision = await deps.startDecision();
+        if (decision.kind === 'paywall') {
+          dispatch({ type: 'startBlocked' });
+          return 'needsPayment';
+        }
+        gameMode.current = sport;
+        const settings = effectiveSettings(sport, deps.repo.getPrefs());
+        deps.camera.setGestureEnabled(settings.gestureEnabled);
+        // Listen only when the phone may: native and the setup tile must agree on whether voice is on.
+        deps.camera.setVoiceEnabled(
+          settings.voiceEnabled && deps.camera.getSpeechPermission() === 'granted',
+          voiceLocale(deps.locale()),
+        );
+        const session = deps.repo.startSession(
+          sport,
+          deps.now(),
+          decision.kind === 'credit' ? decision.passTransactionId : undefined,
+        );
+        dispatch({ type: 'started', sessionId: session.id, startedAt: session.startedAt });
+        return 'started';
+      } finally {
+        startingRef.current = false;
       }
-      gameMode.current = sport;
-      const settings = effectiveSettings(sport, deps.repo.getPrefs());
-      deps.camera.setGestureEnabled(settings.gestureEnabled);
-      // Listen only when the phone may: native and the setup tile must agree on whether voice is on.
-      deps.camera.setVoiceEnabled(
-        settings.voiceEnabled && deps.camera.getSpeechPermission() === 'granted',
-        voiceLocale(deps.locale()),
-      );
-      const session = deps.repo.startSession(sport, deps.now());
-      dispatch({ type: 'started', sessionId: session.id, startedAt: session.startedAt });
     },
     [deps, prepare]
   );

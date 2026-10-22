@@ -28,6 +28,7 @@ export type SessionAction =
   | { type: 'startRequested' }
   | { type: 'started'; sessionId: string; startedAt: number }
   | { type: 'startFailed'; code: ReplayErrorCode }
+  | { type: 'startBlocked' }
   | { type: 'saveStarted' }
   | { type: 'saved'; sessionId: string; clipId: string; source: TriggerSource; at: number; locked: boolean; lastFree: boolean }
   | { type: 'saveFailed'; sessionId: string }
@@ -65,6 +66,8 @@ export function reducer(state: SessionState, action: SessionAction): SessionStat
       return { ...state, phase: 'recording', sessionId: action.sessionId, startedAt: action.startedAt, clipCount: 0 };
     case 'startFailed':
       return { ...initialState, camera: state.camera, error: action.code };
+    case 'startBlocked':
+      return { ...initialState, camera: state.camera };
     case 'saveStarted':
       return { ...state, saving: true };
     case 'saved': {

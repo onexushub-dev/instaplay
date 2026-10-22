@@ -1,11 +1,14 @@
 import { act, renderHook } from '@testing-library/react-native';
 
 import { createRepo, type KV } from '../../data/repo';
+import type { StartDecision } from '../../payments/types';
 import { type SessionDeps, useReplaySession } from '../useReplaySession';
 
 type Listener = (e: any) => void;
 
 function fakeDeps(tier: 'free' | 'pro' | 'pass' = 'free') {
+  const startDecision = jest.fn(async (): Promise<StartDecision> => ({ kind: 'firstSession' }));
+  let tierNow: 'free' | 'pro' | 'pass' = tier;
   const listeners = new Map<string, Listener>();
   const map = new Map<string, string>();
   const kv: KV = { getString: (k) => map.get(k), set: (k, v) => void map.set(k, v), delete: (k) => void map.delete(k) };
@@ -43,11 +46,14 @@ function fakeDeps(tier: 'free' | 'pro' | 'pass' = 'free') {
     haptic: jest.fn(),
     now: () => t,
     locale: () => 'pt-BR',
-    tierFor: () => tier,
+    tierFor: () => tierNow,
+    startDecision,
     useRemote: () => {},
   };
   return {
     deps,
+    startDecision,
+    setTier: (t: 'free' | 'pro' | 'pass') => void (tierNow = t),
     camera,
     deleted,
     emit: (event: string, e: any = {}) => listeners.get(event)?.(e),
@@ -550,5 +556,110 @@ describe('free limit', () => {
     expect(f.deps.repo.listClips(id).some((c) => c.locked)).toBe(false);
     expect(view.result.current.state.lastSaved).toMatchObject({ locked: false, lastFree: false });
     expect(view.result.current.state.phase).toBe('recording');
+  });
+});
+
+
+describe('start gate', () => {
+  const setup = async () => {
+    const f = fakeDeps();
+    const view = await renderHook(() => useReplaySession(f.deps));
+    return { ...f, view };
+  };
+
+  test('the first session starts without a pass and marks the free game used', async () => {
+    const f = await setup();
+    let r: unknown;
+    await act(async () => void (r = await f.view.result.current.start('futevolei')));
+    expect(r).toBe('started');
+    expect(f.deps.repo.isFirstSessionUsed()).toBe(true);
+    expect(f.deps.repo.getSession(f.view.result.current.state.sessionId!)?.passTransactionId).toBeUndefined();
+  });
+
+  test('the first session has no clip limit', async () => {
+    const f = await setup();
+    await act(() => f.view.result.current.start('futevolei'));
+    for (let i = 0; i < 12; i++) {
+      await act(async () => f.view.result.current.trigger('screen'));
+      await act(async () => f.finishSave({ clipPath: `/c${i}.mp4`, durationMs: 60000 }));
+      f.advance(5000);
+    }
+    expect(f.view.result.current.state).toMatchObject({ clipCount: 12, phase: 'recording' });
+    expect(f.deps.repo.listClips(f.view.result.current.state.sessionId!)).toHaveLength(12);
+  });
+
+  test('a blocked second session does not touch the camera nor create a session', async () => {
+    const f = await setup();
+    f.startDecision.mockResolvedValue({ kind: 'paywall' });
+    let r: unknown;
+    await act(async () => void (r = await f.view.result.current.start('futevolei')));
+    expect(r).toBe('needsPayment');
+    expect(f.camera.startSession).not.toHaveBeenCalled();
+    expect(f.deps.repo.isFirstSessionUsed()).toBe(false);
+    expect(f.view.result.current.state.phase).toBe('idle');
+  });
+
+  test('Pro starts without a pass', async () => {
+    const f = await setup();
+    f.startDecision.mockResolvedValue({ kind: 'pro' });
+    let r: unknown;
+    await act(async () => void (r = await f.view.result.current.start('futevolei')));
+    expect(r).toBe('started');
+    expect(f.deps.repo.getSession(f.view.result.current.state.sessionId!)?.passTransactionId).toBeUndefined();
+  });
+
+  test('a credit is bound to the session and spent once', async () => {
+    const f = await setup();
+    f.startDecision.mockResolvedValue({ kind: 'credit', passTransactionId: 'tx-1' });
+    await act(() => f.view.result.current.start('futevolei'));
+    expect(f.deps.repo.getSession(f.view.result.current.state.sessionId!)?.passTransactionId).toBe('tx-1');
+    expect(f.deps.repo.spentPasses()).toContain('tx-1');
+  });
+
+  test('the plan changing while the camera opens blocks the start', async () => {
+    const f = await setup();
+    f.startDecision.mockResolvedValueOnce({ kind: 'pro' }).mockResolvedValueOnce({ kind: 'paywall' });
+    let r: unknown;
+    await act(async () => void (r = await f.view.result.current.start('futevolei')));
+    expect(r).toBe('needsPayment');
+    expect(f.view.result.current.state.phase).toBe('idle');
+    expect(f.deps.repo.isFirstSessionUsed()).toBe(false);
+  });
+
+  test('a double tap starts one session and spends one credit', async () => {
+    const f = await setup();
+    f.startDecision.mockResolvedValue({ kind: 'credit', passTransactionId: 'tx-1' });
+    let rs: unknown[] = [];
+    await act(async () => {
+      rs = await Promise.all([f.view.result.current.start('futevolei'), f.view.result.current.start('futevolei')]);
+    });
+    expect([...rs].sort()).toEqual(['busy', 'started']);
+    expect([...f.deps.repo.spentPasses()]).toEqual(['tx-1']);
+  });
+
+  test('a camera failure fails the start and does not use the free game', async () => {
+    const f = await setup();
+    f.camera.startSession.mockRejectedValueOnce(Object.assign(new Error('x'), { code: 'LOW_STORAGE' }));
+    let r: unknown;
+    await act(async () => void (r = await f.view.result.current.start('futevolei')));
+    expect(r).toBe('failed');
+    expect(f.deps.repo.isFirstSessionUsed()).toBe(false);
+  });
+
+  test('Pro lapsing mid-game never interrupts it', async () => {
+    const f = await setup();
+    f.startDecision.mockResolvedValue({ kind: 'pro' });
+    f.setTier('pro');
+    await act(() => f.view.result.current.start('futevolei'));
+    f.startDecision.mockResolvedValue({ kind: 'paywall' });
+    f.setTier('free');
+    for (let i = 0; i < 3; i++) {
+      await act(async () => f.view.result.current.trigger('screen'));
+      await act(async () => f.finishSave({ clipPath: `/c${i}.mp4`, durationMs: 60000 }));
+      f.advance(5000);
+    }
+    expect(f.deps.repo.listClips(f.view.result.current.state.sessionId!)).toHaveLength(3);
+    expect(f.view.result.current.state.phase).toBe('recording');
+    expect(f.camera.stopSession).not.toHaveBeenCalled();
   });
 });
