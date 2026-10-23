@@ -13,9 +13,11 @@
  *
  * RevenueCat public SDK keys (never secret keys), read into extra.revenueCat:
  *
- *   LANCE_RC_IOS_KEY=appl_...              iOS key
- *   LANCE_RC_ANDROID_KEY=goog_...          Android key
- *   LANCE_RC_TEST_KEY=test_...             Test Store key, used only in development builds (__DEV__); left out of EAS production builds
+ *   REPPLAY_RC_IOS_KEY=appl_...            iOS key
+ *   REPPLAY_RC_ANDROID_KEY=goog_...        Android key
+ *   REPPLAY_RC_TEST_KEY=test_...           Test Store key, used only in development builds (__DEV__); left out of EAS production builds
+ *
+ * The old LANCE_RC_* names still work, so an existing .env.local keeps working.
  *
  * With no key the app runs as free and the paywall reports an error.
  */
@@ -38,9 +40,9 @@ module.exports = ({ config }) => {
   const production = process.env.EAS_BUILD_PROFILE === 'production';
   const extra = Object.assign({}, config.extra, {
     revenueCat: {
-      ios: process.env.LANCE_RC_IOS_KEY,
-      android: process.env.LANCE_RC_ANDROID_KEY,
-      test: production ? undefined : process.env.LANCE_RC_TEST_KEY,
+      ios: process.env.REPPLAY_RC_IOS_KEY || process.env.LANCE_RC_IOS_KEY,
+      android: process.env.REPPLAY_RC_ANDROID_KEY || process.env.LANCE_RC_ANDROID_KEY,
+      test: production ? undefined : process.env.REPPLAY_RC_TEST_KEY || process.env.LANCE_RC_TEST_KEY,
     },
   });
 
