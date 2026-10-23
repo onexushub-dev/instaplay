@@ -1,20 +1,20 @@
 import { StyleSheet, Text, View } from 'react-native';
 
+import { useT } from '../i18n/useT';
 import { colors, fonts, radius } from '../theme/tokens';
 
 /** What both phones need for the link to work. Shown wherever pairing can fail, so nobody has to guess. */
-export const REQUIREMENTS: string[] = [
-  'Wi-Fi e Bluetooth ligados nos dois celulares. Não precisa de internet nem da mesma rede.',
-  'Rede Local liberada para o LANCE em Ajustes.',
-  'LANCE aberto nos dois celulares, perto um do outro.',
-];
+const REQUIREMENT_KEYS = ['requirements.wifi', 'requirements.localNetwork', 'requirements.appsOpen'] as const;
 
 /** The three things to check when the phones do not find each other. */
-export function RequirementsChecklist({ title = 'Para conectar, confira:' }: { title?: string }) {
+export function RequirementsChecklist({ title }: { title?: string }) {
+  const { t } = useT();
+  const heading = title === undefined ? t('requirements.title') : title;
+  const lines = REQUIREMENT_KEYS.map((key) => t(key));
   return (
-    <View accessible accessibilityLabel={`${title} ${REQUIREMENTS.join(' ')}`} style={styles.box}>
-      <Text style={styles.title}>{title}</Text>
-      {REQUIREMENTS.map((line) => (
+    <View accessible accessibilityLabel={`${heading} ${lines.join(' ')}`} style={styles.box}>
+      <Text style={styles.title}>{heading}</Text>
+      {lines.map((line) => (
         <View key={line} style={styles.row}>
           <Text style={styles.bullet}>•</Text>
           <Text style={styles.text}>{line}</Text>

@@ -19,6 +19,8 @@ import { CheckIcon, PhoneIcon } from '../components/icons';
 import { PulseRing } from '../components/PulseRing';
 import { RequirementsChecklist } from '../components/RequirementsChecklist';
 import { StatusPill } from '../components/StatusPill';
+import { type AppLocale, currentLocale, translate } from '../i18n';
+import { useT } from '../i18n/useT';
 import { colors, fonts, radius } from '../theme/tokens';
 
 const LIMIT = 4;
@@ -34,8 +36,8 @@ const clock = (seconds: number) => `${Math.floor(seconds / 60)}:${String(seconds
 type Popup = { id: string; name: string; view: CheckView };
 
 /** The line under a remote's name: what its state means for the player. */
-export function peerHint(linked: boolean): string {
-  return linked ? 'Pronto para salvar lances' : 'Abra o LANCE neste celular para reconectar';
+export function peerHint(linked: boolean, locale: AppLocale = currentLocale()): string {
+  return translate(locale, linked ? 'pairing.peerReady' : 'pairing.peerReconnect');
 }
 
 function RowButton({ label, accessibilityLabel, tone, disabled, onPress }: {
@@ -76,6 +78,7 @@ function Step({ n, text }: { n: number; text: string }) {
  * once when there is none yet, so a code never runs out while the player is just looking at the list.
  */
 export default function Pairing() {
+  const { t, locale } = useT();
   const [offer, setOffer] = useState<RemotePairing | null>(null);
   const [pairing, setPairing] = useState(false);
   // Read once, when the sheet opens: with nobody paired yet it goes straight to the code.
@@ -203,12 +206,12 @@ export default function Pairing() {
 
   const confirmRemove = (peer: RemotePeer) => {
     Alert.alert(
-      `Remover ${peer.name}?`,
-      `${peer.name} deixa de ser um controle desta câmera. Para usar de novo, será preciso parear outra vez.`,
+      t('pairing.removeTitle', { name: peer.name }),
+      t('pairing.removeBody', { name: peer.name }),
       [
-        { text: 'Cancelar', style: 'cancel' },
+        { text: t('common.cancel'), style: 'cancel' },
         {
-          text: 'Remover',
+          text: t('pairing.remove'),
           style: 'destructive',
           onPress: () => {
             remoteHostRemove(peer.id);
@@ -227,23 +230,23 @@ export default function Pairing() {
   return (
     <SafeAreaView style={styles.root}>
       <ScrollView automaticallyAdjustKeyboardInsets contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
-        <Text style={styles.role}>ESTE IPHONE É A CÂMERA</Text>
-        <Text style={styles.title}>Conectar um celular de controle</Text>
+        <Text style={styles.role}>{t('pairing.roleCamera')}</Text>
+        <Text style={styles.title}>{t('pairing.title')}</Text>
 
         {paired !== null ? (
           <View style={styles.done}>
             <View style={styles.doneBadge}>
               <CheckIcon size={64} />
             </View>
-            <Text style={styles.success}>{`Pronto! ${paired} agora é um controle.`}</Text>
+            <Text style={styles.success}>{t('pairing.paired', { name: paired })}</Text>
           </View>
         ) : (
           <>
             {peers.length > 0 ? (
               <View style={styles.list}>
                 <View style={styles.sectionRow}>
-                  <Text style={styles.section}>Celulares de controle</Text>
-                  <Text style={styles.sectionCount}>{`${peers.length} de ${LIMIT}`}</Text>
+                  <Text style={styles.section}>{t('pairing.remotes')}</Text>
+                  <Text style={styles.sectionCount}>{t('pairing.countOf', { count: peers.length, limit: LIMIT })}</Text>
                 </View>
                 {peers.map((peer) => {
                   const linked = peer.connected === true;
@@ -256,21 +259,21 @@ export default function Pairing() {
                         </View>
                         <View style={styles.peerInfo}>
                           <Text style={styles.peerName}>{peer.name}</Text>
-                          <Text style={styles.peerHint}>{peerHint(linked)}</Text>
+                          <Text style={styles.peerHint}>{peerHint(linked, locale)}</Text>
                         </View>
-                        <StatusPill text={linked ? 'Conectado' : 'Offline'} tone={linked ? 'on' : 'idle'} />
+                        <StatusPill text={linked ? t('pairing.linked') : t('pairing.offline')} tone={linked ? 'on' : 'idle'} />
                       </View>
                       <View style={styles.peerActions}>
                         <RowButton
-                          label="Verificar conexão"
-                          accessibilityLabel={`Verificar conexão de ${peer.name}`}
+                          label={t('pairing.verify')}
+                          accessibilityLabel={t('pairing.verifyName', { name: peer.name })}
                           tone="accent"
                           disabled={checking}
                           onPress={() => verify(peer)}
                         />
                         <RowButton
-                          label="Remover"
-                          accessibilityLabel={`Remover ${peer.name}`}
+                          label={t('pairing.remove')}
+                          accessibilityLabel={t('pairing.removeName', { name: peer.name })}
                           tone="warning"
                           onPress={() => confirmRemove(peer)}
                         />
@@ -283,50 +286,50 @@ export default function Pairing() {
 
             {!pairing ? (
               full ? (
-                <Text style={styles.warning}>Você já tem 4 celulares de controle. Remova um para conectar outro.</Text>
+                <Text style={styles.warning}>{t('pairing.full')}</Text>
               ) : (
-                <Button label="Parear outro celular" onPress={open} />
+                <Button label={t('pairing.pairAnother')} onPress={open} />
               )
             ) : (
               <>
                 <View style={styles.steps}>
-                  <Step n={1} text="No outro celular, abra o LANCE e toque em “Usar este celular como controle”." />
-                  <Step n={2} text="Aponte a câmera dele para este código QR." />
+                  <Step n={1} text={t('pairing.step1')} />
+                  <Step n={2} text={t('pairing.step2')} />
                 </View>
                 {offer !== null ? (
                   <>
                     <View style={[styles.qr, dead && styles.dim]}>
                       <Image
-                        accessibilityLabel="Código QR para parear"
+                        accessibilityLabel={t('pairing.qrLabel')}
                         source={{ uri: `file://${offer.qrPath}` }}
                         style={styles.qrImage}
                       />
                     </View>
-                    <Text style={styles.fallback}>{'Prefere digitar? No outro celular, digite este código:'}</Text>
+                    <Text style={styles.fallback}>{t('pairing.typeInstead')}</Text>
                     <Text style={[styles.code, dead && styles.dim]}>{offer.code}</Text>
                     {dead ? null : (
                       <View style={styles.waiting}>
                         <PulseRing color={colors.accent} size={28} />
                         <Text style={styles.waitingText}>
-                          {connecting === null ? 'Aguardando o outro celular…' : `Conectando com ${connecting}…`}
+                          {connecting === null ? t('pairing.waiting') : t('pairing.connectingWith', { name: connecting })}
                         </Text>
                       </View>
                     )}
                     <Text style={dead ? styles.warning : styles.countdown}>
                       {locked
-                        ? 'Muitas tentativas erradas. Gere um novo código.'
+                        ? t('pairing.tooManyWrong')
                         : expired
-                          ? 'Código vencido. Gere um novo.'
-                          : `Válido por ${clock(secondsLeft)}`}
+                          ? t('pairing.expired')
+                          : t('pairing.validFor', { time: clock(secondsLeft) })}
                     </Text>
-                    <Text style={styles.note}>O LANCE precisa estar instalado no outro celular.</Text>
+                    <Text style={styles.note}>{t('pairing.needsApp')}</Text>
                   </>
                 ) : (
-                  <Text style={styles.warning}>Não foi possível gerar o código. Tente de novo.</Text>
+                  <Text style={styles.warning}>{t('pairing.codeFailed')}</Text>
                 )}
                 <RequirementsChecklist />
-                <Button label="Gerar novo código" variant="secondary" onPress={open} />
-                {peers.length > 0 ? <Button label="Cancelar" variant="secondary" onPress={cancelPairing} /> : null}
+                <Button label={t('pairing.newCode')} variant="secondary" onPress={open} />
+                {peers.length > 0 ? <Button label={t('common.cancel')} variant="secondary" onPress={cancelPairing} /> : null}
               </>
             )}
           </>
@@ -334,7 +337,7 @@ export default function Pairing() {
 
         <DeviceNameField />
 
-        <Button label="Fechar" variant="secondary" onPress={() => router.back()} />
+        <Button label={t('common.close')} variant="secondary" onPress={() => router.back()} />
       </ScrollView>
       {popup !== null ? <CheckProgress name={popup.name} view={popup.view} onDismiss={() => setPopup(null)} /> : null}
     </SafeAreaView>
