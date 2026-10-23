@@ -10,9 +10,9 @@ import type {
   ZoomRange,
 } from '../../modules/replay-camera/src/ReplayCamera.types';
 import type { Repo } from '../data/repo';
-import type { ModeId, Sport, TriggerSource } from '../data/schema';
+import type { ModeId, ModeSettings, Sport, TriggerSource } from '../data/schema';
 import { type AppLocale, voiceLocale } from '../i18n/locale';
-import { captureConfig, triggerAllowed } from '../payments/limits';
+import { type CaptureConfig, captureConfig, triggerAllowed } from '../payments/limits';
 import { planOf } from '../payments/rules';
 import type { Plan, StartDecision } from '../payments/types';
 import { effectiveSettings } from '../modes/registry';
@@ -56,6 +56,9 @@ export type SessionDeps = {
 
 export type StartResult = 'started' | 'blocked' | 'failed' | 'busy';
 
+/** What a camera was opened with: the mode's settings as read then, and what the plan allowed of them. */
+type Opened = { settings: ModeSettings; config: CaptureConfig };
+
 const errorCode = (e: unknown): ReplayErrorCode =>
   ((e as { code?: ReplayErrorCode })?.code ?? 'CAMERA_UNAVAILABLE') as ReplayErrorCode;
 
@@ -73,7 +76,7 @@ export function useReplaySession(deps: SessionDeps) {
   const cameraLens = useRef<string | undefined>(undefined);
   // The zoom the running camera was last given, so the same zoom is never sent twice (a repeat would cut a smooth ramp short).
   const zoomApplied = useRef<number | undefined>(undefined);
-  const cameraOpening = useRef<Promise<boolean> | undefined>(undefined);
+  const cameraOpening = useRef<Promise<Opened | undefined> | undefined>(undefined);
   const cameraError = useRef<ReplayErrorCode | undefined>(undefined);
   // The running game's cut, fixed at its start by its plan (15 s at most on the free plan): applies to every saved clip.
   const cutSeconds = useRef(0);
@@ -162,12 +165,15 @@ export function useReplaySession(deps: SessionDeps) {
   /**
    * Turns the camera on for `mode` with what `plan` allows (the free plan: HD, no sound, 15 s).
    * Reopens it when the quality, buffer or sound differ from what is open (and, with two fixed lenses, its lens);
-   * with continuous zoom a different zoom is applied to the running camera instead. Resolves true when on.
+   * with continuous zoom a different zoom is applied to the running camera instead. Resolves with what the camera is
+   * open with (start uses exactly that, even if the prefs change meanwhile), or undefined when it failed.
    */
   const openCamera = useCallback(
-    (mode: ModeId, plan: Plan): Promise<boolean> => {
+    (mode: ModeId, plan: Plan): Promise<Opened | undefined> => {
       const settings = effectiveSettings(mode, deps.repo.getPrefs());
-      const { quality, bufferSeconds, audio } = captureConfig(settings, plan);
+      const config = captureConfig(settings, plan);
+      const opened: Opened = { settings, config };
+      const { quality, bufferSeconds, audio } = config;
       const range = deps.camera.getZoomRange();
       const zoom = clampZoom(settings.zoom, range);
       const lens = lensFor(zoom);
@@ -179,11 +185,11 @@ export function useReplaySession(deps: SessionDeps) {
           zoomApplied.current = zoom;
           deps.camera.setZoom(zoom, false);
         }
-        return Promise.resolve(true);
+        return Promise.resolve(opened);
       }
       const open = async () => {
         await cameraOpening.current;
-        if (cameraLens.current === key) return true;
+        if (cameraLens.current === key) return opened;
         dispatch({ type: 'cameraStarting' });
         try {
           if (cameraLens.current !== undefined) {
@@ -196,11 +202,11 @@ export function useReplaySession(deps: SessionDeps) {
           cameraLens.current = key;
           zoomApplied.current = zoom;
           dispatch({ type: 'cameraOn' });
-          return true;
+          return opened;
         } catch (e) {
           cameraError.current = errorCode(e);
           dispatch({ type: 'cameraFailed', code: cameraError.current });
-          return false;
+          return undefined;
         }
       };
       cameraOpening.current = open();
@@ -217,7 +223,7 @@ export function useReplaySession(deps: SessionDeps) {
     (mode: ModeId, plan: Plan): Promise<boolean> => {
       const phase = stateRef.current.phase;
       if (phase === 'starting' || phase === 'recording' || phase === 'stopping') return Promise.resolve(true);
-      return openCamera(mode, plan);
+      return openCamera(mode, plan).then((opened) => opened !== undefined);
     },
     [openCamera]
   );
@@ -244,10 +250,13 @@ export function useReplaySession(deps: SessionDeps) {
         // Nothing touched: the setup screen opens the paywall.
         if (decision.kind === 'blocked') return 'blocked';
         dispatch({ type: 'startRequested' });
+        // Visible to a prepare() before React commits: from here only start() touches the camera.
+        stateRef.current = { ...stateRef.current, phase: 'starting' };
         let toggled = false;
         let locale: VoiceLocale | undefined;
         try {
-          if (!(await openCamera(sport, planOf(decision)))) {
+          let opened = await openCamera(sport, planOf(decision));
+          if (!opened) {
             dispatch({ type: 'startFailed', code: cameraError.current ?? 'CAMERA_UNAVAILABLE' });
             return 'failed';
           }
@@ -258,14 +267,17 @@ export function useReplaySession(deps: SessionDeps) {
             dispatch({ type: 'startBlocked' });
             return 'blocked';
           }
-          if (planOf(again) !== planOf(decision) && !(await openCamera(sport, planOf(again)))) {
-            dispatch({ type: 'startFailed', code: cameraError.current ?? 'CAMERA_UNAVAILABLE' });
-            return 'failed';
+          if (planOf(again) !== planOf(decision)) {
+            opened = await openCamera(sport, planOf(again));
+            if (!opened) {
+              dispatch({ type: 'startFailed', code: cameraError.current ?? 'CAMERA_UNAVAILABLE' });
+              return 'failed';
+            }
           }
           decision = again; // the session always matches the camera that is open
           const plan = planOf(decision);
-          const settings = effectiveSettings(sport, deps.repo.getPrefs());
-          const config = captureConfig(settings, plan);
+          // The settings the open camera was given: prefs changed while it opened do not reach this game.
+          const { settings, config } = opened;
           // Listen only when the phone may: native and the setup tile must agree on whether voice is on.
           const voiceOn = settings.voiceEnabled && deps.camera.getSpeechPermission() === 'granted';
           locale = voiceLocale(deps.locale());
@@ -291,12 +303,17 @@ export function useReplaySession(deps: SessionDeps) {
           return 'started';
         } catch (e) {
           // No game: body pose and voice go back off, as while positioning.
+          // Each on its own: one that throws must not leave the other on. The start already failed; its error is shown.
           if (toggled) {
             try {
               deps.camera.setGestureEnabled(false);
+            } catch {
+              // see above
+            }
+            try {
               if (locale) deps.camera.setVoiceEnabled(false, locale);
             } catch {
-              // the start already failed; the error below is the one shown
+              // see above
             }
           }
           dispatch({ type: 'startFailed', code: errorCode(e) });

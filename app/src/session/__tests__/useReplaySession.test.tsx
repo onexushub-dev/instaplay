@@ -791,7 +791,7 @@ describe('start decision', () => {
     }
   });
 
-  test('a throw from reading the prefs fails the start before anything is written', async () => {
+  test('a throw from reading the prefs while the camera is chosen fails the start before anything is written', async () => {
     const f = await setup();
     await act(() => f.view.result.current.prepare('quadra', 'free'));
     jest.spyOn(f.deps.repo, 'getPrefs').mockImplementationOnce(() => { throw new Error('x'); });
@@ -799,6 +799,87 @@ describe('start decision', () => {
     expect(f.sessionIds()).toEqual([]);
     expect(freeCount(f)).toBe(0);
     expect(await startResult(f)).toBe('started');
+  });
+
+  test('prefs changed while the camera opens do not reach the game: it runs with what the camera was opened with', async () => {
+    const f = await setup();
+    f.startDecision.mockResolvedValueOnce({ kind: 'free' }).mockImplementationOnce(async () => {
+      f.deps.repo.setPrefs({ modeSettings: { quadra: { bufferSeconds: 10, cutSeconds: 5, gestureEnabled: false, voiceEnabled: true } } });
+      return { kind: 'free' };
+    });
+    expect(await startResult(f)).toBe('started');
+    expect(f.camera.startSession).toHaveBeenCalledTimes(1);
+    expect(f.camera.startSession).toHaveBeenLastCalledWith(expect.objectContaining({ bufferSeconds: 15 }));
+    expect(f.view.result.current.state.bufferSeconds).toBe(15);
+    expect(f.camera.setGestureEnabled).toHaveBeenLastCalledWith(true);
+    expect(f.camera.setVoiceEnabled).toHaveBeenLastCalledWith(false, 'pt-BR');
+    await saveClips(f, f.view, 1);
+    const [clip] = f.deps.repo.listClips(f.view.result.current.state.sessionId!);
+    expect(clip.trim).toEqual({ startMs: 45000, endMs: 60000 });
+  });
+
+  test('a credit gone between the two decisions: reopens in HD without sound, spends nothing, counts a free recording', async () => {
+    const f = await setup();
+    f.startDecision.mockResolvedValueOnce({ kind: 'credit', passTransactionId: 'tx-1' }).mockResolvedValueOnce({ kind: 'free' });
+    expect(await startResult(f)).toBe('started');
+    expect(f.camera.startSession).toHaveBeenNthCalledWith(1, expect.objectContaining({ maxQuality: '1080p60', audio: true }));
+    expect(f.camera.startSession).toHaveBeenLastCalledWith(
+      expect.objectContaining({ maxQuality: '720p60', bufferSeconds: 15, audio: false }),
+    );
+    const session = f.deps.repo.getSession(f.view.result.current.state.sessionId!)!;
+    expect(session.paid).toBe(false);
+    expect(session.passTransactionId).toBeUndefined();
+    expect(f.deps.repo.spentPasses().size).toBe(0);
+    expect(freeCount(f)).toBe(1);
+  });
+
+  test('a credit arriving between the two decisions: reopens in Full HD with sound, spends it once, counts nothing', async () => {
+    const f = await setup();
+    f.startDecision.mockResolvedValueOnce({ kind: 'free' }).mockResolvedValueOnce({ kind: 'credit', passTransactionId: 'tx-1' });
+    expect(await startResult(f)).toBe('started');
+    expect(f.camera.startSession).toHaveBeenNthCalledWith(1, expect.objectContaining({ maxQuality: '720p60', audio: false }));
+    expect(f.camera.startSession).toHaveBeenLastCalledWith(
+      expect.objectContaining({ maxQuality: '1080p60', bufferSeconds: 60, audio: true }),
+    );
+    expect(f.deps.repo.getSession(f.view.result.current.state.sessionId!)).toMatchObject({ paid: true, passTransactionId: 'tx-1' });
+    expect([...f.deps.repo.spentPasses()]).toEqual(['tx-1']);
+    expect(freeCount(f)).toBe(0);
+  });
+
+  test.each([
+    ['gesture', 'voice'],
+    ['voice', 'gesture'],
+  ])('a failed start switches %s off even when switching %s off throws', async (stays, throws) => {
+    const f = await setup();
+    f.deps.repo.setPrefs({ voiceEnabled: true });
+    jest.spyOn(f.deps.repo, 'startSession').mockImplementationOnce(() => {
+      const thrower = throws === 'gesture' ? f.camera.setGestureEnabled : f.camera.setVoiceEnabled;
+      thrower.mockImplementation((on: boolean) => {
+        if (!on) throw new Error('y');
+      });
+      throw new Error('x');
+    });
+    expect(await startResult(f)).toBe('failed');
+    if (stays === 'gesture') expect(f.camera.setGestureEnabled).toHaveBeenLastCalledWith(false);
+    else expect(f.camera.setVoiceEnabled).toHaveBeenLastCalledWith(false, 'pt-BR');
+  });
+
+  test('a prepare right after the start was asked for, before React commits, does not touch the camera', async () => {
+    const f = await setup();
+    let open!: () => void;
+    f.camera.startSession.mockImplementationOnce(() => new Promise<void>((r) => (open = r)));
+    let r: unknown;
+    let ok: unknown;
+    await act(async () => {
+      const pending = f.view.result.current.start('quadra');
+      while (f.camera.startSession.mock.calls.length === 0) await Promise.resolve();
+      ok = await Promise.race([f.view.result.current.prepare('quadra', 'paid'), Promise.resolve('pending')]);
+      open();
+      r = await pending;
+    });
+    expect(ok).toBe(true);
+    expect(r).toBe('started');
+    expect(f.camera.startSession).toHaveBeenCalledTimes(1);
   });
 
   test('start is busy while recording and while stopping', async () => {
