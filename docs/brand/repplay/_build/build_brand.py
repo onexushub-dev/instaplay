@@ -329,7 +329,7 @@ Abra `guia-de-marca.html` para ver tudo montado.
 {colors}
 
 CMYK é conversão matemática, não referência de gráfica. Peça prova de cor e Pantone equivalente ao fornecedor antes de imprimir em escala.
-O lima do logo (`{LIME}`) é mais claro que o acento do app (`#D6F23F`). Escolha um dos dois como lima oficial para não manter dois verdes.
+O app usa o mesmo lima do logo (`{LIME}`): o acento da interface (`colors.accent`, em `app/src/theme/tokens.ts`) foi alinhado a ele.
 
 ## Regras rápidas
 
@@ -440,7 +440,7 @@ th,td {{ text-align:left; padding:12px 14px; border-bottom:1px solid var(--rule)
 <p>A logo reduzida é o símbolo sem o nome, igual ao do logo completo. Use-a quando o espaço não comporta o nome: favicon, ícone do app, avatar.</p><div class="fmts">{fmt_html}</div></section>
 
 <section><div class="eyebrow">03 · Cores</div><h2>Ink, paper e um acento</h2><div class="swatches">{color_html}</div>
-<div class="note">O lima do logo (<code>{LIME}</code>) é mais claro que o acento do app (<code>#D6F23F</code>). Escolha um deles como lima oficial.</div></section>
+<div class="note">O app usa o mesmo lima do logo (<code>{LIME}</code>): o acento da interface foi alinhado a ele.</div></section>
 
 <section><div class="eyebrow">04 · Respiro e tamanho mínimo</div><h2>Área de proteção</h2>
 <p>Deixe livre, em todos os lados, metade da altura do símbolo.</p><div class="clear"><div class="frame">{img(L("horizontal", "fundo-claro"))}</div></div>

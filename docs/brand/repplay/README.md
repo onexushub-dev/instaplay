@@ -40,7 +40,7 @@ Abra `guia-de-marca.html` para ver tudo montado.
 | Oliva | `#5F7D0B` | (95, 125, 11) | (24, 0, 91, 51) | O acento da versão para fundo claro (triângulo play). |
 
 CMYK é conversão matemática, não referência de gráfica. Peça prova de cor e Pantone equivalente ao fornecedor antes de imprimir em escala.
-O lima do logo (`#CFEA79`) é mais claro que o acento do app (`#D6F23F`). Escolha um dos dois como lima oficial para não manter dois verdes.
+O app usa o mesmo lima do logo (`#CFEA79`): o acento da interface (`colors.accent`, em `app/src/theme/tokens.ts`) foi alinhado a ele.
 
 ## Regras rápidas
 
