@@ -539,12 +539,56 @@ test('on the free tier the Relógio tile shows a Pro badge and opens the paywall
   session({});
   await render(<Setup />);
   await openSettings();
-  expect(screen.getByText('Pro')).toBeTruthy();
+  expect(screen.getAllByText('Pro').length).toBeGreaterThan(0);
   const tile = screen.getByRole('button', { name: 'Relógio, Pronto, Disponível no Pro' });
   await fireEvent.press(tile);
   expect(openPaywall).toHaveBeenCalledTimes(1);
   expect(openPaywall.mock.calls[0]).toHaveLength(1);
   expect(openPaywall.mock.calls[0][0]('setup.watchProOnly')).toBe('Disponível no Pro');
+});
+
+test('on the free tier clip lengths above 15s are locked and open the paywall', async () => {
+  freeTier();
+  session({});
+  await render(<Setup />);
+  expect(screen.getByText('Clipes de até 15s')).toBeTruthy(); // 30s is stored, but the free plan gets 15s
+  await openSettings();
+  expect(screen.getByRole('button', { name: '15s' })).toBeSelected();
+  expect(screen.getByRole('button', { name: '30s, Disponível no Pro' })).not.toBeSelected();
+  for (const label of ['30s', '45s', '60s']) {
+    openPaywall.mockClear();
+    await fireEvent.press(screen.getByRole('button', { name: `${label}, Disponível no Pro` }));
+    expect(openPaywall).toHaveBeenCalledTimes(1);
+  }
+  expect(repo.setPrefs).not.toHaveBeenCalledWith(expect.objectContaining({ modeSettings: expect.anything() }));
+});
+
+test('on the free tier picking 15s is free and saves it', async () => {
+  freeTier();
+  session({});
+  await render(<Setup />);
+  await openSettings();
+  await fireEvent.press(screen.getByRole('button', { name: '15s' }));
+  expect(openPaywall).not.toHaveBeenCalled();
+  expect(repo.setPrefs).toHaveBeenCalledWith({ modeSettings: { quadra: { cutSeconds: 15 } } });
+});
+
+test('on the free tier the Bluetooth and phone remote tiles show Pro but still open their pairing screens', async () => {
+  freeTier();
+  camera().isRemoteSupported.mockReturnValue(true);
+  session({});
+  await render(<Setup />);
+  await openSettings();
+  for (const [title, path] of [
+    ['Controle Bluetooth', '/devices'],
+    ['Conectar um celular controle', '/pairing'],
+    ['Usar este celular como controle', '/remote'],
+  ] as const) {
+    router.push.mockClear?.();
+    await fireEvent.press(screen.getByRole('button', { name: new RegExp(`^${title}.*Disponível no Pro$`) }));
+    expect(router.push).toHaveBeenLastCalledWith(path === '/devices' ? expect.objectContaining({ pathname: path }) : path);
+  }
+  expect(openPaywall).not.toHaveBeenCalled();
 });
 
 test('on the free tier a locked watch is not counted as ready in the summary', async () => {

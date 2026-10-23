@@ -34,7 +34,7 @@ import { ZoomButton } from '../components/ZoomButton';
 import { repo } from '../data/mmkv';
 import { useStartPreview } from '../payments/useStartPreview';
 import { openPaywall } from '../payments/feedback';
-import { triggerAllowed } from '../payments/limits';
+import { FREE_MAX_SECONDS, triggerAllowed } from '../payments/limits';
 import { usePlan } from '../share/entitlement';
 import { type MessageKey, VOICE_WORDS, voiceLocale } from '../i18n';
 import { useT } from '../i18n/useT';
@@ -158,6 +158,12 @@ export default function Setup() {
   const plan = usePlan();
   const watchAllowed = triggerAllowed('watch', plan);
   const watchOn = watchAllowed && watch === 'ready';
+  // The Bluetooth remote and the phone remote are paid too. Pairing and testing them stays open to everyone; the lock
+  // is on turning them on for a game.
+  const bluetoothAllowed = triggerAllowed('remote', plan);
+  const phoneAllowed = triggerAllowed('phone', plan);
+  // The free plan cuts clips at 15 s: a longer pick is paid, and what the screen shows is what the game will get.
+  const clipSeconds = plan === 'paid' ? settings.cutSeconds : Math.min(settings.cutSeconds, FREE_MAX_SECONDS);
   // The phone remote (a second iPhone that taps Salvar for this one). The camera phone waits for its paired remotes for
   // as long as the app is open (see the root layout); pairing happens on its own sheet (/pairing).
   const [remoteSupported] = useState(() => isRemoteSupported());
@@ -217,7 +223,7 @@ export default function Setup() {
 
   const summary = t('setup.summary', {
     items: [
-      t('setup.summaryClip', { seconds: settings.cutSeconds }),
+      t('setup.summaryClip', { seconds: clipSeconds }),
       t(voiceOn ? 'setup.summaryVoiceOn' : 'setup.summaryVoiceOff'),
       t(settings.gestureEnabled ? 'setup.summaryGestureOn' : 'setup.summaryGestureOff'),
       t(
@@ -377,7 +383,7 @@ export default function Setup() {
           <WatchIcon color={iconColor(watchOn)} size={32} />
           {remoteSupported ? <QrIcon color={iconColor(remoteLinked > 0)} size={32} /> : null}
         </View>
-        <Text style={styles.summaryClip}>{`Clipes de até ${settings.cutSeconds}s`}</Text>
+        <Text style={styles.summaryClip}>{t('setup.clipUpTo', { seconds: clipSeconds })}</Text>
       </Pressable>
     );
   }
@@ -388,14 +394,19 @@ export default function Setup() {
         <View style={styles.clipLength}>
           <Text style={styles.section}>{t('setup.clipLength')}</Text>
           <View style={styles.chips}>
-            {CLIP_SECONDS_OPTIONS.map((seconds) => (
-              <Chip
-                key={seconds}
-                label={`${seconds}s`}
-                selected={settings.cutSeconds === seconds}
-                onPress={() => updateMode({ cutSeconds: seconds })}
-              />
-            ))}
+            {CLIP_SECONDS_OPTIONS.map((seconds) => {
+              const allowed = plan === 'paid' || seconds <= FREE_MAX_SECONDS;
+              return (
+                <Chip
+                  key={seconds}
+                  label={`${seconds}s`}
+                  selected={clipSeconds === seconds}
+                  lockedBadge={allowed ? undefined : t('setup.proBadge')}
+                  lockedHint={allowed ? undefined : t('setup.proOnly')}
+                  onPress={allowed ? () => updateMode({ cutSeconds: seconds }) : () => void openPaywall(t)}
+                />
+              );
+            })}
           </View>
         </View>
 
@@ -424,6 +435,8 @@ export default function Setup() {
               title={t('setup.bluetoothRemote')}
               status={remoteView.statusText}
               active={remoteWorks}
+              lockedBadge={bluetoothAllowed ? undefined : t('setup.proBadge')}
+              lockedHint={bluetoothAllowed ? undefined : t('setup.proOnly')}
               onPress={() => router.push({ pathname: '/devices', params: { kind: 'remote' } })}
             />
             <TriggerTile
@@ -448,6 +461,8 @@ export default function Setup() {
                 title={t('setup.connectPhoneRemote')}
                 status={controllersStatus(t, remoteLinked)}
                 active={remoteLinked > 0}
+                lockedBadge={phoneAllowed ? undefined : t('setup.proBadge')}
+                lockedHint={phoneAllowed ? undefined : t('setup.proOnly')}
                 onPress={() => router.push('/pairing')}
               />
               <TriggerTile
@@ -455,6 +470,8 @@ export default function Setup() {
                 title={t('setup.useAsRemote')}
                 status={cameraStatus(t, controlHost)}
                 active={controlHost !== null}
+                lockedBadge={phoneAllowed ? undefined : t('setup.proBadge')}
+                lockedHint={phoneAllowed ? undefined : t('setup.proOnly')}
                 onPress={() => router.push('/remote')}
               />
             </View>
