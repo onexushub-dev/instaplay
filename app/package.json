@@ -75,6 +75,9 @@
       "/ios/",
       "/android/"
     ],
-    "watchman": false
+    "watchman": false,
+    "setupFiles": [
+      "./jest.setup.js"
+    ]
   }
 }

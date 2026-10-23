@@ -11,7 +11,7 @@ const layout = frameLayout({ width: 1920, height: 1080 }, frame);
 test('every clip carries the Repplay logo, so whoever sees it knows what made it', async () => {
   await render(<ShareOverlay frame={frame} layout={layout} scale={1} />);
   expect(screen.getByLabelText('Repplay')).toBeTruthy();
-  expect(screen.queryByText('feito com LANCE')).toBeNull();
+  expect(screen.queryByText('feito com Repplay')).toBeNull();
 });
 
 test('the logo is 27.2% of the frame width and keeps its proportions, in a 720 and in a 1080 export', async () => {

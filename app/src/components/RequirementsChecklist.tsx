@@ -4,9 +4,9 @@ import { useT } from '../i18n/useT';
 import { colors, fonts, radius } from '../theme/tokens';
 
 /** What both phones need for the link to work. Shown wherever pairing can fail, so nobody has to guess. */
-const REQUIREMENT_KEYS = ['requirements.wifi', 'requirements.localNetwork', 'requirements.appsOpen'] as const;
+const REQUIREMENT_KEYS = ['requirements.bluetooth', 'requirements.appsOpen', 'requirements.preview'] as const;
 
-/** The three things to check when the phones do not find each other. */
+/** The things to check when the phones do not find each other (the last one only matters for the camera preview). */
 export function RequirementsChecklist({ title }: { title?: string }) {
   const { t } = useT();
   const heading = title === undefined ? t('requirements.title') : title;

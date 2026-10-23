@@ -4,9 +4,9 @@ import XCTest
 final class WatchSharedStateTests: XCTestCase {
   func testTheWidgetFindsTheWatchAppsGroup() {
     // The watch app and its widget share one group named after the watch app's bundle id.
-    XCTAssertEqual(WatchSharedState.groupID(forBundleID: "app.lance.mobile.watch"), "group.app.lance.mobile.watch")
-    XCTAssertEqual(WatchSharedState.groupID(forBundleID: "app.lance.mobile.watch.widget"), "group.app.lance.mobile.watch")
-    XCTAssertEqual(WatchSharedState.groupID(forBundleID: "com.me.lance.watch.widget"), "group.com.me.lance.watch")
+    XCTAssertEqual(WatchSharedState.groupID(forBundleID: "app.repplay.mobile.watch"), "group.app.repplay.mobile.watch")
+    XCTAssertEqual(WatchSharedState.groupID(forBundleID: "app.repplay.mobile.watch.widget"), "group.app.repplay.mobile.watch")
+    XCTAssertEqual(WatchSharedState.groupID(forBundleID: "com.me.repplay.watch.widget"), "group.com.me.repplay.watch")
   }
 
   func testStateRoundTrips() {

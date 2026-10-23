@@ -44,8 +44,8 @@ test('plurals have exactly one and other', () => {
 test('no text is empty and the brand is never translated', () => {
   for (const [key, text] of [...leaves(en as unknown as Tree), ...leaves(ptBR as unknown as Tree)]) {
     expect([key, text.trim().length > 0]).toEqual([key, true]);
-    // The brand is always "LANCE"; lowercase "lance" is the Portuguese word for a play.
-    expect([key, /\bLance\b/.test(text)]).toEqual([key, false]);
+    // The brand is "Repplay" (the old name, LANCE, must not come back); lowercase "lance" is the Portuguese word for a play.
+    expect([key, /\bLance\b/i.test(text) && /\bLANCE\b/.test(text)]).toEqual([key, false]);
   }
 });
 

@@ -2,7 +2,7 @@ import { act, renderHook } from '@testing-library/react-native';
 
 import { createRepo, type KV } from '../../data/repo';
 import type { StartDecision } from '../../payments/types';
-import { type SessionDeps, useReplaySession } from '../useReplaySession';
+import { SETTLE_MS, type SessionDeps, useReplaySession } from '../useReplaySession';
 
 type Listener = (e: any) => void;
 
@@ -56,7 +56,7 @@ function fakeDeps() {
     camera,
     deleted,
     // Every game written, with clips or not (listSessions only lists games with clips).
-    sessionIds: (): string[] => JSON.parse(map.get('lance:v1:sessions') ?? '[]'),
+    sessionIds: (): string[] => JSON.parse(map.get('repplay:v1:sessions') ?? '[]'),
     emit: (event: string, e: any = {}) => listeners.get(event)?.(e),
     advance: (ms: number) => void (t += ms),
     finishSave: (v = { clipPath: '/c.mp4', durationMs: 60000 }) => pendingSave?.(v),
@@ -93,12 +93,13 @@ test('ignores trigger while saving', async () => {
 });
 
 test('native onTrigger goes through the bus', async () => {
-  const { view, camera, emit, finishSave } = await started();
+  const { view, camera, emit, finishSave, advance } = await started();
+  advance(SETTLE_MS);
 
   await act(async () => emit('onTrigger', { source: 'gesture', at: 1 }));
   await act(async () => finishSave());
 
-  expect(camera.saveClip).toHaveBeenCalledWith({ source: 'gesture', at: 1000 });
+  expect(camera.saveClip).toHaveBeenCalledWith({ source: 'gesture', at: 1000 + SETTLE_MS });
   expect(view.result.current.state.lastSaved?.source).toBe('gesture');
 });
 
@@ -279,7 +280,8 @@ test('stop turns the camera off', async () => {
 });
 
 test('signals the save the moment the trigger is accepted, before the file is ready', async () => {
-  const { view, camera } = await started();
+  const { view, camera, advance } = await started();
+  advance(SETTLE_MS);
 
   await act(async () => view.result.current.trigger('gesture'));
 
@@ -989,4 +991,14 @@ describe('start decision', () => {
     expect(f.view.result.current.state).toMatchObject({ phase: 'recording', paid: true });
     expect(f.camera.stopSession).not.toHaveBeenCalled();
   });
+});
+
+test('right after the recording starts, a gesture, voice or volume press saves nothing; a tap does', async () => {
+  const { view, camera, emit, advance } = await started();
+  await act(async () => emit('onTrigger', { source: 'gesture', at: 1 }));
+  await act(async () => view.result.current.trigger('remote'));
+  expect(camera.saveClip).not.toHaveBeenCalled();
+  advance(100);
+  await act(async () => view.result.current.trigger('screen'));
+  expect(camera.saveClip).toHaveBeenCalledWith({ source: 'screen', at: 1100 });
 });

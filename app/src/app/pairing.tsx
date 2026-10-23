@@ -23,7 +23,8 @@ import { type AppLocale, currentLocale, translate } from '../i18n';
 import { useT } from '../i18n/useT';
 import { colors, fonts, radius } from '../theme/tokens';
 
-const LIMIT = 4;
+/** One remote per camera phone, as the remote has one camera (the native side holds the same rule). */
+const MAX_REMOTES = 1;
 /** A code is good for two minutes; building the QR image takes a moment, so the offer can look slightly longer. */
 const VALID_SECONDS = 120;
 const CLOSE_AFTER_MS = 1500;
@@ -73,9 +74,10 @@ function Step({ n, text }: { n: number; text: string }) {
 }
 
 /**
- * The camera phone's side of pairing. It opens on the remotes already paired (is each one linked right now? "Verificar"
- * asks it, "Remover" forgets it); the QR and the 6-digit code only exist once the player asks for another phone, or at
- * once when there is none yet, so a code never runs out while the player is just looking at the list.
+ * The camera phone's side of pairing. It opens on the paired remote (is it linked right now? "Verificar" asks it,
+ * "Remover" forgets it). One remote at a time: a new one takes its place through "Esquecer e parear outro", which asks
+ * first, like the remote's own "Esquecer esta câmera". The QR and the 6-digit code only exist once the player asks for
+ * them, or at once when no remote is paired, so a code never runs out while the player is just looking.
  */
 export default function Pairing() {
   const { t, locale } = useT();
@@ -150,7 +152,8 @@ export default function Pairing() {
   // The camera phone tells us when a remote connected or left: that is how the list stays true, and how we know a new
   // remote was paired.
   useEffect(() => {
-    const sub = addReplayListener('onRemoteStatus', () => {
+    const sub = addReplayListener('onRemoteStatus', (e) => {
+      if (e.side === 'remote') return;
       const added = readPeers();
       if (added && pairingRef.current) setPaired(added.name);
     });
@@ -204,6 +207,26 @@ export default function Pairing() {
     remoteHostCheck(peer.id);
   };
 
+  // The paired remote goes (it is told, and forgets this camera too) and the code for the new one opens right away.
+  const confirmReplace = (peer: RemotePeer) => {
+    Alert.alert(
+      t('pairing.replaceTitle', { name: peer.name }),
+      t('pairing.replaceBody', { name: peer.name }),
+      [
+        { text: t('common.cancel'), style: 'cancel' },
+        {
+          text: t('pairing.replaceAndPair'),
+          style: 'destructive',
+          onPress: () => {
+            peersRef.current.forEach((each) => remoteHostRemove(each.id));
+            readPeers();
+            open();
+          },
+        },
+      ],
+    );
+  };
+
   const confirmRemove = (peer: RemotePeer) => {
     Alert.alert(
       t('pairing.removeTitle', { name: peer.name }),
@@ -222,7 +245,8 @@ export default function Pairing() {
     );
   };
 
-  const full = peers.length >= LIMIT;
+  const full = peers.length >= MAX_REMOTES;
+  const current = peers.length > 0 ? peers[peers.length - 1] : null;
   const secondsLeft = offer === null ? 0 : Math.min(VALID_SECONDS, Math.max(0, Math.ceil((offer.expiresAt - now) / 1000)));
   const expired = offer !== null && secondsLeft === 0;
   const dead = expired || locked;
@@ -244,10 +268,7 @@ export default function Pairing() {
           <>
             {peers.length > 0 ? (
               <View style={styles.list}>
-                <View style={styles.sectionRow}>
-                  <Text style={styles.section}>{t('pairing.remotes')}</Text>
-                  <Text style={styles.sectionCount}>{t('pairing.countOf', { count: peers.length, limit: LIMIT })}</Text>
-                </View>
+                <Text style={styles.section}>{t('pairing.remote')}</Text>
                 {peers.map((peer) => {
                   const linked = peer.connected === true;
                   const checking = popup !== null && popup.view.phase === 'checking';
@@ -285,10 +306,13 @@ export default function Pairing() {
             ) : null}
 
             {!pairing ? (
-              full ? (
-                <Text style={styles.warning}>{t('pairing.full')}</Text>
+              full && current !== null ? (
+                <View style={styles.replace}>
+                  <Button label={t('pairing.replaceAndPair')} variant="secondary" onPress={() => confirmReplace(current)} />
+                  <Text style={styles.note}>{t('pairing.oneRemote')}</Text>
+                </View>
               ) : (
-                <Button label={t('pairing.pairAnother')} onPress={open} />
+                <Button label={t('pairing.pairOne')} onPress={open} />
               )
             ) : (
               <>
@@ -383,8 +407,7 @@ const styles = StyleSheet.create({
   warning: { fontFamily: fonts.bodySemi, fontSize: 15, color: colors.warning },
   list: { gap: 8 },
   section: { fontFamily: fonts.bodyBold, fontSize: 12, letterSpacing: 1, color: colors.muted },
-  sectionRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' },
-  sectionCount: { fontFamily: fonts.bodySemi, fontSize: 12, color: colors.muted },
+  replace: { gap: 8 },
   peer: { gap: 12, backgroundColor: colors.surface, borderRadius: radius.card, padding: 14 },
   peerTop: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   peerIcon: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.ground, alignItems: 'center', justifyContent: 'center' },

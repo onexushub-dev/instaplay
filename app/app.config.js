@@ -4,8 +4,10 @@
  * Apple only lets one developer team register a given bundle id, so each person who builds on their own Mac/Apple ID
  * needs their own id and team. Set them in app/.env.local (git-ignored) or in the shell:
  *
- *   LANCE_BUNDLE_ID=com.yourname.lance     iOS bundle id and Android package (the watch app becomes <id>.watch)
- *   LANCE_APPLE_TEAM_ID=ABCDE12345         your Apple development team id
+ *   REPPLAY_BUNDLE_ID=com.yourname.repplay   iOS bundle id and Android package (the watch app becomes <id>.watch)
+ *   REPPLAY_APPLE_TEAM_ID=ABCDE12345         your Apple development team id
+ *
+ * The old LANCE_BUNDLE_ID and LANCE_APPLE_TEAM_ID names still work, so an existing .env.local keeps building.
  *
  * With nothing set, the values from app.json are used unchanged.
  *
@@ -18,8 +20,8 @@
  * With no key the app runs as free and the paywall reports an error.
  */
 module.exports = ({ config }) => {
-  const bundleId = process.env.LANCE_BUNDLE_ID;
-  const teamId = process.env.LANCE_APPLE_TEAM_ID;
+  const bundleId = process.env.REPPLAY_BUNDLE_ID || process.env.LANCE_BUNDLE_ID;
+  const teamId = process.env.REPPLAY_APPLE_TEAM_ID || process.env.LANCE_APPLE_TEAM_ID;
 
   const ios = Object.assign({}, config.ios);
   const android = Object.assign({}, config.android);

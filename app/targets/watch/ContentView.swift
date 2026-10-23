@@ -4,7 +4,7 @@ import SwiftUI
 // shows the watch's own language.
 
 private let ground = Color(red: 0.059, green: 0.063, blue: 0.051) // #0F100D
-private let accent = Color(red: 0.839, green: 0.949, blue: 0.247) // #D6F23F
+private let accent = Color(red: 0.812, green: 0.918, blue: 0.475) // #CFEA79
 
 struct ContentView: View {
   @StateObject private var link = WatchLink()
@@ -46,7 +46,7 @@ struct ContentView: View {
     }
   }
 
-  /// Nothing is recording: one big Start recording button. Without the LANCE app open on the phone it cannot work, so
+  /// Nothing is recording: one big Start recording button. Without the Repplay app open on the phone it cannot work, so
   /// the screen says to open it instead: nothing to tap that would go nowhere.
   @ViewBuilder private var idleView: some View {
     if !link.reachable || link.startFailed {
@@ -168,7 +168,7 @@ private struct CameraToggle: View {
 }
 
 
-/// The LANCE app is not open on the phone, so nothing here can record or save: say so, large, and say what to do.
+/// The Repplay app is not open on the phone, so nothing here can record or save: say so, large, and say what to do.
 private struct PhoneClosedView: View {
   /// A recording that lost its phone, rather than a watch that never had one.
   let lostRecording: Bool
@@ -177,7 +177,7 @@ private struct PhoneClosedView: View {
       Header { if lostRecording { Text("No connection").foregroundStyle(.red) } }
       VStack(spacing: 8) {
         Image(systemName: "iphone.gen3").font(.system(size: 42, weight: .semibold)).foregroundStyle(accent)
-        Text("Open LANCE on your iPhone")
+        Text("Open Repplay on your iPhone")
           .font(.system(.title3, design: .rounded).weight(.heavy))
           .multilineTextAlignment(.center)
           .foregroundStyle(.white)

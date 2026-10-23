@@ -13,5 +13,5 @@ test('amber is reconnecting and red is blocked', async () => {
   const view = await render(<ConnectionBar tone="warn" name="Quadra 1" />);
   expect(screen.getByLabelText('Reconectando a Quadra 1')).toBeTruthy();
   await view.rerender(<ConnectionBar tone="bad" name="Quadra 1" />);
-  expect(screen.getByLabelText('Sem acesso à rede local')).toBeTruthy();
+  expect(screen.getByLabelText('Sem Bluetooth')).toBeTruthy();
 });

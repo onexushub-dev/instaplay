@@ -17,7 +17,7 @@ import {
   remoteControllerStart,
   remoteControllerStop,
 } from '../../modules/replay-camera';
-import type { RemoteLink, RemotePairFailure, RemotePeer } from '../../modules/replay-camera/src/ReplayCamera.types';
+import type { RemoteLink, RemoteLinkReason, RemotePairFailure, RemotePeer } from '../../modules/replay-camera/src/ReplayCamera.types';
 import { Button } from '../components/Button';
 import { ConnectionBar } from '../components/ConnectionBar';
 import { QrScanner } from '../components/QrScanner';
@@ -40,6 +40,8 @@ const TICK_MS = 250;
 const CONNECT_TIMEOUT_MS = 12_000;
 /** The camera phone has this long to show it is recording before the remote says it did not start. */
 const START_WAIT_MS = 8000;
+/** How long "Tentar reconexão" waits before it can be tapped again. */
+const RETRY_WAIT_MS = 6000;
 
 type Received = { recording: boolean; clipCount: number; startedAt: number | null; receivedAt: number };
 
@@ -104,6 +106,9 @@ export default function Remote() {
   const { t } = useT();
   const [host, setHost] = useState<RemotePeer | null>(() => remoteControllerHost());
   const [link, setLink] = useState<RemoteLink>('idle');
+  const [linkReason, setLinkReason] = useState<RemoteLinkReason | undefined>(undefined);
+  // "Tentar reconexão" was tapped: the button waits (and cannot be tapped again) until the link is back or a few seconds pass.
+  const [retrying, setRetrying] = useState(false);
   const [peerName, setPeerName] = useState<string | null>(null);
   const [received, setReceived] = useState<Received | null>(null);
   const [now, setNow] = useState(() => Date.now());
@@ -150,7 +155,10 @@ export default function Remote() {
 
   useEffect(() => {
     const status = addReplayListener('onRemoteStatus', (e) => {
+      // This phone also runs the camera side (it starts whenever the app comes to the front): its status is not ours.
+      if (e.side !== 'remote') return;
       setLink(e.link);
+      setLinkReason(e.reason);
       if (e.peerName !== undefined) setPeerName(e.peerName);
     });
     const state = addReplayListener('onRemoteState', (e) => {
@@ -260,9 +268,17 @@ export default function Remote() {
 
   // The link looks lost: start the search over now instead of waiting for the next automatic try.
   const retryNow = () => {
+    if (retrying) return;
+    setRetrying(true);
     remoteControllerStop();
     remoteControllerStart();
   };
+
+  useEffect(() => {
+    if (!retrying) return;
+    const timer = setTimeout(() => setRetrying(false), RETRY_WAIT_MS);
+    return () => clearTimeout(timer);
+  }, [retrying]);
 
   // Unpair from this side (the camera phone is told too, when it is in reach) and go back to asking for a code.
   const forgetCamera = () => {
@@ -342,9 +358,12 @@ export default function Remote() {
     );
   }
 
+  // The button only shows while the link is down or silent, so it simply waits out RETRY_WAIT_MS.
+  const retryShown = retrying;
   const hostLabel = host.name.length > 0 ? host.name : peerName === null ? t('remote.genericHost') : peerName;
   const screenModel = remoteScreen({
     link,
+    reason: linkReason,
     hostName: hostLabel,
     state:
       received === null
@@ -379,8 +398,14 @@ export default function Remote() {
 
         {screenModel.kind === 'denied' ? (
           <View style={styles.center}>
-            <Text style={styles.text}>{t('remote.failNetwork')}</Text>
-            <Button label={t('common.openSettings')} onPress={() => Linking.openSettings()} />
+            {screenModel.reason === 'unauthorized' ? (
+              <>
+                <Text style={styles.text}>{t('remote.bluetoothDenied')}</Text>
+                <Button label={t('common.openSettings')} onPress={() => Linking.openSettings()} />
+              </>
+            ) : (
+              <Text style={styles.text}>{t('remote.bluetoothOff')}</Text>
+            )}
           </View>
         ) : null}
 
@@ -415,7 +440,7 @@ export default function Remote() {
             <PulseRing color={colors.warning} size={64} />
             <Text style={styles.status}>{t('remote.reconnectingScreen', { name: screenModel.hostName })}</Text>
             <Text style={styles.hint}>{t('remote.keepOpen')}</Text>
-            <Button label={t('remote.tryNow')} variant="secondary" onPress={retryNow} />
+            <Button label={retryShown ? t('remote.reconnecting') : t('remote.retryLink')} loading={retryShown} onPress={retryNow} />
             <ForgetCamera name={hostLabel} onPress={forgetCamera} />
           </View>
         ) : null}
@@ -426,7 +451,7 @@ export default function Remote() {
               <PulseRing color={colors.warning} size={64} />
               <Text style={styles.status}>{t('remote.noSignal', { name: screenModel.hostName })}</Text>
               <Text style={styles.sub}>{t('remote.checkingLink')}</Text>
-              <Button label={t('remote.tryNow')} variant="secondary" onPress={retryNow} />
+              <Button label={retryShown ? t('remote.reconnecting') : t('remote.retryLink')} loading={retryShown} onPress={retryNow} />
               <ForgetCamera name={hostLabel} onPress={forgetCamera} />
             </View>
             <Pressable

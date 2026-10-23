@@ -77,7 +77,7 @@ test('looks for the camera phone while open, and lets go on leaving', async () =
 test('without a pair it says which iPhone is which and explains the steps', async () => {
   await render(<Remote />);
   expect(screen.getByText('ESTE IPHONE É O CONTROLE')).toBeTruthy();
-  expect(screen.getByText('No celular que vai filmar, abra o LANCE e toque em “Celular” para começar o pareamento.')).toBeTruthy();
+  expect(screen.getByText('No celular que vai filmar, abra o Repplay e toque em “Celular” para começar o pareamento.')).toBeTruthy();
   expect(screen.getByText('Aponte a câmera deste celular para o código QR que aparece lá.')).toBeTruthy();
   expect(screen.getByText('Não consegue ler o QR? Digite aqui o código de 6 números:')).toBeTruthy();
   expect(screen.queryByText(/tile/i)).toBeNull();
@@ -111,7 +111,7 @@ test('a code that never gets an answer stops spinning and says the camera was no
   });
   expect(screen.getByRole('button', { name: 'Conectar' })).toBeTruthy();
   expect(
-    screen.getByText('Não encontrei o celular da câmera. Chegue mais perto e confira se o LANCE está aberto lá.'),
+    screen.getByText('Não encontrei o celular da câmera. Chegue mais perto e confira se o Repplay está aberto lá.'),
   ).toBeTruthy();
 });
 
@@ -135,7 +135,7 @@ test('a failed pairing by code says why', async () => {
   await render(<Remote />);
   await emit('onRemotePairing', { phase: 'failed', reason: 'notFound' });
   expect(
-    screen.getByText('Não encontrei o celular da câmera. Chegue mais perto e confira se o LANCE está aberto lá.'),
+    screen.getByText('Não encontrei o celular da câmera. Chegue mais perto e confira se o Repplay está aberto lá.'),
   ).toBeTruthy();
   await emit('onRemotePairing', { phase: 'failed', reason: 'expired' });
   expect(screen.getByText('Código vencido. Peça um novo no celular da câmera.')).toBeTruthy();
@@ -154,15 +154,15 @@ test('connected and waiting for the game', async () => {
   paired();
   await render(<Remote />);
   expect(screen.getByText('Procurando Quadra 1…')).toBeTruthy();
-  await emit('onRemoteStatus', { link: 'connected', peerName: 'Quadra 1' });
+  await emit('onRemoteStatus', { side: 'remote', link: 'connected', peerName: 'Quadra 1' });
   await emit('onRemoteState', { recording: false, clipCount: 0 });
-  expect(screen.getByText('Conectado. Pronto para começar a partida.')).toBeTruthy();
+  expect(screen.getByText('Controle conectado.')).toBeTruthy();
 });
 
 test('while recording it shows the clock and clips, and Salvar asks the camera phone', async () => {
   paired();
   await render(<Remote />);
-  await emit('onRemoteStatus', { link: 'connected', peerName: 'Quadra 1' });
+  await emit('onRemoteStatus', { side: 'remote', link: 'connected', peerName: 'Quadra 1' });
   await emit('onRemoteState', { recording: true, clipCount: 3, startedAt: NOW - (12 * 60 + 34) * 1000 });
   expect(screen.getByText('12:34 · 3 lances')).toBeTruthy();
   expect(screen.getByLabelText('Conectado a Quadra 1')).toBeTruthy();
@@ -174,7 +174,7 @@ test('while recording it shows the clock and clips, and Salvar asks the camera p
 test('a double tap on Salvar asks for one clip only', async () => {
   paired();
   await render(<Remote />);
-  await emit('onRemoteStatus', { link: 'connected', peerName: 'Quadra 1' });
+  await emit('onRemoteStatus', { side: 'remote', link: 'connected', peerName: 'Quadra 1' });
   await emit('onRemoteState', { recording: true, clipCount: 0, startedAt: NOW });
   await fireEvent.press(screen.getByRole('button', { name: 'SALVAR' }));
   await fireEvent.press(screen.getByRole('button', { name: 'SALVAR' }));
@@ -189,7 +189,7 @@ test('a double tap on Salvar asks for one clip only', async () => {
 async function recording() {
   paired();
   await render(<Remote />);
-  await emit('onRemoteStatus', { link: 'connected', peerName: 'Quadra 1' });
+  await emit('onRemoteStatus', { side: 'remote', link: 'connected', peerName: 'Quadra 1' });
   await emit('onRemoteState', { recording: true, clipCount: 1, startedAt: NOW });
 }
 
@@ -258,7 +258,7 @@ test('searching and waiting show a pulse and say where they are', async () => {
 test('waiting for the game never turns into "Sem conexão" while the camera phone keeps beating', async () => {
   paired();
   await render(<Remote />);
-  await emit('onRemoteStatus', { link: 'connected', peerName: 'Quadra 1' });
+  await emit('onRemoteStatus', { side: 'remote', link: 'connected', peerName: 'Quadra 1' });
   await emit('onRemoteState', { recording: false, clipCount: 0 });
   for (let i = 0; i < 6; i++) {
     await act(async () => {
@@ -266,7 +266,7 @@ test('waiting for the game never turns into "Sem conexão" while the camera phon
     });
     await emit('onRemoteState', { recording: false, clipCount: 0 }); // the beat
   }
-  expect(screen.getByText('Conectado. Pronto para começar a partida.')).toBeTruthy();
+  expect(screen.getByText('Controle conectado.')).toBeTruthy();
   expect(screen.queryByText(/Sem conexão/)).toBeNull();
   expect(screen.queryByText(/Sem sinal/)).toBeNull();
 });
@@ -274,12 +274,12 @@ test('waiting for the game never turns into "Sem conexão" while the camera phon
 test('a dropped link says it is reconnecting, a silent one says there is no signal', async () => {
   paired();
   await render(<Remote />);
-  await emit('onRemoteStatus', { link: 'connected', peerName: 'Quadra 1' });
+  await emit('onRemoteStatus', { side: 'remote', link: 'connected', peerName: 'Quadra 1' });
   await emit('onRemoteState', { recording: false, clipCount: 0 });
-  await emit('onRemoteStatus', { link: 'searching', peerName: 'Quadra 1' });
+  await emit('onRemoteStatus', { side: 'remote', link: 'searching', peerName: 'Quadra 1' });
   expect(screen.getByText('Reconectando a Quadra 1…')).toBeTruthy();
   expect(screen.queryByText(/Sem conexão/)).toBeNull();
-  await emit('onRemoteStatus', { link: 'connected', peerName: 'Quadra 1' });
+  await emit('onRemoteStatus', { side: 'remote', link: 'connected', peerName: 'Quadra 1' });
   await act(async () => {
     jest.advanceTimersByTime(13_000);
   });
@@ -289,17 +289,25 @@ test('a dropped link says it is reconnecting, a silent one says there is no sign
 test('without a pair the checklist of what both phones need is on screen', async () => {
   await render(<Remote />);
   expect(screen.getByText('Para conectar, confira:')).toBeTruthy();
-  expect(screen.getByText(/Wi-Fi e Bluetooth ligados nos dois celulares/)).toBeTruthy();
+  expect(screen.getByText(/Bluetooth ligado nos dois celulares/)).toBeTruthy();
 });
 
-test('denied local network sends the player to Settings', async () => {
+test('Bluetooth not allowed for the app sends the player to Settings', async () => {
   paired();
   const open = jest.spyOn(Linking, 'openSettings').mockResolvedValue(undefined);
   await render(<Remote />);
-  await emit('onRemoteStatus', { link: 'denied' });
-  expect(screen.getByText('Libere a rede local nos Ajustes para usar o controle.')).toBeTruthy();
+  await emit('onRemoteStatus', { side: 'remote', link: 'denied', reason: 'unauthorized' });
+  expect(screen.getByText('Libere o Bluetooth para o Repplay nos Ajustes para usar o controle.')).toBeTruthy();
   await fireEvent.press(screen.getByRole('button', { name: 'Abrir Ajustes' }));
   expect(open).toHaveBeenCalled();
+});
+
+test('Bluetooth off asks to turn it on', async () => {
+  paired();
+  await render(<Remote />);
+  await emit('onRemoteStatus', { side: 'remote', link: 'denied', reason: 'off' });
+  expect(screen.getByText('Ligue o Bluetooth para usar o controle (Central de Controle ou Ajustes).')).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'Abrir Ajustes' })).toBeNull();
 });
 
 test('when the camera phone forgot this remote, it says so and offers to pair again', async () => {
@@ -334,8 +342,8 @@ test('without a pair the phone can be renamed', async () => {
 test('connected before any state arrives it already says connected, not searching', async () => {
   paired();
   await render(<Remote />);
-  await emit('onRemoteStatus', { link: 'connected', peerName: 'Quadra 1' });
-  expect(screen.getByText('Conectado. Pronto para começar a partida.')).toBeTruthy();
+  await emit('onRemoteStatus', { side: 'remote', link: 'connected', peerName: 'Quadra 1' });
+  expect(screen.getByText('Controle conectado.')).toBeTruthy();
   expect(screen.queryByText('Procurando Quadra 1…')).toBeNull();
 });
 
@@ -395,24 +403,34 @@ test('letting go early does not end the recording', async () => {
 test('the end-recording button is only there while recording', async () => {
   paired();
   await render(<Remote />);
-  await emit('onRemoteStatus', { link: 'connected', peerName: 'Quadra 1' });
+  await emit('onRemoteStatus', { side: 'remote', link: 'connected', peerName: 'Quadra 1' });
   await emit('onRemoteState', { recording: false, clipCount: 0 });
   expect(screen.queryByRole('button', { name: 'Segure para encerrar a gravação' })).toBeNull();
 });
 
-test('"Tentar agora" starts the search over', async () => {
+test('"Tentar reconexão" starts the search over', async () => {
   paired();
   await render(<Remote />);
-  await emit('onRemoteStatus', { link: 'connected', peerName: 'Quadra 1' });
+  await emit('onRemoteStatus', { side: 'remote', link: 'connected', peerName: 'Quadra 1' });
   await emit('onRemoteState', { recording: true, clipCount: 2, startedAt: NOW });
   await act(async () => {
     jest.advanceTimersByTime(13_000);
   });
   camera().remoteControllerStop.mockClear();
   camera().remoteControllerStart.mockClear();
-  await fireEvent.press(screen.getByRole('button', { name: 'Tentar agora' }));
+  await fireEvent.press(screen.getByRole('button', { name: 'Tentar reconexão' }));
   expect(camera().remoteControllerStop).toHaveBeenCalledTimes(1);
   expect(camera().remoteControllerStart).toHaveBeenCalledTimes(1);
+  // While it tries, the button says so and a second tap does nothing.
+  const busy = screen.getByRole('button', { name: 'Reconectando…' });
+  expect(busy).toBeDisabled();
+  await fireEvent.press(busy);
+  expect(camera().remoteControllerStart).toHaveBeenCalledTimes(1);
+  // After a few seconds it can be tapped again.
+  await act(async () => {
+    jest.advanceTimersByTime(6_000);
+  });
+  expect(screen.getByRole('button', { name: 'Tentar reconexão' })).toBeEnabled();
 });
 
 test('"Esquecer esta câmera" says whose pairing goes away, asks first, then forgets and goes back to asking for a code', async () => {
@@ -432,7 +450,7 @@ test('"Esquecer esta câmera" says whose pairing goes away, asks first, then for
   alert.mockRestore();
 });
 
-const LINK = 'lance://pair?h=host1&s=AAAAAAAAAAAAAAAAAAAAAA&n=Quadra%201';
+const LINK = 'repplay://pair?h=host1&s=AAAAAAAAAAAAAAAAAAAAAA&n=Quadra%201';
 
 test('the QR code is read right here and pairs with that camera phone', async () => {
   await render(<Remote />);
@@ -441,7 +459,7 @@ test('the QR code is read right here and pairs with that camera phone', async ()
   expect(screen.getByRole('button', { name: 'Conectando…' })).toBeTruthy();
 });
 
-test('a QR code that is not from LANCE is ignored', async () => {
+test('a QR code that is not from Repplay is ignored', async () => {
   await render(<Remote />);
   await act(async () => mockScanner.onBarcodeScanned!({ data: 'https://example.com' }));
   expect(camera().remoteControllerPairWithLink).not.toHaveBeenCalled();
@@ -450,7 +468,7 @@ test('a QR code that is not from LANCE is ignored', async () => {
 test('"Iniciar gravação" asks the camera phone to start and shows it is working', async () => {
   paired();
   await render(<Remote />);
-  await emit('onRemoteStatus', { link: 'connected', peerName: 'Quadra 1' });
+  await emit('onRemoteStatus', { side: 'remote', link: 'connected', peerName: 'Quadra 1' });
   await emit('onRemoteState', { recording: false, clipCount: 0 });
   await fireEvent.press(screen.getByRole('button', { name: 'INICIAR GRAVAÇÃO' }));
   expect(camera().remoteControllerStartRecording).toHaveBeenCalledTimes(1);
@@ -462,7 +480,7 @@ test('"Iniciar gravação" asks the camera phone to start and shows it is workin
 test('if the camera phone does not start, it says so', async () => {
   paired();
   await render(<Remote />);
-  await emit('onRemoteStatus', { link: 'connected', peerName: 'Quadra 1' });
+  await emit('onRemoteStatus', { side: 'remote', link: 'connected', peerName: 'Quadra 1' });
   await emit('onRemoteState', { recording: false, clipCount: 0 });
   await fireEvent.press(screen.getByRole('button', { name: 'INICIAR GRAVAÇÃO' }));
   await act(async () => {
@@ -475,7 +493,7 @@ test('if the camera phone does not start, it says so', async () => {
 test('"Ver câmera" opens the picture, keeps asking for it, and stops asking when closed', async () => {
   paired();
   await render(<Remote />);
-  await emit('onRemoteStatus', { link: 'connected', peerName: 'Quadra 1' });
+  await emit('onRemoteStatus', { side: 'remote', link: 'connected', peerName: 'Quadra 1' });
   await emit('onRemoteState', { recording: true, clipCount: 1, startedAt: NOW });
   await fireEvent.press(screen.getByRole('button', { name: 'Ver câmera' }));
   expect(camera().remoteControllerPreview).toHaveBeenLastCalledWith(true);
@@ -487,4 +505,15 @@ test('"Ver câmera" opens the picture, keeps asking for it, and stops asking whe
   expect(screen.getByLabelText('O que a câmera está vendo')).toBeTruthy();
   await fireEvent.press(screen.getByRole('button', { name: 'Voltar' }));
   expect(camera().remoteControllerPreview).toHaveBeenLastCalledWith(false);
+});
+
+test('the camera side of this same phone saying "searching" does not make the remote look disconnected', async () => {
+  paired();
+  await render(<Remote />);
+  await emit('onRemoteStatus', { side: 'remote', link: 'connected', peerName: 'Quadra 1' });
+  await emit('onRemoteState', { recording: true, clipCount: 1, startedAt: NOW });
+  // Coming back to the front starts this phone's camera side, which has no remotes of its own.
+  await emit('onRemoteStatus', { side: 'camera', link: 'searching', controllers: 0 });
+  expect(screen.queryByText('Reconectando a Quadra 1…')).toBeNull();
+  expect(screen.getByRole('button', { name: 'SALVAR' })).toBeTruthy();
 });

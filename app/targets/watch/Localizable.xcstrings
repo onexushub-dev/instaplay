@@ -163,19 +163,19 @@
         }
       }
     },
-    "Open LANCE on your iPhone": {
+    "Open Repplay on your iPhone": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Open LANCE on your iPhone"
+            "value": "Open Repplay on your iPhone"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Abra o LANCE no iPhone"
+            "value": "Abra o Repplay no iPhone"
           }
         }
       }

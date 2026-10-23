@@ -44,6 +44,7 @@ final class RemoteMessageTests: XCTestCase {
       .refused(reason: .closed),
       .ping(token: "a1b2"),
       .pong(token: "a1b2"),
+      .previewLink(service: "lance-1a2b3c4d", token: Data(repeating: 7, count: 16), key: key),
     ]
     for message in cases {
       XCTAssertEqual(RemoteMessage.decode(message.payload), message)
@@ -71,27 +72,9 @@ final class RemoteMessageTests: XCTestCase {
     XCTAssertNil(RemoteMessage.decode(["paired": ["hostId": "h1", "hostName": "Quadra", "key": "not base64!"]]))
     let shortKey = Data(repeating: 1, count: 16).base64EncodedString()
     XCTAssertNil(RemoteMessage.decode(["paired": ["hostId": "h1", "hostName": "Quadra", "key": shortKey]]))
+    XCTAssertNil(RemoteMessage.decode(["previewLink": ["service": "s", "token": "AAAA", "key": key.base64EncodedString()]]))
+    XCTAssertNil(RemoteMessage.decode(["previewLink": ["service": "", "token": Data(count: 16).base64EncodedString(), "key": key.base64EncodedString()]]))
     XCTAssertNil(RemoteMessage.decode(data: Data("[1,2]".utf8)))
     XCTAssertNil(RemoteMessage.decode(data: Data("nope".utf8)))
-  }
-
-  func testHelloRoundTrips() {
-    for kind in [RemoteHello.Kind.pair, .reconnect] {
-      let hello = RemoteHello(kind: kind, remoteId: "remote-1", remoteName: "iPhone da Ana", proof: "abc123", at: 1_700_000_000_000)
-      XCTAssertEqual(RemoteHello.decode(data: hello.data), hello)
-    }
-  }
-
-  func testHelloRejectsAnythingMalformed() {
-    func data(_ object: [String: Any]) -> Data { try! JSONSerialization.data(withJSONObject: object) }
-    let good: [String: Any] = ["kind": "pair", "remoteId": "r", "remoteName": "n", "proof": "p", "at": 1.0]
-    XCTAssertNotNil(RemoteHello.decode(data: data(good)))
-    var badKind = good; badKind["kind"] = "other"
-    XCTAssertNil(RemoteHello.decode(data: data(badKind)))
-    var noProof = good; noProof.removeValue(forKey: "proof")
-    XCTAssertNil(RemoteHello.decode(data: data(noProof)))
-    var badAt = good; badAt["at"] = "now"
-    XCTAssertNil(RemoteHello.decode(data: data(badAt)))
-    XCTAssertNil(RemoteHello.decode(data: Data("nope".utf8)))
   }
 }

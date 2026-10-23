@@ -172,9 +172,10 @@ export default function Setup() {
   const [remoteLinked, setRemoteLinked] = useState(() => remoteHostControllers());
   useEffect(() => {
     if (!remoteSupported) return;
-    const sub = addReplayListener('onRemoteStatus', (e) =>
-      setRemoteLinked(e.controllers === undefined ? 0 : e.controllers),
-    );
+    const sub = addReplayListener('onRemoteStatus', (e) => {
+      if (e.side === 'remote') return; // this phone used as a remote, not its own remotes
+      setRemoteLinked(e.controllers === undefined ? 0 : e.controllers);
+    });
     return () => sub.remove();
   }, [remoteSupported]);
   useEffect(() => {

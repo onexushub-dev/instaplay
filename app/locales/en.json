@@ -1,9 +1,9 @@
 {
   "ios": {
-    "NSCameraUsageDescription": "LANCE uses the camera to record your clips.",
-    "NSMicrophoneUsageDescription": "LANCE records the sound of your clips.",
-    "NSSpeechRecognitionUsageDescription": "LANCE listens for you to say \"save\" or \"record\" so you can save a clip without touching your phone.",
-    "NSPhotoLibraryAddUsageDescription": "LANCE saves the clips you export to your photo library.",
-    "NSLocalNetworkUsageDescription": "LANCE uses your local network to talk to the other phone you use as a remote."
+    "NSCameraUsageDescription": "Repplay uses the camera to record your clips.",
+    "NSMicrophoneUsageDescription": "Repplay records the sound of your clips.",
+    "NSSpeechRecognitionUsageDescription": "Repplay listens for you to say \"save\" or \"record\" so you can save a clip without touching your phone.",
+    "NSPhotoLibraryAddUsageDescription": "Repplay saves the clips you export to your photo library.",
+    "NSLocalNetworkUsageDescription": "Repplay uses your local network to show the camera image on the phone you use as a remote."
   }
 }

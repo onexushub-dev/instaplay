@@ -1,6 +1,7 @@
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { useT } from '../i18n/useT';
 import { colors, fonts } from '../theme/tokens';
 
 type Props = {
@@ -16,6 +17,7 @@ type Props = {
  * the settings sheet, so the camera and its positioning guide stay clear. The settings open on demand.
  */
 export function CompactDock({ onSettings, onStart, busy, error }: Props) {
+  const { t } = useT();
   return (
     <SafeAreaView edges={['bottom']} pointerEvents="box-none" style={styles.dock}>
       {error ? (
@@ -26,20 +28,20 @@ export function CompactDock({ onSettings, onStart, busy, error }: Props) {
       <View pointerEvents="box-none" style={styles.row}>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Ajustes"
+          accessibilityLabel={t('setup.dockSettings')}
           onPress={onSettings}
           style={[styles.button, styles.settings]}>
-          <Text style={styles.settingsText}>Ajustes</Text>
+          <Text style={styles.settingsText}>{t('setup.dockSettings')}</Text>
         </Pressable>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Gravar"
+          accessibilityLabel={t('setup.dockRecord')}
           accessibilityState={{ disabled: busy, busy }}
           disabled={busy}
           onPress={onStart}
           style={[styles.button, styles.record, busy && styles.busy]}>
           {busy ? <ActivityIndicator color={colors.onAccent} /> : null}
-          <Text style={styles.recordText}>Gravar</Text>
+          <Text style={styles.recordText}>{t('setup.dockRecord')}</Text>
         </Pressable>
       </View>
     </SafeAreaView>

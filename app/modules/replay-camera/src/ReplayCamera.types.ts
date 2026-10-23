@@ -28,11 +28,13 @@ export type ZoomRange = { min: number; max: number; continuous: boolean };
 export type SaveClipOptions = { source: TriggerSource; at: number };
 export type SavedClip = { clipPath: string; durationMs: number };
 
-/** Apple Watch link: no paired watch · paired without the LANCE app · ready. */
+/** Apple Watch link: no paired watch · paired without the Repplay app · ready. */
 export type WatchStatus = 'unsupported' | 'notInstalled' | 'ready';
 
 /** Second iPhone as a remote: idle · looking for the other phone · talking to it · Local Network not allowed. */
 export type RemoteLink = 'idle' | 'searching' | 'connected' | 'denied';
+/** Why the link is `denied`: Bluetooth is off, or the Repplay is not allowed to use it. */
+export type RemoteLinkReason = 'off' | 'unauthorized';
 /** `connected` is only filled in for the paired remotes of the camera phone (`remoteHostPeers`): is the link up right now. */
 export type RemotePeer = { id: string; name: string; connected?: boolean };
 /** What the camera phone shows to pair: the QR link, the 6-digit code, when both stop working (ms) and the QR image. */
@@ -43,7 +45,17 @@ export type RemotePairFailure = 'expired' | 'locked' | 'notFound' | 'wrong' | 'd
 export type ReplayCameraModuleEvents = {
   onTrigger: (e: { source: TriggerSource; at: number }) => void;
   onWatchStatus: (e: { status: WatchStatus }) => void;
-  onRemoteStatus: (e: { link: RemoteLink; peerName?: string; controllers?: number }) => void;
+  /**
+   * Both sides of the phone remote send it, since the same app runs on both phones: `side` says which one. The remote
+   * screen reads only `remote`, the camera screens only `camera` (a missing side is treated as the camera's, as before).
+   */
+  onRemoteStatus: (e: {
+    side?: 'camera' | 'remote';
+    link: RemoteLink;
+    reason?: RemoteLinkReason;
+    peerName?: string;
+    controllers?: number;
+  }) => void;
   /** Remote phone only: what the camera phone is doing. */
   onRemoteState: (e: { recording: boolean; clipCount: number; startedAt?: number }) => void;
   /** Remote phone only: how the last save ended. */

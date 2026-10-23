@@ -32,6 +32,9 @@ public enum RemoteMessage: Equatable {
   case ping(token: String)
   /// Remote → camera: the answer to a `ping`.
   case pong(token: String)
+  /// Camera → remote (only inside the sealed BLE session): the pictures of the camera view come over peer-to-peer Wi-Fi
+  /// from the Bonjour service `service`; open it with `token` (16 bytes) and read frames sealed with `key` (32 bytes).
+  case previewLink(service: String, token: Data, key: Data)
 
   public var payload: [String: Any] {
     switch self {
@@ -61,6 +64,8 @@ public enum RemoteMessage: Equatable {
       return ["ping": token]
     case let .pong(token):
       return ["pong": token]
+    case let .previewLink(service, token, key):
+      return ["previewLink": ["service": service, "token": token.base64EncodedString(), "key": key.base64EncodedString()]]
     }
   }
 
@@ -82,6 +87,13 @@ public enum RemoteMessage: Equatable {
     }
     if let token = payload["ping"] as? String, !token.isEmpty, token.count <= 64 { return .ping(token: token) }
     if let token = payload["pong"] as? String, !token.isEmpty, token.count <= 64 { return .pong(token: token) }
+    if let link = payload["previewLink"] {
+      guard let dict = link as? [String: Any],
+            let service = dict["service"] as? String, !service.isEmpty, service.count <= 63,
+            let tokenText = dict["token"] as? String, let token = Data(base64Encoded: tokenText), token.count == 16,
+            let keyText = dict["key"] as? String, let key = Data(base64Encoded: keyText), key.count == 32 else { return nil }
+      return .previewLink(service: service, token: token, key: key)
+    }
     if let unpaired = payload["unpaired"] { return (unpaired as? Bool) == true ? .unpaired : nil }
     if let refused = payload["refused"] {
       guard let raw = refused as? String, let reason = Reason(rawValue: raw) else { return nil }
@@ -110,42 +122,5 @@ public enum RemoteMessage: Equatable {
   public static func decode(data: Data) -> RemoteMessage? {
     guard let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return nil }
     return decode(object)
-  }
-}
-
-/// The first thing a remote phone sends: it rides in the Multipeer invitation, so the camera phone can check the
-/// proof before it accepts anybody. `at` is ms since 1970.
-public struct RemoteHello: Equatable {
-  public enum Kind: String { case pair, reconnect }
-
-  public let kind: Kind
-  public let remoteId: String
-  public let remoteName: String
-  public let proof: String
-  public let at: Double
-
-  public init(kind: Kind, remoteId: String, remoteName: String, proof: String, at: Double) {
-    self.kind = kind
-    self.remoteId = remoteId
-    self.remoteName = remoteName
-    self.proof = proof
-    self.at = at
-  }
-
-  public var data: Data {
-    let object: [String: Any] = [
-      "kind": kind.rawValue, "remoteId": remoteId, "remoteName": remoteName, "proof": proof, "at": at,
-    ]
-    return (try? JSONSerialization.data(withJSONObject: object)) ?? Data()
-  }
-
-  public static func decode(data: Data) -> RemoteHello? {
-    guard let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
-          let rawKind = object["kind"] as? String, let kind = Kind(rawValue: rawKind),
-          let remoteId = object["remoteId"] as? String,
-          let remoteName = object["remoteName"] as? String,
-          let proof = object["proof"] as? String,
-          let at = object["at"] as? Double else { return nil }
-    return RemoteHello(kind: kind, remoteId: remoteId, remoteName: remoteName, proof: proof, at: at)
   }
 }

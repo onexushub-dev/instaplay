@@ -1,55 +1,85 @@
+import CoreBluetooth
 import Foundation
-import MultipeerConnectivity
 import os
 
-/// Camera-phone side of the phone remote: advertises over Multipeer, checks who is asking in, and turns a tap on a
-/// remote into `onTrigger('phone')`. The recording state and the save results go back to every connected remote.
-/// Rules and message formats live in Core (`PairingOffer`, `RemoteProof`, `RemoteMessage`, `TrustedPeers`).
+/// Camera-phone side of the phone remote, over Bluetooth LE (spec 2026-10-23-ble-remote-design.md).
+///
+/// The phone is a BLE peripheral: it advertises one service while the app is open and a remote is paired (or a pairing is
+/// open). Each remote that subscribes runs the handshake in `BleHostHandshake`; after it, every message is sealed
+/// (`BleSession`). A tap on a remote becomes `onTrigger('phone')`; the recording state and the save results go back to
+/// every connected remote. The camera view for the remote's preview goes over Wi-Fi (`PreviewServer`).
+/// Rules and formats live in Core (`BleHandshake`, `BleFrames`, `PairingOffer`, `RemoteMessage`, `TrustedPeers`).
 final class RemoteHost: NSObject {
   static let shared = RemoteHost()
-  static let serviceType = "lance-remote"
-  /// Console.app (filter: subsystem `LANCE`, category `RemoteHost`) shows why each invitation was accepted or refused.
-  private static let log = Logger(subsystem: "LANCE", category: "RemoteHost")
+  static let serviceUUID = CBUUID(string: "6E3F1001-8C1B-4F6E-9D4B-2A7C5E0B1A10")
+  static let rxUUID = CBUUID(string: "6E3F1002-8C1B-4F6E-9D4B-2A7C5E0B1A10")
+  static let txUUID = CBUUID(string: "6E3F1003-8C1B-4F6E-9D4B-2A7C5E0B1A10")
+  /// The advertised name says whether a pairing is open, so a remote that is pairing only talks to such phones.
+  static let advertisedName = "Repplay"
+  static let advertisedPairingName = "Repplay+"
+
+  /// Console.app (filter: subsystem `Repplay`, category `RemoteHost`) shows each step.
+  private static let log = Logger(subsystem: "Repplay", category: "RemoteHost")
   /// How often every connected remote hears from this phone, recording or not. The remote calls the link silent after 12 s.
   private static let beatEvery: TimeInterval = 5
   /// How long a "are you there?" waits for the answer.
   private static let pingTimeout: TimeInterval = 3
+  /// How long the host stays up after nothing wants it any more.
+  private static let teardownGrace: TimeInterval = 3
+  /// One remote per camera phone (the remote side is already one camera per remote): a phone paired on an older day,
+  /// lying around the court, can never save or stop someone else's game. The Keychain list can hold more (`TrustedPeers`).
+  static let maxRemotes = 1
+  /// The preview service stops when no remote has asked for pictures for this long.
+  private static let previewIdle: TimeInterval = 10
 
   /// Same shape as WatchBridge.emit: (event name, body).
   var emit: ((String, [String: Any]) -> Void)?
+  /// A remote asked for (or stopped) the pictures of the camera view; wired to the capture in the module.
+  var onPreview: ((Bool) -> Void)?
 
-  /// What to do with a peer once its connection is up, decided when its invitation was checked.
-  private enum Pending {
-    case trusted(remoteId: String)
-    case pairing(remoteId: String, name: String)
-    case refuse(RemoteMessage.Reason)
-    case unpaired
+  /// One subscribed remote phone.
+  private final class Link {
+    let central: CBCentral
+    var handshake: BleHostHandshake
+    var session: BleSession?
+    /// Set once the remote proved who it is.
+    var remoteId: String?
+    var assembler = BleFrames.Assembler()
+    var nextMessageId: UInt16 = 0
+    /// Refused or dropped: everything it sends from now on is ignored (a peripheral cannot cut a central off).
+    var closed = false
+    var previewGranted = false
+
+    init(central: CBCentral, handshake: BleHostHandshake) {
+      self.central = central
+      self.handshake = handshake
+    }
+
+    var authenticated: Bool { session != nil && remoteId != nil && !closed }
   }
 
-  private let peerID: MCPeerID
-  private var session: MCSession?
-  private var advertiser: MCNearbyServiceAdvertiser?
-  private var advertisedMode: String?
-  private let trusted = TrustedPeers(store: KeychainPeerStore(account: "lance.remote.controllers"))
+  private var manager: CBPeripheralManager?
+  private var tx: CBMutableCharacteristic?
+  private var serviceAdded = false
+  /// What is being advertised now: nil = nothing, false = paired remotes only, true = a pairing is open.
+  private var advertisedPairing: Bool?
+  private var bluetooth: CBManagerState = .unknown
+  private var links: [UUID: Link] = [:]
+  /// Notifications waiting for room in the system queue, in order.
+  private var outbox: [(frame: Data, central: CBCentral)] = []
+  private let trusted = TrustedPeers(store: KeychainPeerStore(account: "repplay.remote.controllers"))
   private var offer: PairingOffer?
   private var wanted = false
-  private var denied = false
-  private var pending: [MCPeerID: Pending] = [:]
-  /// Connected remotes that proved who they are → their remote id.
-  private var authenticated: [MCPeerID: String] = [:]
   private var lastState: RemoteMessage = .state(recording: false, clipCount: 0, startedAt: nil)
   private var heartbeat: DispatchSourceTimer?
   /// Open "are you there?" questions: token → (remote id, when it was sent).
   private var checks: [String: (remoteId: String, sentAt: Date)] = [:]
-  /// A remote asked for (or stopped) the pictures of the camera view; wired to the capture in the module.
-  var onPreview: ((Bool) -> Void)?
-  /// Pending shutdown of the session; see `scheduleTeardown`.
+  /// Pending shutdown; see `scheduleTeardown`.
   private var teardown: DispatchWorkItem?
-  /// How long the host stays up after nothing wants it any more.
-  private static let teardownGrace: TimeInterval = 3
+  private let preview = PreviewServer()
+  private var lastPreviewAsk: Date?
 
   private override init() {
-    peerID = MCPeerID(displayName: DeviceIdentity.name)
     super.init()
   }
 
@@ -61,12 +91,12 @@ final class RemoteHost: NSObject {
 
   // MARK: JS API
 
-  /// The setup screen is in front: wait for the paired remotes.
-  /// Asked again while already running (the app came back to the front), it also starts advertising over: iOS may have
-  /// dropped the old advertiser while the app was away.
+  /// The app is open: wait for the paired remotes. Asked again while running (the app came back to the front), it also
+  /// starts advertising over, since iOS may have dropped it while the app was away.
   func start() {
     onMain {
-      if wanted { advertisedMode = nil }
+      keepNewestRemote()
+      if wanted { advertisedPairing = nil }
       wanted = true
       refresh()
     }
@@ -74,30 +104,28 @@ final class RemoteHost: NSObject {
 
   func stop() { onMain { wanted = false; refresh() } }
 
-  /// One picture of the camera view for the connected remotes. Dropped quietly when there is none.
-  func sendFrame(_ jpeg: Data) {
-    DispatchQueue.main.async {
-      guard let session = self.session, !self.authenticated.isEmpty else { return }
-      try? session.send(jpeg, toPeers: Array(self.authenticated.keys), with: .reliable)
-    }
-  }
+  /// One picture of the camera view for the remotes that opened the preview.
+  func sendFrame(_ jpeg: Data) { preview.send(jpeg) }
 
   var peers: [TrustedPeer] { onMain { trusted.all } }
 
   /// Whether this remote has an authenticated link right now.
-  func isConnected(id: String) -> Bool { onMain { authenticated.values.contains(id) } }
+  func isConnected(id: String) -> Bool { onMain { links.values.contains { $0.authenticated && $0.remoteId == id } } }
+
+  /// How many remotes are connected right now (a screen that opens later cannot have heard the status events).
+  var controllers: Int { onMain { authenticatedLinks.count } }
 
   /// Asks a remote "are you there?". The answer arrives as `onRemoteCheck` {id, ok, ms}: `ok` is false when the remote is
-  /// not linked or does not answer in `pingTimeout` seconds (its app is closed or in the background).
+  /// not linked or does not answer in `pingTimeout` seconds.
   func check(id: String) {
     onMain {
-      guard let peer = authenticated.first(where: { $0.value == id })?.key else {
+      guard let link = authenticatedLinks.first(where: { $0.remoteId == id }) else {
         emit?("onRemoteCheck", ["id": id, "ok": false, "ms": 0])
         return
       }
       let token = String(UUID().uuidString.prefix(8))
       checks[token] = (id, Date())
-      send(.ping(token: token), to: [peer])
+      sendSealed(.ping(token: token), to: link)
       DispatchQueue.main.asyncAfter(deadline: .now() + Self.pingTimeout) { [weak self] in
         guard let self, self.checks.removeValue(forKey: token) != nil else { return }
         self.emit?("onRemoteCheck", ["id": id, "ok": false, "ms": 0])
@@ -105,21 +133,36 @@ final class RemoteHost: NSObject {
     }
   }
 
-  /// How many remotes are connected right now (a screen that opens later cannot have heard the status events).
-  var controllers: Int { onMain { authenticated.count } }
-
   func remove(id: String) {
     onMain {
       trusted.remove(id: id)
-      for (peer, remoteId) in authenticated where remoteId == id { session?.cancelConnectPeer(peer) }
+      preview.revoke(remoteId: id)
+      for link in links.values where link.remoteId == id {
+        // It cannot be cut off from here: tell it, and it forgets this phone and disconnects.
+        sendRaw(BleHandshakeMessage.unpaired.wire, to: link)
+        link.closed = true
+      }
       refresh()
     }
   }
 
-  /// Opens a pairing (QR + code). Nil when the list of remotes is already full.
+  /// A phone updated from the time of up to 4 remotes keeps only the most recently paired one. The others are told, so
+  /// they forget this phone the next time they connect (the same as "Remover").
+  private func keepNewestRemote() {
+    for dropped in trusted.keepNewest(Self.maxRemotes) {
+      Self.log.info("only one remote now: removed \(String(dropped.id.prefix(8)), privacy: .public)")
+      preview.revoke(remoteId: dropped.id)
+      for link in links.values where link.remoteId == dropped.id {
+        sendRaw(BleHandshakeMessage.unpaired.wire, to: link)
+        link.closed = true
+      }
+    }
+  }
+
+  /// Opens a pairing (QR + code). Nil while a remote is paired: it has to be removed first (one remote per camera phone).
   func beginPairing() -> (url: String, code: String, expiresAt: Double, qrPath: String)? {
     onMain {
-      guard trusted.all.count < TrustedPeers.limit else { return nil }
+      guard trusted.all.count < Self.maxRemotes else { return nil }
       let fresh = PairingOffer.make(hostId: DeviceIdentity.id, hostName: DeviceIdentity.name, now: nowMs)
       guard let qrPath = QRCode.png(for: fresh.qrURL) else { return nil }
       offer = fresh
@@ -130,8 +173,7 @@ final class RemoteHost: NSObject {
 
   func endPairing() { onMain { offer = nil; refresh() } }
 
-  /// Called by JS whenever the recording changes; the remotes get the new state at once. The beat that repeats it
-  /// every 5 s runs whenever the host is up (see `startHeartbeat`), not only while recording.
+  /// Called by JS whenever the recording changes; the remotes get the new state at once.
   func sync(recording: Bool, clipCount: Int, startedAt: Double?) {
     onMain {
       lastState = .state(recording: recording, clipCount: clipCount, startedAt: startedAt)
@@ -139,35 +181,23 @@ final class RemoteHost: NSObject {
     }
   }
 
-  /// A beat every `beatEvery` seconds to every connected remote, whatever the game is doing. Without it a remote that is
-  /// just waiting for the game to start hears nothing after its first state, and would call the link lost although it is
-  /// fine. If this app dies the beats stop and the remote notices (see `STALE_AFTER` in remoteScreen.ts).
-  private func startHeartbeat() {
-    guard heartbeat == nil else { return }
-    let timer = DispatchSource.makeTimerSource(queue: .main)
-    timer.schedule(deadline: .now() + Self.beatEvery, repeating: Self.beatEvery)
-    timer.setEventHandler { [weak self] in self?.pushState() }
-    timer.resume()
-    heartbeat = timer
-  }
-
   /// Only to remotes that are connected now: a vibration for an old save would just be noise.
   func signal(saved: Bool) {
-    onMain { send(.result(saved: saved), to: Array(authenticated.keys)) }
+    onMain { for link in authenticatedLinks { sendSealed(.result(saved: saved), to: link) } }
   }
 
   // MARK: Lifecycle
 
-  /// Runs while a game screen wants remotes, or while a pairing is open.
+  private var authenticatedLinks: [Link] { links.values.filter { $0.authenticated } }
+
+  /// Runs while the app wants remotes, or while a pairing is open.
   private func refresh() {
     let active = wanted || offer != nil
     if active {
       teardown?.cancel()
       teardown = nil
-      if session == nil {
-        let created = MCSession(peer: peerID, securityIdentity: nil, encryptionPreference: .required)
-        created.delegate = self
-        session = created
+      if manager == nil {
+        manager = CBPeripheralManager(delegate: self, queue: .main)
       }
       startHeartbeat()
       updateAdvertising()
@@ -177,10 +207,8 @@ final class RemoteHost: NSObject {
     emitStatus()
   }
 
-  /// The setup screen and the pairing sheet hand the host over to each other (`endPairing()` just before `start()`,
-  /// or `stop()` just before `beginPairing()`), so for a moment nothing wants it. Dropping the session right then cut
-  /// the remote off every time the pairing sheet was opened or closed, and the remote needed ~10 s to find us again.
-  /// Wait a little: if something wants the host back in time, the session is never touched.
+  /// The setup screen and the pairing sheet hand the host over to each other, so for a moment nothing may want it.
+  /// Wait a little: if something wants the host back in time, the links are never touched.
   private func scheduleTeardown() {
     guard teardown == nil else { return }
     let work = DispatchWorkItem { [weak self] in
@@ -194,208 +222,284 @@ final class RemoteHost: NSObject {
   }
 
   private func tearDownNow() {
-    advertiser?.stopAdvertisingPeer()
-    advertiser = nil
-    advertisedMode = nil
-    session?.disconnect()
-    session = nil
-    pending.removeAll()
-    authenticated.removeAll()
+    manager?.stopAdvertising()
+    manager?.removeAllServices()
+    manager = nil
+    tx = nil
+    serviceAdded = false
+    advertisedPairing = nil
+    dropAllLinks()
     heartbeat?.cancel()
     heartbeat = nil
-    checks.removeAll()
     emitStatus()
   }
 
-  /// Advertise only when there is something to answer: an open pairing or at least one trusted remote.
+  private func dropAllLinks() {
+    let hadAuthenticated = !authenticatedLinks.isEmpty
+    links.removeAll()
+    outbox.removeAll()
+    checks.removeAll()
+    preview.stop()
+    lastPreviewAsk = nil
+    if hadAuthenticated { onPreview?(false) }
+  }
+
+  private func addService() {
+    guard let manager, manager.state == .poweredOn, !serviceAdded, tx == nil else { return }
+    let rx = CBMutableCharacteristic(type: Self.rxUUID, properties: [.write], value: nil, permissions: [.writeable])
+    let notify = CBMutableCharacteristic(type: Self.txUUID, properties: [.notify], value: nil, permissions: [.readable])
+    let service = CBMutableService(type: Self.serviceUUID, primary: true)
+    service.characteristics = [rx, notify]
+    tx = notify
+    manager.add(service)
+  }
+
+  /// Advertise only when there is something to answer: an open pairing or at least one paired remote.
   private func updateAdvertising() {
-    let mode: String? = offer != nil ? "pairing" : (trusted.all.isEmpty ? nil : "trusted")
-    guard mode != advertisedMode else { return }
-    advertiser?.stopAdvertisingPeer()
-    advertiser = nil
-    advertisedMode = mode
-    guard let mode else { return }
-    let created = MCNearbyServiceAdvertiser(
-      peer: peerID, discoveryInfo: ["host": DeviceIdentity.id, "mode": mode], serviceType: Self.serviceType)
-    created.delegate = self
-    created.startAdvertisingPeer()
-    advertiser = created
+    guard let manager, manager.state == .poweredOn, serviceAdded else { return }
+    let pairing = offer != nil
+    let wantsAdvertising = pairing || !trusted.all.isEmpty
+    let target: Bool? = wantsAdvertising ? pairing : nil
+    if target == advertisedPairing, target == nil || manager.isAdvertising { return }
+    manager.stopAdvertising()
+    advertisedPairing = target
+    guard wantsAdvertising else { return }
+    manager.startAdvertising([
+      CBAdvertisementDataServiceUUIDsKey: [Self.serviceUUID],
+      CBAdvertisementDataLocalNameKey: pairing ? Self.advertisedPairingName : Self.advertisedName,
+    ])
   }
 
   private func emitStatus() {
     let active = wanted || offer != nil
-    let link: String
-    if denied { link = "denied" } else if !authenticated.isEmpty { link = "connected" } else { link = active ? "searching" : "idle" }
-    emit?("onRemoteStatus", ["link": link, "controllers": authenticated.count])
+    // The same app runs both sides, and both send this event: `side` tells the screens whose status it is.
+    var body: [String: Any] = ["side": "camera", "controllers": authenticatedLinks.count]
+    switch bluetooth {
+    case .unauthorized:
+      body["link"] = "denied"
+      body["reason"] = "unauthorized"
+    case .poweredOff:
+      body["link"] = "denied"
+      body["reason"] = "off"
+    default:
+      if !authenticatedLinks.isEmpty { body["link"] = "connected" } else { body["link"] = active ? "searching" : "idle" }
+    }
+    emit?("onRemoteStatus", body)
+  }
+
+  /// A beat every `beatEvery` seconds to every connected remote, whatever the game is doing, so a waiting remote does not
+  /// call the link lost. It also closes the preview service once nobody has asked for pictures for a while.
+  private func startHeartbeat() {
+    guard heartbeat == nil else { return }
+    let timer = DispatchSource.makeTimerSource(queue: .main)
+    timer.schedule(deadline: .now() + Self.beatEvery, repeating: Self.beatEvery)
+    timer.setEventHandler { [weak self] in
+      guard let self else { return }
+      self.pushState()
+      if let asked = self.lastPreviewAsk, Date().timeIntervalSince(asked) > Self.previewIdle {
+        self.lastPreviewAsk = nil
+        self.preview.stop()
+      }
+    }
+    timer.resume()
+    heartbeat = timer
   }
 
   private func pushState() {
-    send(lastState, to: Array(authenticated.keys))
+    for link in authenticatedLinks { sendSealed(lastState, to: link) }
   }
 
-  private func send(_ message: RemoteMessage, to peers: [MCPeerID]) {
-    guard let session, !peers.isEmpty else { return }
-    try? session.send(message.data, toPeers: peers, with: .reliable)
+  // MARK: Sending
+
+  private func sendSealed(_ message: RemoteMessage, to link: Link) {
+    guard var session = link.session, let sealed = session.seal(message.data) else { return }
+    link.session = session
+    sendRaw(sealed, to: link)
   }
 
-  private func disconnectSoon(_ peer: MCPeerID) {
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in self?.session?.cancelConnectPeer(peer) }
+  private func sendRaw(_ message: Data, to link: Link) {
+    let frames = BleFrames.split(message, id: link.nextMessageId, maxFrame: link.central.maximumUpdateValueLength)
+    link.nextMessageId &+= 1
+    for frame in frames { outbox.append((frame, link.central)) }
+    flush()
   }
 
-  // MARK: Checking who asks in
-
-  private func handleInvitation(from peer: MCPeerID, context: Data?, reply: @escaping (Bool, MCSession?) -> Void) {
-    guard let session, let context, let hello = RemoteHello.decode(data: context) else {
-      Self.log.error("invitation dropped: no session or unreadable context")
-      return reply(false, nil)
-    }
-    let who = String(hello.remoteId.prefix(8))
-    switch hello.kind {
-    case .reconnect:
-      guard let known = trusted.peer(id: hello.remoteId) else {
-        // Unknown to this phone (removed here, or never paired): let it in just long enough to say so.
-        Self.log.info("reconnect from \(who, privacy: .public): unknown remote, answering unpaired")
-        pending[peer] = .unpaired
-        return reply(true, session)
-      }
-      // A wrong proof (a wrong clock, say) is declined silently: it must never make the remote forget this phone.
-      let skew = Int((nowMs - hello.at) / 1000)
-      guard RemoteProof.verify(hello.proof, key: known.key, purpose: .reconnect, remoteId: hello.remoteId,
-                               at: hello.at, now: nowMs) else {
-        Self.log.error("reconnect from \(who, privacy: .public): proof refused (clock difference \(skew, privacy: .public) s)")
-        return reply(false, nil)
-      }
-      Self.log.info("reconnect from \(who, privacy: .public): accepted")
-      pending[peer] = .trusted(remoteId: hello.remoteId)
-      reply(true, session)
-    case .pair:
-      guard var current = offer else {
-        Self.log.info("pair from \(who, privacy: .public): refused, no pairing is open on this phone (closed)")
-        pending[peer] = .refuse(.closed)
-        return reply(true, session)
-      }
-      let age = Int((nowMs - current.createdAt) / 1000)
-      let verdict = current.check(proof: hello.proof, remoteId: hello.remoteId, at: hello.at, now: nowMs)
-      offer = current
-      Self.log.info("pair from \(who, privacy: .public): \(String(describing: verdict), privacy: .public), offer is \(age, privacy: .public) s old")
-      switch verdict {
-      case .accepted:
-        // The offer is only reserved for this remote. It is spent when the pairing completes (`peerConnected`), so a
-        // retry after a connection that never came up is still welcome.
-        pending[peer] = .pairing(remoteId: hello.remoteId, name: hello.remoteName)
-        emit?("onRemotePairing", ["phase": "connecting", "peer": ["id": hello.remoteId, "name": hello.remoteName]])
-      case let .wrongProof(attemptsLeft):
-        pending[peer] = .refuse(.wrong)
-        if attemptsLeft == 0 { emit?("onRemotePairing", ["phase": "offerEnded", "reason": "locked"]) }
-      case .expired: pending[peer] = .refuse(.expired)
-      case .locked: pending[peer] = .refuse(.locked)
-      case .taken: pending[peer] = .refuse(.used)
-      }
-      reply(true, session)
+  private func flush() {
+    guard let manager, let tx else { return outbox.removeAll() }
+    while let next = outbox.first {
+      if !manager.updateValue(next.frame, for: tx, onSubscribedCentrals: [next.central]) { return }
+      outbox.removeFirst()
     }
   }
 
-  private func peerConnected(_ peer: MCPeerID) {
-    guard let what = pending.removeValue(forKey: peer) else { return }
-    switch what {
-    case let .trusted(remoteId):
-      authenticated[peer] = remoteId
-      send(lastState, to: [peer])
-    case let .pairing(remoteId, name):
-      let key = Data((0..<32).map { _ in UInt8.random(in: 0...255) })
-      if trusted.add(TrustedPeer(id: remoteId, name: name, key: key)) {
-        offer = nil  // spent: one remote per code
-        Self.log.info("pairing with \(String(remoteId.prefix(8)), privacy: .public) complete")
-        send(.paired(hostId: DeviceIdentity.id, hostName: DeviceIdentity.name, pairKey: key), to: [peer])
-        emit?("onRemotePairing", ["phase": "paired", "peer": ["id": remoteId, "name": name]])
-        authenticated[peer] = remoteId
-        send(lastState, to: [peer])
-      } else {
-        send(.refused(reason: .wrong), to: [peer])
-        disconnectSoon(peer)
+  // MARK: Receiving
+
+  private func handle(_ message: Data, from link: Link) {
+    guard !link.closed else { return }
+    if link.session != nil {
+      guard var session = link.session, let plain = session.open(message), let command = RemoteMessage.decode(data: plain) else { return }
+      link.session = session
+      received(command, from: link)
+      return
+    }
+    let outcome = link.handshake.receive(message, offer: &offer, trusted: { [trusted] id in trusted.peer(id: id) }, now: nowMs)
+    switch outcome {
+    case let .send(data):
+      sendRaw(data, to: link)
+    case let .paired(remote, data, session):
+      guard trusted.add(remote) else {
+        Self.log.error("pairing refused: the list of remotes is full")
+        sendRaw(BleHandshakeMessage.refused(.closed).wire, to: link)
+        link.closed = true
+        return
       }
+      offer = nil  // spent: one remote per code
+      Self.log.info("pairing with \(String(remote.id.prefix(8)), privacy: .public) complete")
+      link.session = session
+      link.remoteId = remote.id
+      sendRaw(data, to: link)
+      emit?("onRemotePairing", ["phase": "paired", "peer": ["id": remote.id, "name": remote.name]])
+      sendSealed(lastState, to: link)
       refresh()
-    case let .refuse(reason):
-      send(.refused(reason: reason), to: [peer])
-      disconnectSoon(peer)
-    case .unpaired:
-      send(.unpaired, to: [peer])
-      disconnectSoon(peer)
+    case let .connected(remoteId, data, session):
+      Self.log.info("remote \(String(remoteId.prefix(8)), privacy: .public) connected")
+      // A remote that connects again replaces its older link (the old one may not have noticed it is gone yet).
+      for other in links.values where other !== link && other.remoteId == remoteId { other.closed = true }
+      link.session = session
+      link.remoteId = remoteId
+      sendRaw(data, to: link)
+      sendSealed(lastState, to: link)
+      emitStatus()
+    case let .refuse(data):
+      let who = link.handshake.remoteId.map { String($0.prefix(8)) } ?? "?"
+      Self.log.info("remote \(who, privacy: .public) refused")
+      sendRaw(data, to: link)
+      link.closed = true
+      if let current = offer, current.isLocked {
+        emit?("onRemotePairing", ["phase": "offerEnded", "reason": "locked"])
+      }
+    case .drop:
+      let who = link.handshake.remoteId.map { String($0.prefix(8)) } ?? "?"
+      Self.log.error("remote \(who, privacy: .public) dropped: bad handshake message or proof")
+      link.closed = true
+    }
+  }
+
+  /// Only `save`, `stop`, `start`, `preview`, `forget` and `pong` from an authenticated remote count. JS decides whether the
+  /// game is in a state where each one makes sense.
+  private func received(_ message: RemoteMessage, from link: Link) {
+    guard let remoteId = link.remoteId else { return }
+    switch message {
+    case .save:
+      emit?("onTrigger", ["source": "phone", "at": nowMs])
+    case .stop:
+      emit?("onRemoteStop", [:])
+    case .start:
+      emit?("onRemoteStart", [:])
+    case let .preview(on):
+      if on {
+        lastPreviewAsk = Date()
+        preview.start()
+        if !link.previewGranted {
+          let grant = preview.grant(remoteId: remoteId)
+          sendSealed(.previewLink(service: grant.service, token: grant.token, key: grant.key), to: link)
+          link.previewGranted = true
+        }
+      }
+      onPreview?(on)
+    case let .pong(token):
+      if let open = checks.removeValue(forKey: token), open.remoteId == remoteId {
+        let ms = Int(Date().timeIntervalSince(open.sentAt) * 1000)
+        emit?("onRemoteCheck", ["id": open.remoteId, "ok": true, "ms": ms])
+      }
+    case .forget:
+      // The remote was unpaired on its own side: drop it here too, so the two lists agree.
+      trusted.remove(id: remoteId)
+      preview.revoke(remoteId: remoteId)
+      link.closed = true
+      refresh()
+    default:
+      break
+    }
+  }
+
+  private func linkFor(_ central: CBCentral) -> Link {
+    if let existing = links[central.identifier] { return existing }
+    let created = Link(central: central, handshake: BleHostHandshake(hostId: DeviceIdentity.id, hostName: DeviceIdentity.name))
+    links[central.identifier] = created
+    return created
+  }
+
+  private func dropLink(_ central: CBCentral) {
+    guard let link = links.removeValue(forKey: central.identifier) else { return }
+    outbox.removeAll { $0.central.identifier == central.identifier }
+    if let id = link.remoteId { Self.log.info("remote \(String(id.prefix(8)), privacy: .public) disconnected") }
+    if authenticatedLinks.isEmpty {
+      onPreview?(false)
+      preview.stop()
+      lastPreviewAsk = nil
     }
     emitStatus()
   }
 }
 
-extension RemoteHost: MCNearbyServiceAdvertiserDelegate {
-  func advertiser(_ advertiser: MCNearbyServiceAdvertiser, didReceiveInvitationFromPeer peerID: MCPeerID,
-                  withContext context: Data?, invitationHandler: @escaping (Bool, MCSession?) -> Void) {
-    DispatchQueue.main.async { self.handleInvitation(from: peerID, context: context, reply: invitationHandler) }
+extension RemoteHost: CBPeripheralManagerDelegate {
+  func peripheralManagerDidUpdateState(_ peripheral: CBPeripheralManager) {
+    bluetooth = peripheral.state
+    Self.log.info("bluetooth state \(peripheral.state.rawValue, privacy: .public)")
+    if peripheral.state == .poweredOn {
+      addService()
+    } else {
+      // Bluetooth off (or not allowed): every link is gone and the service must be added again later.
+      tx = nil
+      serviceAdded = false
+      advertisedPairing = nil
+      dropAllLinks()
+    }
+    emitStatus()
   }
 
-  /// Most often: the person refused the Local Network permission.
-  func advertiser(_ advertiser: MCNearbyServiceAdvertiser, didNotStartAdvertisingPeer error: Error) {
-    DispatchQueue.main.async {
-      self.denied = true
-      self.emitStatus()
+  func peripheralManager(_ peripheral: CBPeripheralManager, didAdd service: CBService, error: Error?) {
+    if let error {
+      Self.log.error("service not added: \(error.localizedDescription, privacy: .public)")
+      tx = nil
+      return
+    }
+    serviceAdded = true
+    updateAdvertising()
+  }
+
+  func peripheralManagerDidStartAdvertising(_ peripheral: CBPeripheralManager, error: Error?) {
+    if let error {
+      Self.log.error("advertising failed: \(error.localizedDescription, privacy: .public)")
+      advertisedPairing = nil
     }
   }
-}
 
-extension RemoteHost: MCSessionDelegate {
-  func session(_ session: MCSession, peer peerID: MCPeerID, didChange state: MCSessionState) {
-    DispatchQueue.main.async {
-      switch state {
-      case .connected:
-        self.denied = false
-        self.peerConnected(peerID)
-      case .notConnected:
-        if case let .pairing(remoteId, _)? = self.pending[peerID] {
-          // The connection never came up: free the code for another try instead of leaving it held.
-          Self.log.info("pairing with \(String(remoteId.prefix(8)), privacy: .public): connection lost before it finished, releasing the offer")
-          self.offer?.release(remoteId: remoteId)
-          self.emit?("onRemotePairing", ["phase": "released"])
-        }
-        self.pending.removeValue(forKey: peerID)
-        self.authenticated.removeValue(forKey: peerID)
-        if self.authenticated.isEmpty { self.onPreview?(false) }
-        self.emitStatus()
-      default:
-        break
+  func peripheralManager(_ peripheral: CBPeripheralManager, central: CBCentral, didSubscribeTo characteristic: CBCharacteristic) {
+    guard characteristic.uuid == Self.txUUID else { return }
+    // A fresh subscription is a fresh link: whatever this central said before does not count any more.
+    links.removeValue(forKey: central.identifier)
+    _ = linkFor(central)
+  }
+
+  func peripheralManager(_ peripheral: CBPeripheralManager, central: CBCentral, didUnsubscribeFrom characteristic: CBCharacteristic) {
+    guard characteristic.uuid == Self.txUUID else { return }
+    dropLink(central)
+  }
+
+  func peripheralManager(_ peripheral: CBPeripheralManager, didReceiveWrite requests: [CBATTRequest]) {
+    for request in requests where request.characteristic.uuid == Self.rxUUID {
+      guard let value = request.value else { continue }
+      let link = linkFor(request.central)
+      if let message = link.assembler.add(value, now: Date().timeIntervalSince1970) {
+        handle(message, from: link)
       }
     }
+    if let first = requests.first { peripheral.respond(to: first, withResult: .success) }
   }
 
-  /// Only `save`, `stop`, `start`, `preview`, `forget` and `pong` from a remote that proved who it is count; anything else is dropped. JS decides whether the
-  /// game is in a state where each one makes sense (a `save` outside a recording must not use up the debounce).
-  func session(_ session: MCSession, didReceive data: Data, fromPeer peerID: MCPeerID) {
-    DispatchQueue.main.async {
-      guard self.authenticated[peerID] != nil, let message = RemoteMessage.decode(data: data) else { return }
-      switch message {
-      case .save: self.emit?("onTrigger", ["source": "phone", "at": self.nowMs])
-      case .stop: self.emit?("onRemoteStop", [:])
-      case .start: self.emit?("onRemoteStart", [:])
-      case let .preview(on): self.onPreview?(on)
-      case let .pong(token):
-        if let open = self.checks.removeValue(forKey: token), open.remoteId == self.authenticated[peerID] {
-          let ms = Int(Date().timeIntervalSince(open.sentAt) * 1000)
-          self.emit?("onRemoteCheck", ["id": open.remoteId, "ok": true, "ms": ms])
-        }
-      case .forget:
-        // The remote was unpaired on its own side: drop it here too, so the two lists agree.
-        if let remoteId = self.authenticated[peerID] {
-          self.trusted.remove(id: remoteId)
-          self.authenticated.removeValue(forKey: peerID)
-          self.disconnectSoon(peerID)
-          self.refresh()
-        }
-      default: break
-      }
-    }
+  func peripheralManagerIsReady(toUpdateSubscribers peripheral: CBPeripheralManager) {
+    flush()
   }
-
-  func session(_ session: MCSession, didReceive stream: InputStream, withName streamName: String, fromPeer peerID: MCPeerID) {}
-  func session(_ session: MCSession, didStartReceivingResourceWithName resourceName: String, fromPeer peerID: MCPeerID,
-               with progress: Progress) {}
-  func session(_ session: MCSession, didFinishReceivingResourceWithName resourceName: String, fromPeer peerID: MCPeerID,
-               at localURL: URL?, withError error: Error?) {}
 }

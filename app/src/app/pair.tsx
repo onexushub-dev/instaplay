@@ -1,6 +1,6 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Linking, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
@@ -37,7 +37,7 @@ function failureText(reason: RemotePairFailure, t: TFunction): string {
     case 'notFound':
       return t('remote.failNotFound');
     case 'denied':
-      return t('remote.failNetwork');
+      return t('remote.failUnpairedRepair');
     case 'full':
       return t('remote.failFull');
     case 'used':
@@ -49,7 +49,7 @@ function failureText(reason: RemotePairFailure, t: TFunction): string {
   }
 }
 
-/** Where the `lance://pair?...` link (read by the Camera app from the QR code) lands. */
+/** Where the `repplay://pair?...` link (read by the Camera app from the QR code) lands. */
 export default function Pair() {
   const { t } = useT();
   const params = useLocalSearchParams<{ h?: string; s?: string; n?: string }>();
@@ -142,8 +142,7 @@ export default function Pair() {
             <Text style={styles.warning}>{failureText(failure, t)}</Text>
             {failure === 'notFound' ? <RequirementsChecklist /> : null}
             {failure === 'notFound' ? <Button label={t('common.tryAgain')} onPress={retry} /> : null}
-            {failure === 'denied' ? <Button label={t('common.openSettings')} onPress={() => Linking.openSettings()} /> : null}
-            {failure !== 'notFound' && failure !== 'denied' ? (
+            {failure !== 'notFound' ? (
               <Button label={t('remote.enterCode')} onPress={() => router.replace('/remote')} />
             ) : null}
           </>
