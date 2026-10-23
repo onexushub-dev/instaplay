@@ -51,14 +51,14 @@ test('tapping the screen saves a clipe', async () => {
 });
 
 test('a saved clipe shows the overlay with its number and source', async () => {
-  session({ clipCount: 3, lastSaved: { clipId: 'c3', number: 3, source: 'gesture', at: Date.now() } });
+  session({ clipCount: 3, lastSaved: { clipId: 'c3', number: 3, source: 'gesture', at: Date.now(), cutMs: 30000 } });
   await render(<Recording />);
   expect(screen.getByText('CLIPE #3 SALVO')).toBeTruthy();
-  expect(screen.getByText('via Acenar com os braços · últimos 30s')).toBeTruthy();
+  expect(screen.getByText('via Acenar com os braços · 30s')).toBeTruthy();
 });
 
 test('Desfazer undoes the last clipe', async () => {
-  const s = session({ clipCount: 1, lastSaved: { clipId: 'c1', number: 1, source: 'screen', at: Date.now() } });
+  const s = session({ clipCount: 1, lastSaved: { clipId: 'c1', number: 1, source: 'screen', at: Date.now(), cutMs: 30000 } });
   await render(<Recording />);
   await fireEvent.press(screen.getByRole('button', { name: 'Desfazer' }));
   expect(s.undoLast).toHaveBeenCalled();
@@ -96,21 +96,28 @@ test('a native error says recording stopped and offers the saved clipes', async 
 });
 
 test('a clipe saved by voice says so', async () => {
-  session({ clipCount: 1, lastSaved: { clipId: 'c1', number: 1, source: 'voice', at: Date.now() } });
+  session({ clipCount: 1, lastSaved: { clipId: 'c1', number: 1, source: 'voice', at: Date.now(), cutMs: 30000 } });
   await render(<Recording />);
-  expect(screen.getByText('via Voz · últimos 30s')).toBeTruthy();
+  expect(screen.getByText('via Voz · 30s')).toBeTruthy();
 });
 
-test('the hint lists the triggers on in this mode and the buffer length', async () => {
-  session({});
-  await render(<Recording bufferSeconds={120} gesture={false} voice />);
-  expect(screen.getByText('Últimos 120s prontos · ou diga “salvar” · ou use o controle')).toBeTruthy();
+test('the saved popup tells the length the clip really has, not the length asked for', async () => {
+  session({ clipCount: 2, lastSaved: { clipId: 'c2', number: 2, source: 'screen', at: Date.now(), cutMs: 7000 } });
+  await render(<Recording clipSeconds={30} />);
+  expect(screen.getByText('via Tela · 7s')).toBeTruthy();
+  expect(screen.queryByText(/60s guardados/)).toBeNull();
 });
 
-test('a court game keeps the arms-up hint', async () => {
+test('the hint lists the triggers that are on and the clip length', async () => {
   session({});
-  await render(<Recording bufferSeconds={60} gesture voice={false} />);
-  expect(screen.getByText('Últimos 60s prontos · ou acene com os braços · ou use o controle')).toBeTruthy();
+  await render(<Recording clipSeconds={45} gesture={false} voice />);
+  expect(screen.getByText('Últimos 45s prontos · ou diga “salvar” · ou use o controle')).toBeTruthy();
+});
+
+test('the arms-up hint shows when the gesture is on', async () => {
+  session({});
+  await render(<Recording clipSeconds={30} gesture voice={false} />);
+  expect(screen.getByText('Últimos 30s prontos · ou acene com os braços · ou use o controle')).toBeTruthy();
 });
 
 test('a remote phone asking to end the recording ends it like the hold button does', async () => {
@@ -132,10 +139,9 @@ test('a stop asked outside a recording is ignored', async () => {
   expect(s.stop).not.toHaveBeenCalled();
 });
 
-test('after saving, the usual hint shows (never a payments note)', async () => {
+test('after saving, no payments note shows', async () => {
   session({ clipCount: 10, lastSaved: { clipId: 'c10', number: 10, source: 'screen', at: Date.now() } });
   await render(<Recording />);
-  expect(screen.getByText('Dá para ajustar o corte depois, dentro dos 60s guardados.')).toBeTruthy();
   expect(screen.queryByText(/Último clipe grátis/)).toBeNull();
   expect(screen.queryByText(/Guardado. Libere/)).toBeNull();
 });

@@ -22,7 +22,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { createThumbnail, exportClip, findContentStart } from '../../../modules/replay-camera';
 import { ExportProgress, type ExportJob } from '../../components/ExportProgress';
-import { seconds, timeOfDay } from '../../components/format';
+import { clipNumber, seconds, timeOfDay } from '../../components/format';
 import {
   BackIcon,
   CloseIcon,
@@ -40,10 +40,10 @@ import { removeFile, repo } from '../../data/mmkv';
 import { MAX_CLIP_NAME } from '../../data/schema';
 import type { MessageKey } from '../../i18n';
 import { useT } from '../../i18n/useT';
-import { openPaywall } from '../../payments/feedback';
 import { effectiveSettings } from '../../modes/registry';
 import { captureOverlay } from '../../share/captureOverlay';
 import { contentFloor, nextRotation, outputMs, raiseToFloor, readEdit, SPEEDS, turnedSize } from '../../share/editing';
+import { clipWindow } from '../../share/trim';
 import { usePlan } from '../../share/entitlement';
 import { exportOptions } from '../../share/exportOptions';
 import { frameLayout } from '../../share/layout';
@@ -116,6 +116,8 @@ function ClipEditor({ id }: { id: string }) {
   const session = clip ? repo.getSession(clip.sessionId) : undefined;
   const maxMs = session ? effectiveSettings(session.sport, repo.getPrefs()).bufferSeconds * 1000 : undefined;
   const plan = usePlan(clip?.sessionId);
+  // `number` is the place in the swipe list ("2 de 3"); the clip's own number is the one it was saved with.
+  const ownNumber = clip ? clipNumber(clip, number - 1) : 0;
   // The clips a swipe can move to: every clip of the session.
   const siblings = useMemo(
     () => (clip ? repo.listClips(clip.sessionId) : []),
@@ -126,6 +128,9 @@ function ClipEditor({ id }: { id: string }) {
   const [trim, setTrim] = useState(() => clip?.trim ?? { startMs: 0, endMs: 0 });
   const edit = readEdit(clip?.edit);
   const floor = clip?.contentStartMs ?? 0;
+  // The track covers only what the clip was first saved with, so the cut can be shortened but never reach moments
+  // that already belong to the previous clip.
+  const win = clip ? clipWindow(clip, floor) : { startMs: 0, endMs: 0 };
   // Bumped to start the zoomed video over from the saved zoom (reset, or switching to/from full screen).
   const [zoomKey, setZoomKey] = useState(0);
   const [full, setFull] = useState(false);
@@ -168,10 +173,14 @@ function ClipEditor({ id }: { id: string }) {
   const made = useRef<string[]>([]);
   const captureRefView = useRef<ComponentRef<typeof View>>(null);
 
-  const options = clip ? exportOptions(plan, clip.edit, clip.trim) : undefined;
-  const frame = { width: options?.width ?? 1080, height: options?.height ?? 1920 };
   // The shape after the player's own turn; the clip's own rotation is already in the thumbnail's shape.
   const shape = turnedSize(videoSize, edit.rotation);
+  // A landscape clip is exported (and previewed) in a landscape frame; a vertical one in a vertical frame.
+  const landscape = shape.width > shape.height;
+  const options = clip ? exportOptions(plan, clip.edit, clip.trim, landscape) : undefined;
+  const frame = landscape
+    ? { width: options?.width ?? 1920, height: options?.height ?? 1080 }
+    : { width: options?.width ?? 1080, height: options?.height ?? 1920 };
   const layout = frameLayout(shape, frame);
   // The real aspect ratio (rotation applied) comes from the clip's thumbnail.
   const clipPath = clip?.path;
@@ -216,7 +225,8 @@ function ClipEditor({ id }: { id: string }) {
         const current = repo.getClip(id);
         if (!current) return;
         const floor = contentFloor(contentMs, current.durationMs);
-        const raised = raiseToFloor(current.trim, floor, current.durationMs);
+        const own = clipWindow(current, floor);
+        const raised = raiseToFloor(current.trim, own.startMs, own.endMs);
         if (raised === current.trim) return void repo.updateClip(id, { contentStartMs: floor });
         repo.updateClip(id, { contentStartMs: floor, trim: raised });
         setTrim(raised);
@@ -399,7 +409,7 @@ function ClipEditor({ id }: { id: string }) {
       repo.updateClip(id, { sharedAt: Date.now() });
     });
 
-  // Preview: the export's 9:16 frame as large as the whole screen allows; the controls sit over it.
+  // Preview: the export's frame as large as the whole screen allows; the controls sit over it.
   const previewHeight = Math.min(window.height, (window.width * frame.height) / frame.width);
   const scale = previewHeight / frame.height;
   const pr = PixelRatio.get();
@@ -503,7 +513,7 @@ function ClipEditor({ id }: { id: string }) {
             onChangeText={setName}
             onSubmitEditing={saveName}
             onBlur={saveName}
-            placeholder={t('clip.namePlaceholder', { number, time: timeOfDay(clip.createdAt, locale) })}
+            placeholder={t('clip.namePlaceholder', { number: ownNumber, time: timeOfDay(clip.createdAt, locale) })}
             placeholderTextColor={colors.soft}
             maxLength={MAX_CLIP_NAME}
             returnKeyType="done"
@@ -585,7 +595,7 @@ function ClipEditor({ id }: { id: string }) {
               })}</Text>
           ) : null}
           <View style={styles.trimLabels}>
-            <Text style={styles.small}>{`-${seconds(clip.durationMs - floor)}`}</Text>
+            <Text style={styles.small}>{`-${seconds(win.endMs - win.startMs)}`}</Text>
             <Text style={styles.cut}>{t('clip.cut', { time: seconds(outputMs(trim, edit.speed)) })}</Text>
             <Text style={styles.small}>{t('clip.trigger')}</Text>
           </View>
@@ -595,16 +605,16 @@ function ClipEditor({ id }: { id: string }) {
             </IconButton>
             <View style={styles.trimBar}>
               <TrimBar
-                durationMs={clip.durationMs}
-                floorMs={floor}
+                durationMs={win.endMs}
+                floorMs={win.startMs}
                 trim={trim}
                 maxMs={maxMs}
                 onChange={scrub}
                 onCommit={commitTrim}>
                 <Playhead
                   player={player}
-                  durationMs={clip.durationMs}
-                  floorMs={floor}
+                  durationMs={win.endMs}
+                  floorMs={win.startMs}
                   trim={trim}
                   speed={edit.speed}
                   scrubMs={scrubMs}
@@ -621,7 +631,7 @@ function ClipEditor({ id }: { id: string }) {
                 label={`${speed}x`}
                 a11y={t('clip.speed', { speed })}
                 active={edit.speed === speed}
-                onPress={() => (speed < 1 && plan === 'free' ? void openPaywall(t) : setEdit({ speed }))}
+                onPress={() => setEdit({ speed })}
               />
             ))}
             <Tool

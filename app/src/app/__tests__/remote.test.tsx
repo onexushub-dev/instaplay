@@ -255,6 +255,43 @@ test('searching and waiting show a pulse and say where they are', async () => {
   expect(screen.getByLabelText('Reconectando a Quadra 1')).toBeTruthy();
 });
 
+test('waiting for the game never turns into "Sem conexão" while the camera phone keeps beating', async () => {
+  paired();
+  await render(<Remote />);
+  await emit('onRemoteStatus', { link: 'connected', peerName: 'Quadra 1' });
+  await emit('onRemoteState', { recording: false, clipCount: 0 });
+  for (let i = 0; i < 6; i++) {
+    await act(async () => {
+      jest.advanceTimersByTime(5000);
+    });
+    await emit('onRemoteState', { recording: false, clipCount: 0 }); // the beat
+  }
+  expect(screen.getByText('Conectado. Pronto para começar a partida.')).toBeTruthy();
+  expect(screen.queryByText(/Sem conexão/)).toBeNull();
+  expect(screen.queryByText(/Sem sinal/)).toBeNull();
+});
+
+test('a dropped link says it is reconnecting, a silent one says there is no signal', async () => {
+  paired();
+  await render(<Remote />);
+  await emit('onRemoteStatus', { link: 'connected', peerName: 'Quadra 1' });
+  await emit('onRemoteState', { recording: false, clipCount: 0 });
+  await emit('onRemoteStatus', { link: 'searching', peerName: 'Quadra 1' });
+  expect(screen.getByText('Reconectando a Quadra 1…')).toBeTruthy();
+  expect(screen.queryByText(/Sem conexão/)).toBeNull();
+  await emit('onRemoteStatus', { link: 'connected', peerName: 'Quadra 1' });
+  await act(async () => {
+    jest.advanceTimersByTime(13_000);
+  });
+  expect(screen.getByText('Sem sinal de Quadra 1')).toBeTruthy();
+});
+
+test('without a pair the checklist of what both phones need is on screen', async () => {
+  await render(<Remote />);
+  expect(screen.getByText('Para conectar, confira:')).toBeTruthy();
+  expect(screen.getByText(/Wi-Fi e Bluetooth ligados nos dois celulares/)).toBeTruthy();
+});
+
 test('denied local network sends the player to Settings', async () => {
   paired();
   const open = jest.spyOn(Linking, 'openSettings').mockResolvedValue(undefined);
@@ -378,15 +415,18 @@ test('"Tentar agora" starts the search over', async () => {
   expect(camera().remoteControllerStart).toHaveBeenCalledTimes(1);
 });
 
-test('"Usar outra câmera" asks first, then forgets the camera phone and goes back to asking for a code', async () => {
+test('"Esquecer esta câmera" says whose pairing goes away, asks first, then forgets and goes back to asking for a code', async () => {
   paired();
   const alert = jest.spyOn(require('react-native').Alert, 'alert').mockImplementation(() => {});
   await render(<Remote />);
-  await fireEvent.press(screen.getByRole('button', { name: 'Usar outra câmera' }));
+  expect(screen.getByText('Desfaz o pareamento com Quadra 1 neste celular.')).toBeTruthy();
+  await fireEvent.press(screen.getByRole('button', { name: 'Esquecer esta câmera' }));
   expect(alert).toHaveBeenCalledTimes(1);
+  expect(alert.mock.calls[0][0]).toBe('Esquecer Quadra 1?');
+  expect(String(alert.mock.calls[0][1])).toContain('Quadra 1 também remove este controle');
   expect(camera().remoteControllerForget).not.toHaveBeenCalled();
   const buttons = alert.mock.calls[0][2] as { text: string; onPress?: () => void }[];
-  await act(async () => buttons.find((b) => b.text === 'Esquecer')!.onPress!());
+  await act(async () => buttons.find((b) => b.text === 'Esquecer e parear outra')!.onPress!());
   expect(camera().remoteControllerForget).toHaveBeenCalledTimes(1);
   expect(screen.getByText('Conectar à câmera')).toBeTruthy();
   alert.mockRestore();

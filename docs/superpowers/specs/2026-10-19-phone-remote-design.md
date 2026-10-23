@@ -185,3 +185,74 @@ On two physical iPhones (cannot be automated), checklist for the field test:
 
 Android transport (Bluetooth LE) behind `RemoteTransport`; the remote working in the background; live preview on the remote;
 showing the remote as the trigger source in the clip list; copy for the onboarding mentioning the remote.
+
+## 13. Update 2026-10-22: connection and pairing reliability
+
+Origin: field report. The pairing code was refused as expired after about a minute while the camera phone still counted down
+two minutes, and the remote showed "Sem conexão" while it was in fact connected.
+
+- **Heartbeat.** The camera phone now sends its state every 5 s to every connected remote whether or not it is recording
+  (before, only while recording). The remote treats a connected link with no news for 12 s as silent (`stale`, "Sem sinal de X"),
+  and a dropped link as `reconnecting` ("Reconectando a X…"). A waiting remote never shows a failure while beats arrive.
+- **Pairing offer.** A good proof only *reserves* the offer for that remote. The offer is spent when the pairing completes
+  (`paired` sent). If the connection fails before that, the reservation is released, and the same remote can retry until the
+  120 s are over. Reasons sent to the remote: `expired` (time only), `locked`, `wrong`, `used` (another remote holds the code),
+  `closed` (no pairing is open). The camera phone tells its sheet when a remote is linking up (`connecting`), when that failed
+  (`released`) and when five wrong tries ended the offer (`offerEnded`).
+- **Diagnosis.** `RemoteHost` logs every invitation decision with `os.Logger` (subsystem `LANCE`, category `RemoteHost`; open
+  Console.app on the Mac with the camera phone connected). The 60 s window of `RemoteProof` is only about clock difference and
+  produces "wrong", never "expired".
+- **Camera phone screen.** `/pairing` opens on the paired remotes (Conectado/Offline, "Verificar", "Remover" with a
+  confirmation naming the remote). The QR and the code are made only after "Parear outro celular" (or at once when nobody is
+  paired). "Verificar" sends `{ping: token}`; the remote answers `{pong: token}`; the result is `onRemoteCheck {id, ok, ms}`
+  (no answer in 3 s is `ok: false`). Older builds ignore both messages.
+- **Remote screen.** "Usar outra câmera" became "Esquecer esta câmera" with the camera's name and a confirmation that says the
+  camera also removes this remote.
+- **Requirements, shown on both pairing screens and on failure:** Wi-Fi and Bluetooth on in both phones (no internet and no
+  shared network needed), Local Network allowed for LANCE, LANCE open on both phones. Wi-Fi/Bluetooth state is not detected
+  automatically: a phone with Wi-Fi on but no network joined looks the same as Wi-Fi off, and reading Bluetooth state needs a
+  new permission prompt.
+
+Field checklist for this update (two physical iPhones):
+1. Pair by QR and by code; confirm in Console.app the log line for each invitation.
+2. Wait 60 s with the sheet open, then pair: must still work until the counter reaches 0.
+3. Interrupt the first pairing attempt (move away, come back): the retry must succeed, not say "vencido".
+4. Remote connected and waiting for 2 minutes with no game: must stay "Conectado", never "Sem conexão".
+5. Close the app on the remote: "Verificar" on the camera phone says "Sem resposta" within about 3 s.
+6. Wi-Fi off, Bluetooth off, both on different Wi-Fi networks, and a Wi-Fi with client isolation: note what happens.
+
+## 14. Update 2026-10-22: clip orientation and watermark anchor
+
+**Problem.** `SegmentWriter` stamps the phone's position on the track once, at the first frame of a session. A phone opened upright and then mounted sideways saved every clip rotated, which also gave the clip screen the wrong video shape (and so the wrong watermark position).
+
+**Change.**
+- `ReplayEngine.saveClip` reads `gesture.currentUpright().videoRotationDegrees` when the save is requested and passes it to `ClipConcat.normalize(_:to:rotationDegrees:)`.
+- `normalize` inserts the video into an `AVMutableComposition`, sets the track `preferredTransform` to that rotation and exports with the passthrough preset (no re-encode).
+- `ShareOverlay` anchors the logo (and the bottom gradient) to the bottom-right corner of the video image instead of the 9:16 frame, with the same margin (4.5% of frame width). Vertical clips look unchanged; landscape clips get the mark inside the image.
+- Clips saved before this change keep their stored rotation; the "Girar" edit still fixes them.
+
+**Field checklist (device, Release build).**
+1. Open the camera upright, then mount the phone sideways and save: the clip plays landscape, mark inside the video's bottom-right corner.
+2. Open the camera sideways and save: same result.
+3. Rotate between plays in the same session: each clip follows the position at the time of its play.
+4. Vertical clip: mark in the bottom-right corner, equal right and bottom margins.
+5. If a clip still comes out with the wrong rotation, the passthrough export did not keep the composition transform; fall back to applying the rotation in `ClipExporter`.
+
+### 14.1 Landscape frame (same day)
+Landscape clips are previewed and exported in a landscape frame (1280×720 free, 1920×1080 pro) with no bands; vertical clips keep 720×1280 / 1080×1920. The shape comes from the clip (after the manual "Girar"). The mark is anchored to the frame's bottom-right corner and sized from the frame's short side, so it has the same pixel size in both orientations. The app stays portrait-locked: a landscape clip previews 16:9 at full width, and "Tela cheia" shows the raw video. Field check: record sideways, export, and open in Photos with the phone held sideways; the mark reads normally in the bottom-right corner.
+
+## 15. Update 2026-10-22: setup screen with the phone on its side
+
+**Problem.** The app is portrait-locked, so with the phone held sideways the settings sheet (summary + "Começar gravação") covers a wide strip of the camera view, and the mode tip competes with the positioning guide.
+
+**Change.**
+- Native: `getUpright()` (`ReplayCameraModule.swift`) returns the accelerometer position; JS wrapper `getDeviceUpright()` falls back to `'portrait'` where unavailable.
+- `useDeviceLandscape(active)` polls every 300 ms while the setup screen is live and idle; a change needs two matching reads, so a tilt in passing does not flicker the layout.
+- On its side, the sheet is replaced by `CompactDock`: "Ajustes" and "Gravar" buttons at the edge. The mode tip is hidden and the guide area uses the whole screen. "Ajustes" opens the full sheet over the camera on demand; closing it returns to the compact dock. Upright behaviour is unchanged.
+
+**Field checklist.**
+1. Open setup upright: sheet as before. Turn the phone on its side: sheet becomes "Ajustes" + "Gravar", guide larger.
+2. Tilt briefly and back: no flicker.
+3. "Ajustes" shows all settings; closing returns to the two buttons.
+4. "Gravar" starts the game; errors (storage, permission) show above the buttons.
+5. Both sideways positions (left and right) behave the same.

@@ -1,6 +1,7 @@
 import { NativeModule, requireNativeModule } from 'expo';
 
 import type {
+  DeviceUpright,
   ExportClipOptions,
   ExportedClip,
   ReplayCameraModuleEvents,
@@ -19,6 +20,8 @@ declare class ReplayCameraModule extends NativeModule<ReplayCameraModuleEvents> 
   stopSession(): Promise<void>;
   saveClip(opts: SaveClipOptions): Promise<SavedClip>;
   setGestureEnabled(enabled: boolean): void;
+  // The phone's position (iOS only: missing on Android and in older builds).
+  getUpright?(): DeviceUpright;
   // Continuous zoom (iOS only: missing on Android and in older builds).
   getZoomRange?(): ZoomRange;
   setZoom?(factor: number, animated: boolean): void;
@@ -44,6 +47,7 @@ declare class ReplayCameraModule extends NativeModule<ReplayCameraModuleEvents> 
   remoteHostEndPairing?(): void;
   remoteHostPeers?(): RemotePeer[];
   remoteHostRemove?(id: string): void;
+  remoteHostCheck?(id: string): void;
   remoteHostControllers?(): number;
   remoteSync?(recording: boolean, clipCount: number, startedAt: number | null): void;
   remoteSignal?(saved: boolean): void;

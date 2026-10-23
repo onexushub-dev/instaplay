@@ -3,7 +3,7 @@ import { modeById } from '../../modes/registry';
 import { captureConfig, hdQuality, triggerAllowed } from '../limits';
 
 const court = modeById('quadra').defaults;
-const gym: ModeSettings = { zoom: 1, gestureEnabled: false, voiceEnabled: true, bufferSeconds: 120, cutSeconds: 60, quality: '1080p30', audio: true };
+const gym: ModeSettings = { zoom: 1, gestureEnabled: false, voiceEnabled: true, bufferSeconds: 60, cutSeconds: 60, quality: '1080p30', audio: true };
 
 test('captureConfig free: HD, 15 s buffer, no sound', () => {
   expect(captureConfig(court, 'free')).toEqual({ quality: '720p60', bufferSeconds: 15, cutSeconds: 15, audio: false });
@@ -37,6 +37,6 @@ test('triggerAllowed: tap, gesture and voice are free; watch, remote and phone a
   }
 });
 
-test('captureConfig free: a buffer shorter than 15 s is kept', () => {
-  expect(captureConfig({ ...court, bufferSeconds: 10 }, 'free').bufferSeconds).toBe(10);
+test('captureConfig free: a clip length shorter than 15 s is kept', () => {
+  expect(captureConfig({ ...court, cutSeconds: 10 }, 'free').cutSeconds).toBe(10);
 });

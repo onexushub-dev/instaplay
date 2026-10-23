@@ -1,29 +1,63 @@
 import { router } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
   addReplayListener,
   remoteHostBeginPairing,
+  remoteHostCheck,
   remoteHostEndPairing,
   remoteHostPeers,
   remoteHostRemove,
 } from '../../modules/replay-camera';
 import type { RemotePairing, RemotePeer } from '../../modules/replay-camera/src/ReplayCamera.types';
 import { Button } from '../components/Button';
+import { CheckProgress, FAILED_VISIBLE_MS, OK_VISIBLE_MS, type CheckView } from '../components/CheckProgress';
 import { DeviceNameField } from '../components/DeviceNameField';
-import { CheckIcon } from '../components/icons';
-import { useT } from '../i18n/useT';
+import { CheckIcon, PhoneIcon } from '../components/icons';
 import { PulseRing } from '../components/PulseRing';
+import { RequirementsChecklist } from '../components/RequirementsChecklist';
+import { StatusPill } from '../components/StatusPill';
 import { colors, fonts, radius } from '../theme/tokens';
 
 const LIMIT = 4;
 /** A code is good for two minutes; building the QR image takes a moment, so the offer can look slightly longer. */
 const VALID_SECONDS = 120;
 const CLOSE_AFTER_MS = 1500;
+/** The camera phone gives up on an unanswered "are you there?" after 3 s; this is only the net under that. */
+const CHECK_NET_MS = 5000;
 
 const clock = (seconds: number) => `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+
+/** The popup of a "Verificar conexão": which remote it is about, and where the question stands. */
+type Popup = { id: string; name: string; view: CheckView };
+
+/** The line under a remote's name: what its state means for the player. */
+export function peerHint(linked: boolean): string {
+  return linked ? 'Pronto para salvar lances' : 'Abra o LANCE neste celular para reconectar';
+}
+
+function RowButton({ label, accessibilityLabel, tone, disabled, onPress }: {
+  label: string;
+  accessibilityLabel: string;
+  tone: 'accent' | 'warning';
+  disabled?: boolean;
+  onPress: () => void;
+}) {
+  const color = tone === 'accent' ? colors.accent : colors.warning;
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      accessibilityState={{ disabled: disabled === true }}
+      disabled={disabled === true}
+      onPress={onPress}
+      style={({ pressed }) => [styles.rowButton, { borderColor: color }, (pressed || disabled === true) && styles.rowButtonDim]}>
+      <Text style={[styles.rowButtonText, { color }]}>{label}</Text>
+    </Pressable>
+  );
+}
 
 function Step({ n, text }: { n: number; text: string }) {
   return (
@@ -36,14 +70,25 @@ function Step({ n, text }: { n: number; text: string }) {
   );
 }
 
-/** The camera phone's side of pairing: a QR code and a 6-digit code for the phone that will be the remote. */
+/**
+ * The camera phone's side of pairing. It opens on the remotes already paired (is each one linked right now? "Verificar"
+ * asks it, "Remover" forgets it); the QR and the 6-digit code only exist once the player asks for another phone, or at
+ * once when there is none yet, so a code never runs out while the player is just looking at the list.
+ */
 export default function Pairing() {
-  const { t } = useT();
   const [offer, setOffer] = useState<RemotePairing | null>(null);
-  const [peers, setPeers] = useState<RemotePeer[]>([]);
+  const [pairing, setPairing] = useState(false);
+  // Read once, when the sheet opens: with nobody paired yet it goes straight to the code.
+  const [initialPeers] = useState<RemotePeer[]>(() => remoteHostPeers());
+  const [peers, setPeers] = useState<RemotePeer[]>(initialPeers);
   const [paired, setPaired] = useState<string | null>(null);
+  const [connecting, setConnecting] = useState<string | null>(null);
+  const [locked, setLocked] = useState(false);
+  const [popup, setPopup] = useState<Popup | null>(null);
   const [now, setNow] = useState(() => Date.now());
-  const peersRef = useRef<RemotePeer[]>([]);
+  const peersRef = useRef<RemotePeer[]>(initialPeers);
+  const pairingRef = useRef(false);
+  const nets = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   /** Reads the paired remotes; returns the one that was not there before, if any. */
   const readPeers = useCallback((): RemotePeer | undefined => {
@@ -54,17 +99,38 @@ export default function Pairing() {
     return added;
   }, []);
 
+  /** Opens a pairing (a new code each time). */
   const open = useCallback(() => {
     readPeers();
     setPaired(null);
+    setConnecting(null);
+    setLocked(false);
     setNow(Date.now());
+    pairingRef.current = true;
+    setPairing(true);
     setOffer(remoteHostBeginPairing());
   }, [readPeers]);
 
+  const cancelPairing = () => {
+    remoteHostEndPairing();
+    pairingRef.current = false;
+    setPairing(false);
+    setOffer(null);
+    setConnecting(null);
+    setLocked(false);
+    readPeers();
+  };
+
   useEffect(() => {
-    open();
-    return () => remoteHostEndPairing();
-  }, [open]);
+    // Opening a pairing asks the native module for a code, so it belongs in an effect even though it sets state too.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (initialPeers.length === 0) open();
+    const timers = nets.current;
+    return () => {
+      remoteHostEndPairing();
+      Object.keys(timers).forEach((id) => clearTimeout(timers[id]));
+    };
+  }, [open, initialPeers]);
 
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
@@ -78,11 +144,12 @@ export default function Pairing() {
     return () => clearTimeout(id);
   }, [paired]);
 
-  // The camera phone tells us when a remote connected: that is how we know the pairing worked.
+  // The camera phone tells us when a remote connected or left: that is how the list stays true, and how we know a new
+  // remote was paired.
   useEffect(() => {
     const sub = addReplayListener('onRemoteStatus', () => {
       const added = readPeers();
-      if (added) setPaired(added.name);
+      if (added && pairingRef.current) setPaired(added.name);
     });
     return () => sub.remove();
   }, [readPeers]);
@@ -90,96 +157,186 @@ export default function Pairing() {
   // Pairing the same remote again replaces its entry, so it is not "a new peer": the host says so itself.
   useEffect(() => {
     const sub = addReplayListener('onRemotePairing', (e) => {
-      if (e.phase !== 'paired') return;
-      readPeers();
-      setPaired(e.peer.name);
+      if (e.phase === 'paired') {
+        readPeers();
+        setPaired(e.peer.name);
+      } else if (e.phase === 'connecting') {
+        setConnecting(e.peer.name);
+      } else if (e.phase === 'released') {
+        setConnecting(null);
+      } else if (e.phase === 'offerEnded') {
+        setLocked(true);
+        setConnecting(null);
+      }
     });
     return () => sub.remove();
   }, [readPeers]);
 
-  const remove = (id: string) => {
-    remoteHostRemove(id);
-    if (offer === null) open();
-    else readPeers();
+  useEffect(() => {
+    const sub = addReplayListener('onRemoteCheck', (e) => {
+      clearTimeout(nets.current[e.id]);
+      setPopup((current) =>
+        current !== null && current.id === e.id ? { ...current, view: e.ok ? { phase: 'ok', ms: e.ms } : { phase: 'failed' } } : current,
+      );
+    });
+    return () => sub.remove();
+  }, []);
+
+  // The answer closes by itself: quickly when the remote is fine, after a longer look when it did not answer.
+  const popupPhase = popup === null ? null : popup.view.phase;
+  useEffect(() => {
+    if (popupPhase !== 'ok' && popupPhase !== 'failed') return;
+    const id = setTimeout(() => setPopup(null), popupPhase === 'ok' ? OK_VISIBLE_MS : FAILED_VISIBLE_MS);
+    return () => clearTimeout(id);
+  }, [popupPhase]);
+
+  const verify = (peer: RemotePeer) => {
+    setPopup({ id: peer.id, name: peer.name, view: { phase: 'checking' } });
+    clearTimeout(nets.current[peer.id]);
+    nets.current[peer.id] = setTimeout(() => {
+      setPopup((current) =>
+        current !== null && current.id === peer.id && current.view.phase === 'checking' ? { ...current, view: { phase: 'failed' } } : current,
+      );
+    }, CHECK_NET_MS);
+    remoteHostCheck(peer.id);
   };
 
-  const full = offer === null && peers.length >= LIMIT;
+  const confirmRemove = (peer: RemotePeer) => {
+    Alert.alert(
+      `Remover ${peer.name}?`,
+      `${peer.name} deixa de ser um controle desta câmera. Para usar de novo, será preciso parear outra vez.`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Remover',
+          style: 'destructive',
+          onPress: () => {
+            remoteHostRemove(peer.id);
+            readPeers();
+          },
+        },
+      ],
+    );
+  };
+
+  const full = peers.length >= LIMIT;
   const secondsLeft = offer === null ? 0 : Math.min(VALID_SECONDS, Math.max(0, Math.ceil((offer.expiresAt - now) / 1000)));
   const expired = offer !== null && secondsLeft === 0;
+  const dead = expired || locked;
 
   return (
     <SafeAreaView style={styles.root}>
       <ScrollView automaticallyAdjustKeyboardInsets contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
-        <Text style={styles.role}>{t('pairing.roleCamera')}</Text>
-        <Text style={styles.title}>{t('pairing.title')}</Text>
+        <Text style={styles.role}>ESTE IPHONE É A CÂMERA</Text>
+        <Text style={styles.title}>Conectar um celular de controle</Text>
 
         {paired !== null ? (
           <View style={styles.done}>
             <View style={styles.doneBadge}>
               <CheckIcon size={64} />
             </View>
-            <Text style={styles.success}>{t('pairing.paired', { name: paired })}</Text>
+            <Text style={styles.success}>{`Pronto! ${paired} agora é um controle.`}</Text>
           </View>
-        ) : full ? (
-          <Text style={styles.warning}>{t('pairing.full')}</Text>
         ) : (
           <>
-            <View style={styles.steps}>
-              <Step n={1} text={t('pairing.step1')} />
-              <Step n={2} text={t('pairing.step2')} />
-            </View>
-            {offer !== null ? (
-              <>
-                <View style={[styles.qr, expired && styles.dim]}>
-                  <Image
-                    accessibilityLabel={t('pairing.qrLabel')}
-                    source={{ uri: `file://${offer.qrPath}` }}
-                    style={styles.qrImage}
-                  />
+            {peers.length > 0 ? (
+              <View style={styles.list}>
+                <View style={styles.sectionRow}>
+                  <Text style={styles.section}>Celulares de controle</Text>
+                  <Text style={styles.sectionCount}>{`${peers.length} de ${LIMIT}`}</Text>
                 </View>
-                <Text style={styles.fallback}>{t('pairing.typeInstead')}</Text>
-                <Text style={[styles.code, expired && styles.dim]}>{offer.code}</Text>
-                {expired ? null : (
-                  <View style={styles.waiting}>
-                    <PulseRing color={colors.accent} size={28} />
-                    <Text style={styles.waitingText}>{t('pairing.waiting')}</Text>
-                  </View>
-                )}
-                <Text style={expired ? styles.warning : styles.countdown}>
-                  {expired ? t('pairing.expired') : t('pairing.validFor', { time: clock(secondsLeft) })}
-                </Text>
-                <Text style={styles.note}>{t('pairing.needsApp')}</Text>
-              </>
+                {peers.map((peer) => {
+                  const linked = peer.connected === true;
+                  const checking = popup !== null && popup.view.phase === 'checking';
+                  return (
+                    <View key={peer.id} style={styles.peer}>
+                      <View style={styles.peerTop}>
+                        <View style={styles.peerIcon}>
+                          <PhoneIcon color={linked ? colors.accent : colors.muted} size={24} />
+                        </View>
+                        <View style={styles.peerInfo}>
+                          <Text style={styles.peerName}>{peer.name}</Text>
+                          <Text style={styles.peerHint}>{peerHint(linked)}</Text>
+                        </View>
+                        <StatusPill text={linked ? 'Conectado' : 'Offline'} tone={linked ? 'on' : 'idle'} />
+                      </View>
+                      <View style={styles.peerActions}>
+                        <RowButton
+                          label="Verificar conexão"
+                          accessibilityLabel={`Verificar conexão de ${peer.name}`}
+                          tone="accent"
+                          disabled={checking}
+                          onPress={() => verify(peer)}
+                        />
+                        <RowButton
+                          label="Remover"
+                          accessibilityLabel={`Remover ${peer.name}`}
+                          tone="warning"
+                          onPress={() => confirmRemove(peer)}
+                        />
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            ) : null}
+
+            {!pairing ? (
+              full ? (
+                <Text style={styles.warning}>Você já tem 4 celulares de controle. Remova um para conectar outro.</Text>
+              ) : (
+                <Button label="Parear outro celular" onPress={open} />
+              )
             ) : (
-              <Text style={styles.warning}>{t('pairing.codeFailed')}</Text>
+              <>
+                <View style={styles.steps}>
+                  <Step n={1} text="No outro celular, abra o LANCE e toque em “Usar este celular como controle”." />
+                  <Step n={2} text="Aponte a câmera dele para este código QR." />
+                </View>
+                {offer !== null ? (
+                  <>
+                    <View style={[styles.qr, dead && styles.dim]}>
+                      <Image
+                        accessibilityLabel="Código QR para parear"
+                        source={{ uri: `file://${offer.qrPath}` }}
+                        style={styles.qrImage}
+                      />
+                    </View>
+                    <Text style={styles.fallback}>{'Prefere digitar? No outro celular, digite este código:'}</Text>
+                    <Text style={[styles.code, dead && styles.dim]}>{offer.code}</Text>
+                    {dead ? null : (
+                      <View style={styles.waiting}>
+                        <PulseRing color={colors.accent} size={28} />
+                        <Text style={styles.waitingText}>
+                          {connecting === null ? 'Aguardando o outro celular…' : `Conectando com ${connecting}…`}
+                        </Text>
+                      </View>
+                    )}
+                    <Text style={dead ? styles.warning : styles.countdown}>
+                      {locked
+                        ? 'Muitas tentativas erradas. Gere um novo código.'
+                        : expired
+                          ? 'Código vencido. Gere um novo.'
+                          : `Válido por ${clock(secondsLeft)}`}
+                    </Text>
+                    <Text style={styles.note}>O LANCE precisa estar instalado no outro celular.</Text>
+                  </>
+                ) : (
+                  <Text style={styles.warning}>Não foi possível gerar o código. Tente de novo.</Text>
+                )}
+                <RequirementsChecklist />
+                <Button label="Gerar novo código" variant="secondary" onPress={open} />
+                {peers.length > 0 ? <Button label="Cancelar" variant="secondary" onPress={cancelPairing} /> : null}
+              </>
             )}
-            <Button label={t('pairing.newCode')} variant="secondary" onPress={open} />
           </>
         )}
 
-        {peers.length > 0 ? (
-          <View style={styles.list}>
-            <Text style={styles.section}>{t('pairing.remotes')}</Text>
-            {peers.map((peer) => (
-              <View key={peer.id} style={styles.peer}>
-                <Text style={styles.peerName}>{peer.name}</Text>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={t('pairing.removeName', { name: peer.name })}
-                  hitSlop={8}
-                  onPress={() => remove(peer.id)}
-                  style={styles.remove}>
-                  <Text style={styles.removeText}>{t('pairing.remove')}</Text>
-                </Pressable>
-              </View>
-            ))}
-          </View>
-        ) : null}
-
         <DeviceNameField />
 
-        <Button label={t('common.close')} variant="secondary" onPress={() => router.back()} />
+        <Button label="Fechar" variant="secondary" onPress={() => router.back()} />
       </ScrollView>
+      {popup !== null ? <CheckProgress name={popup.name} view={popup.view} onDismiss={() => setPopup(null)} /> : null}
     </SafeAreaView>
   );
 }
@@ -223,16 +380,24 @@ const styles = StyleSheet.create({
   warning: { fontFamily: fonts.bodySemi, fontSize: 15, color: colors.warning },
   list: { gap: 8 },
   section: { fontFamily: fonts.bodyBold, fontSize: 12, letterSpacing: 1, color: colors.muted },
-  peer: {
-    flexDirection: 'row',
+  sectionRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' },
+  sectionCount: { fontFamily: fonts.bodySemi, fontSize: 12, color: colors.muted },
+  peer: { gap: 12, backgroundColor: colors.surface, borderRadius: radius.card, padding: 14 },
+  peerTop: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  peerIcon: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.ground, alignItems: 'center', justifyContent: 'center' },
+  peerInfo: { flex: 1, gap: 2 },
+  peerName: { fontFamily: fonts.bodyBold, fontSize: 17, color: colors.text },
+  peerHint: { fontFamily: fonts.body, fontSize: 13, lineHeight: 18, color: colors.muted },
+  peerActions: { flexDirection: 'row', gap: 10 },
+  rowButton: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: radius.button,
+    borderWidth: 1,
     alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: colors.surface,
-    borderRadius: radius.card,
-    paddingHorizontal: 14,
-    minHeight: 52,
+    justifyContent: 'center',
+    paddingHorizontal: 10,
   },
-  peerName: { fontFamily: fonts.bodySemi, fontSize: 15, color: colors.text, flexShrink: 1 },
-  remove: { minHeight: 44, minWidth: 44, justifyContent: 'center', alignItems: 'flex-end' },
-  removeText: { fontFamily: fonts.bodySemi, fontSize: 14, color: colors.warning },
+  rowButtonDim: { opacity: 0.5 },
+  rowButtonText: { fontFamily: fonts.bodyBold, fontSize: 15 },
 });

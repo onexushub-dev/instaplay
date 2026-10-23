@@ -51,6 +51,11 @@ export function dayAndTime(at: number, now = Date.now(), locale: AppLocale = cur
     : translate(locale, 'common.dayTime', { day: dayMonth(at, locale), time });
 }
 
+/** The number a clip shows in its recording: the one it was saved with, or its place in the list for older clips. */
+export function clipNumber(clip: { number?: number }, index: number): number {
+  return clip.number !== undefined ? clip.number : index + 1;
+}
+
 /** "m:ss", the same in every language. */
 export function seconds(ms: number): string {
   const s = Math.round(ms / 1000);

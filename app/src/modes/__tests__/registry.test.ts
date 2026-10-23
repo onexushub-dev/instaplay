@@ -43,8 +43,22 @@ test('a saved zoom wins over an old lens and over the global one', () => {
   expect(effectiveSettings('quadra', p).zoom).toBe(2);
 });
 
-test('the gym defaults keep the wide lens as 1x', () => {
-  expect(effectiveSettings('academia', prefs()).zoom).toBe(1);
+test('every saved sport id runs with the same settings as the free mode', () => {
+  const free = effectiveSettings('quadra', prefs());
+  for (const id of ['academia', 'musculacao', 'crossfit', 'beachTennis', 'futevolei', 'voleiPraia', 'outro'] as const) {
+    expect(effectiveSettings(id, prefs())).toEqual(free);
+  }
+});
+
+test('the buffer is always 60s, whatever an old save holds', () => {
+  const old = prefs({ modeSettings: { quadra: { bufferSeconds: 120 as never } } });
+  expect(effectiveSettings('quadra', old).bufferSeconds).toBe(60);
+});
+
+test('the player\'s clip length is kept, within what the buffer holds', () => {
+  expect(effectiveSettings('quadra', prefs(withModeOverride(prefs(), 'quadra', { cutSeconds: 15 }))).cutSeconds).toBe(15);
+  expect(effectiveSettings('quadra', prefs({ modeSettings: { quadra: { cutSeconds: 90 } } })).cutSeconds).toBe(60);
+  expect(effectiveSettings('quadra', prefs({ modeSettings: { quadra: { cutSeconds: 0 } } })).cutSeconds).toBe(30);
 });
 
 test('saving a zoom writes zoom and never lens', () => {
@@ -60,6 +74,5 @@ test('games saved with an old sport keep their label, and everything maps to the
   expect(modeLabel('quadra', 'en')).toBe('Recording');
   for (const id of ['futevolei', 'crossfit', 'academia', 'quadra'] as const) expect(offeredMode(id)).toBe('quadra');
   expect(modeLabel(modeById('academia').id)).toBe('Academia');
-  expect(modeById('academia').tip).toBe(true);
-  expect(modeById('voleiPraia').group).toBe('quadra');
+  expect(modeLabel(modeById('voleiPraia').id)).toBe('Vôlei de praia');
 });

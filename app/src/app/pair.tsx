@@ -13,8 +13,7 @@ import type { RemotePairFailure } from '../../modules/replay-camera/src/ReplayCa
 import { Button } from '../components/Button';
 import { CheckIcon, CloseIcon } from '../components/icons';
 import { PulseRing } from '../components/PulseRing';
-import type { TFunction } from '../i18n';
-import { useT } from '../i18n/useT';
+import { RequirementsChecklist } from '../components/RequirementsChecklist';
 import { parsePairLink } from '../remote/pairLink';
 import { colors, fonts } from '../theme/tokens';
 
@@ -27,26 +26,29 @@ function one(value: string | string[] | undefined): string | undefined {
   return value;
 }
 
-function failureText(reason: RemotePairFailure, t: TFunction): string {
+function failureText(reason: RemotePairFailure): string {
   switch (reason) {
     case 'expired':
-      return t('remote.failExpired');
+      return 'Código vencido. Peça um novo no celular da câmera.';
     case 'locked':
-      return t('remote.failLocked');
+      return 'Muitas tentativas. Gere um novo código.';
     case 'notFound':
-      return t('remote.failNotFound');
+      return 'Não encontrei o celular da câmera. Chegue mais perto e confira se o LANCE está aberto lá.';
     case 'denied':
-      return t('remote.failNetwork');
+      return 'Libere a rede local nos Ajustes para usar o controle.';
     case 'full':
-      return t('remote.failFull');
+      return 'O celular da câmera já tem 4 controles. Remova um lá para conectar este.';
+    case 'used':
+      return 'Outro celular está usando este código agora. Peça um novo no celular da câmera.';
+    case 'closed':
+      return 'O celular da câmera não está pareando agora. Toque em “Parear outro celular” lá e tente de novo.';
     default:
-      return t('remote.failWrongCodeLink');
+      return 'Código incorreto. Peça um novo no celular da câmera.';
   }
 }
 
 /** Where the `lance://pair?...` link (read by the Camera app from the QR code) lands. */
 export default function Pair() {
-  const { t } = useT();
   const params = useLocalSearchParams<{ h?: string; s?: string; n?: string }>();
   const h = one(params.h);
   const s = one(params.s);
@@ -70,7 +72,7 @@ export default function Pair() {
         setHostName(e.peer.name);
         setFailure(null);
         setPaired(true);
-      } else {
+      } else if (e.phase === 'failed') {
         setFailure(e.reason);
       }
     });
@@ -113,41 +115,42 @@ export default function Pair() {
   return (
     <SafeAreaView style={styles.root}>
       <View style={styles.body}>
-        <Text style={styles.role}>{t('remote.roleRemote')}</Text>
+        <Text style={styles.role}>ESTE IPHONE É O CONTROLE</Text>
         {link === null ? (
           <>
             <View style={[styles.badge, styles.badgeBad]}>
               <CloseIcon color={colors.ground} size={56} />
             </View>
-            <Text style={styles.warning}>{t('remote.invalidLink')}</Text>
-            <Button label={t('remote.enterCode')} onPress={() => router.replace('/remote')} />
+            <Text style={styles.warning}>Este link de pareamento não é válido. Peça um novo código no celular da câmera.</Text>
+            <Button label="Digitar código" onPress={() => router.replace('/remote')} />
           </>
         ) : paired ? (
           <>
             <View style={styles.badge}>
               <CheckIcon size={64} />
             </View>
-            <Text style={styles.success}>{t('remote.pairedWith', { name: hostName })}</Text>
+            <Text style={styles.success}>{`Pronto! Este celular agora controla ${hostName}`}</Text>
           </>
         ) : failure !== null ? (
           <>
             <View style={[styles.badge, styles.badgeBad]}>
               <CloseIcon color={colors.ground} size={56} />
             </View>
-            <Text style={styles.warning}>{failureText(failure, t)}</Text>
-            {failure === 'notFound' ? <Button label={t('common.tryAgain')} onPress={retry} /> : null}
-            {failure === 'denied' ? <Button label={t('common.openSettings')} onPress={() => Linking.openSettings()} /> : null}
+            <Text style={styles.warning}>{failureText(failure)}</Text>
+            {failure === 'notFound' ? <RequirementsChecklist /> : null}
+            {failure === 'notFound' ? <Button label="Tentar de novo" onPress={retry} /> : null}
+            {failure === 'denied' ? <Button label="Abrir Ajustes" onPress={() => Linking.openSettings()} /> : null}
             {failure !== 'notFound' && failure !== 'denied' ? (
-              <Button label={t('remote.enterCode')} onPress={() => router.replace('/remote')} />
+              <Button label="Digitar código" onPress={() => router.replace('/remote')} />
             ) : null}
           </>
         ) : (
           <>
             <PulseRing color={colors.accent} />
-            <Text style={styles.status}>{t('remote.connectingTo', { name: hostName })}</Text>
+            <Text style={styles.status}>{`Conectando a ${hostName}…`}</Text>
           </>
         )}
-        {paired ? null : <Button label={t('common.close')} variant="secondary" onPress={leave} />}
+        {paired ? null : <Button label="Fechar" variant="secondary" onPress={leave} />}
       </View>
     </SafeAreaView>
   );

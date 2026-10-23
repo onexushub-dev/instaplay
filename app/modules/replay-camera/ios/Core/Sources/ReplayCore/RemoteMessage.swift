@@ -4,7 +4,9 @@ import Foundation
 /// keys match `WatchMessage` on purpose. RemoteMessageTests pins the key names.
 public enum RemoteMessage: Equatable {
   /// Why the camera phone refused a pairing attempt.
-  public enum Reason: String { case expired, locked, wrong }
+  /// `expired` is only about time. `used`: another remote is pairing with this code right now. `closed`: the camera phone
+  /// is not offering a pairing (the sheet was closed, or this code was replaced).
+  public enum Reason: String { case expired, locked, wrong, used, closed }
 
   /// Remote → camera: save a clip now.
   case save
@@ -26,6 +28,10 @@ public enum RemoteMessage: Equatable {
   case unpaired
   /// Camera → remote: the pairing attempt failed, and why.
   case refused(reason: Reason)
+  /// Camera → remote: "are you there?" The token comes back in the `pong`.
+  case ping(token: String)
+  /// Remote → camera: the answer to a `ping`.
+  case pong(token: String)
 
   public var payload: [String: Any] {
     switch self {
@@ -51,6 +57,10 @@ public enum RemoteMessage: Equatable {
       return ["unpaired": true]
     case let .refused(reason):
       return ["refused": reason.rawValue]
+    case let .ping(token):
+      return ["ping": token]
+    case let .pong(token):
+      return ["pong": token]
     }
   }
 
@@ -70,6 +80,8 @@ public enum RemoteMessage: Equatable {
       default: return nil
       }
     }
+    if let token = payload["ping"] as? String, !token.isEmpty, token.count <= 64 { return .ping(token: token) }
+    if let token = payload["pong"] as? String, !token.isEmpty, token.count <= 64 { return .pong(token: token) }
     if let unpaired = payload["unpaired"] { return (unpaired as? Bool) == true ? .unpaired : nil }
     if let refused = payload["refused"] {
       guard let raw = refused as? String, let reason = Reason(rawValue: raw) else { return nil }

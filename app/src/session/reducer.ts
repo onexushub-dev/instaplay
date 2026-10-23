@@ -11,7 +11,8 @@ export type SessionState = {
   sessionId?: string;
   startedAt?: number;
   clipCount: number;
-  lastSaved?: { clipId: string; number: number; source: TriggerSource; at: number };
+  /** `cutMs`: how much of the video the clip actually holds (can be less than the length asked for). */
+  lastSaved?: { clipId: string; number: number; source: TriggerSource; at: number; cutMs: number };
   saving: boolean;
   paused: boolean;
   thermal: { level: ThermalLevel; degraded: boolean };
@@ -34,7 +35,7 @@ export type SessionAction =
   | { type: 'startFailed'; code: ReplayErrorCode }
   | { type: 'startBlocked' }
   | { type: 'saveStarted' }
-  | { type: 'saved'; sessionId: string; clipId: string; source: TriggerSource; at: number }
+  | { type: 'saved'; sessionId: string; clipId: string; source: TriggerSource; at: number; cutMs: number }
   | { type: 'saveFailed'; sessionId: string }
   | { type: 'undone'; clipId: string }
   | { type: 'interrupted' }
@@ -90,7 +91,7 @@ export function reducer(state: SessionState, action: SessionAction): SessionStat
         ...state,
         saving: false,
         clipCount: number,
-        lastSaved: { clipId: action.clipId, number, source: action.source, at: action.at },
+        lastSaved: { clipId: action.clipId, number, source: action.source, at: action.at, cutMs: action.cutMs },
       };
     }
     case 'saveFailed':

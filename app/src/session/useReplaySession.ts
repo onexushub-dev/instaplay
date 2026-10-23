@@ -18,6 +18,7 @@ import type { Plan, StartDecision } from '../payments/types';
 import { effectiveSettings } from '../modes/registry';
 import { clampZoom, lensFor } from '../modes/zoom';
 import { createTriggerBus } from '../triggers/bus';
+import { cutMsFor } from './cut';
 import { initialState, reducer } from './reducer';
 
 /** Everything the session talks to, injected so the logic runs in tests without native code. */
@@ -78,8 +79,11 @@ export function useReplaySession(deps: SessionDeps) {
   const zoomApplied = useRef<number | undefined>(undefined);
   const cameraOpening = useRef<Promise<Opened | undefined> | undefined>(undefined);
   const cameraError = useRef<ReplayErrorCode | undefined>(undefined);
-  // The running game's cut, fixed at its start by its plan (15 s at most on the free plan): applies to every saved clip.
+  // The running game's clip length, fixed at its start by its plan (15 s at most on the free plan): applies to every saved clip.
   const cutSeconds = useRef(0);
+  // Where each clip's cut may start, newest last: the recording's start, then the moment of every clip saved since.
+  // A clip is only cut back to the previous one, so undoing a clip hands its span back to the next save.
+  const cutFloors = useRef<number[]>([]);
   const [bus] = useState(() => createTriggerBus({ now: deps.now }));
 
   const save = useCallback(
@@ -91,6 +95,10 @@ export function useReplaySession(deps: SessionDeps) {
       // Feedback right away: the 60s are already captured, the file just isn't written yet.
       const prefs = deps.repo.getPrefs();
       deps.camera.signalSaved({ sound: prefs.soundOnSave, flash: prefs.flashOnSave });
+      // Fixed before the save finishes: the clip covers the time since the previous clip, up to the player's clip length.
+      const floors = cutFloors.current;
+      const clipSeconds = cutSeconds.current;
+      const cutMs = cutMsFor(clipSeconds, at, floors.length > 0 ? floors[floors.length - 1] : at - clipSeconds * 1000);
       try {
         const saved = await deps.camera.saveClip({ source, at });
         const clip = deps.repo.addClip({
@@ -99,9 +107,11 @@ export function useReplaySession(deps: SessionDeps) {
           source,
           path: saved.clipPath,
           durationMs: saved.durationMs,
-        }, cutSeconds.current * 1000);
+        }, cutMs);
+        // A save that finished after its game ended must not move the floor of the next game.
+        if (stateRef.current.sessionId === sessionId) cutFloors.current = [...cutFloors.current, at];
         deps.haptic();
-        dispatch({ type: 'saved', sessionId, clipId: clip.id, source, at });
+        dispatch({ type: 'saved', sessionId, clipId: clip.id, source, at, cutMs: clip.trim.endMs - clip.trim.startMs });
         deps.camera.watchSignal(true);
         deps.camera.remoteSignal(true);
       } catch {
@@ -290,6 +300,7 @@ export function useReplaySession(deps: SessionDeps) {
             ...(decision.kind === 'credit' ? { passTransactionId: decision.passTransactionId } : {}),
           });
           cutSeconds.current = config.cutSeconds;
+          cutFloors.current = [session.startedAt];
           const paid = plan === 'paid';
           dispatch({
             type: 'started',
@@ -343,6 +354,8 @@ export function useReplaySession(deps: SessionDeps) {
     const clip = deps.repo.getClip(last.clipId);
     if (clip) deps.deleteFile(clip.path);
     deps.repo.deleteClip(last.clipId);
+    // The undone clip's span is free again: the next save reaches back to the clip before it.
+    if (cutFloors.current.length > 1) cutFloors.current = cutFloors.current.slice(0, -1);
     dispatch({ type: 'undone', clipId: last.clipId });
   }, [deps]);
 

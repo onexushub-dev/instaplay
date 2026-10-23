@@ -67,7 +67,7 @@ public class ReplayCameraModule: Module {
 
     Events("onTrigger", "onThermalChange", "onInterrupted", "onResumed", "onError", "onGestureDebug", "onWatchStatus",
            "onRemoteStatus", "onRemoteState", "onRemoteResult", "onRemotePairing", "onRemoteStop",
-           "onRemoteStart", "onRemoteFrame")
+           "onRemoteStart", "onRemoteFrame", "onRemoteCheck")
 
     OnCreate {
       self.engine.emit = { [weak self] name, body in self?.sendEvent(name, body) }
@@ -98,6 +98,16 @@ public class ReplayCameraModule: Module {
         case .success(let clip): promise.resolve(["clipPath": clip.path, "durationMs": clip.durationMs])
         case .failure(let failure): promise.reject(ReplayException.from(failure))
         }
+      }
+    }
+
+    // The phone's physical position from the accelerometer, so the setup screen can get out of the way when it is on its side.
+    Function("getUpright") { () -> String in
+      switch self.engine.gesture.currentUpright() {
+      case .portrait: return "portrait"
+      case .portraitUpsideDown: return "portraitUpsideDown"
+      case .landscapeLeft: return "landscapeLeft"
+      case .landscapeRight: return "landscapeRight"
       }
     }
 
@@ -170,9 +180,12 @@ public class ReplayCameraModule: Module {
 
     Function("remoteHostEndPairing") { RemoteHost.shared.endPairing() }
 
-    Function("remoteHostPeers") { () -> [[String: String]] in
-      RemoteHost.shared.peers.map { ["id": $0.id, "name": $0.name] }
+    Function("remoteHostPeers") { () -> [[String: Any]] in
+      RemoteHost.shared.peers.map { ["id": $0.id, "name": $0.name, "connected": RemoteHost.shared.isConnected(id: $0.id)] }
     }
+
+    // "Are you there?" to one paired remote; the answer arrives as `onRemoteCheck`.
+    Function("remoteHostCheck") { (id: String) in RemoteHost.shared.check(id: id) }
 
     Function("remoteHostRemove") { (id: String) in RemoteHost.shared.remove(id: id) }
 

@@ -97,6 +97,14 @@ test('the name field shows which clip it is until the player names it', async ()
   expect(screen.getByText('Corte: 0:30')).toBeTruthy();
 });
 
+test('the clip keeps the number it was saved with, not its place in the list', async () => {
+  // Second in the list (clip 1 was deleted), but saved as number 5 of the recording.
+  __setClip({ ...base, number: 5 });
+  await open();
+  expect(screen.getByLabelText('Nome do clipe').props.placeholder).toBe('Clipe #5 · 19:40');
+  expect(screen.getByText('2 de 2 · deslize para trocar')).toBeTruthy();
+});
+
 test('a named clip shows its name', async () => {
   __setClip({ ...base, name: 'Ace no fundo' });
   await open();
@@ -188,10 +196,28 @@ test('the play button pauses and resumes, and a paused clip stays paused after a
   expect(player.play).toHaveBeenCalled();
 });
 
-test('a gym clip allows cuts up to 120s', async () => {
-  __setClip({ ...base, durationMs: 120000, trim: { startMs: 60000, endMs: 120000 } });
+test('a clip allows cuts up to the 60s buffer', async () => {
+  __setClip({ ...base, durationMs: 60000, trim: { startMs: 30000, endMs: 60000 } });
   await open();
-  expect(jest.requireMock('../../components/TrimBar').__props.last.maxMs).toBe(120000);
+  expect(jest.requireMock('../../components/TrimBar').__props.last.maxMs).toBe(60000);
+});
+
+test('the trim track covers only the cut the clip was saved with, not the rest of the buffer', async () => {
+  const cut = { startMs: 47000, endMs: 60000 };
+  __setClip({ ...base, durationMs: 60000, trim: cut, bounds: cut });
+  await open();
+  const bar = jest.requireMock('../../components/TrimBar').__props.last;
+  expect(bar.floorMs).toBe(47000);
+  expect(bar.durationMs).toBe(60000);
+  expect(screen.getByText('-0:13')).toBeTruthy();
+});
+
+test('a clip saved before bounds existed still shows its whole file', async () => {
+  __setClip({ ...base });
+  await open();
+  const bar = jest.requireMock('../../components/TrimBar').__props.last;
+  expect(bar.floorMs).toBe(0);
+  expect(bar.durationMs).toBe(60000);
 });
 
 test('a missing clip shows the message instead of the editor', async () => {
@@ -222,16 +248,17 @@ test('Compartilhar exports with the cut, speed, zoom and no app mark (pro), then
     expect.objectContaining({
       clipPath: '/c1.mp4', startMs: 30000, endMs: 60000, speed: 2, muted: true,
       crop: { x: 0, y: 0.5, width: 0.5, height: 0.5 },
-      width: 1080, height: 1920, overlayPngPath: '/tmp/overlay.png', watermark: false,
+      width: 1920, height: 1080, overlayPngPath: '/tmp/overlay.png', watermark: true,
     }),
   );
   expect(sharing.shareAsync).toHaveBeenCalledWith('file:///exports/e1.mp4', expect.objectContaining({ mimeType: 'video/mp4' }));
 });
 
-test.each(['pass', 'pro'])('on %s the overlay has no app mark', async (tier) => {
-  __setTier(tier);
+test('a vertical clip is exported in a vertical frame', async () => {
+  (Image.getSize as jest.Mock).mockResolvedValueOnce({ width: 1080, height: 1920 });
   await open();
-  expect(screen.queryByText('feito com LANCE')).toBeNull();
+  await pressAction('Compartilhar');
+  expect(camera.exportClip).toHaveBeenCalledWith(expect.objectContaining({ width: 1080, height: 1920 }));
 });
 
 test('Salvar na galeria asks for photo access and saves the export', async () => {
@@ -383,7 +410,7 @@ describe('on the free plan', () => {
 
   test('the export overlay carries the app mark and the export asks for it', async () => {
     await open();
-    expect(screen.getAllByText('feito com LANCE').length).toBe(2); // preview + capture copy
+    expect(screen.getAllByLabelText('Repplay').length).toBe(2); // preview + capture copy
     await pressAction('Compartilhar');
     expect(camera.exportClip).toHaveBeenCalledWith(expect.objectContaining({ watermark: true }));
   });
@@ -407,19 +434,19 @@ describe('on the free plan', () => {
     });
   });
 
-  test('a clip stored with locked: true opens the editor and exports 720x1280 with the mark', async () => {
+  test('a clip stored with locked: true opens the editor and exports 1280x720 with the mark', async () => {
     __setClip({ ...base, locked: true });
     await open();
     expect(screen.getByRole('button', { name: 'Compartilhar' })).toBeTruthy();
     await pressAction('Compartilhar');
-    expect(camera.exportClip).toHaveBeenCalledWith(expect.objectContaining({ width: 720, height: 1280, watermark: true }));
+    expect(camera.exportClip).toHaveBeenCalledWith(expect.objectContaining({ width: 1280, height: 720, watermark: true }));
   });
 
-  test('0.5x opens the paywall and leaves the speed alone', async () => {
+  test('0.5x is free: it changes the speed and never opens the paywall', async () => {
     await open();
     await fireEvent.press(screen.getByRole('button', { name: 'Velocidade 0.5x' }));
-    expect(payments.showPaywall).toHaveBeenCalledWith();
-    expect(repo.updateClip).not.toHaveBeenCalled();
+    expect(repo.updateClip).toHaveBeenCalledWith('c1', { edit: { speed: 0.5, muted: false } });
+    expect(payments.showPaywall).not.toHaveBeenCalled();
   });
 
   test('1.5x and 2x still work', async () => {
@@ -439,12 +466,12 @@ test('on pro, 0.5x changes the speed', async () => {
   expect(payments.showPaywall).not.toHaveBeenCalled();
 });
 
-test.each(['pass', 'pro'])('on %s, 0.5x changes the speed and the export is 1080x1920 without the mark', async (tier) => {
+test.each(['pass', 'pro'])('on %s, 0.5x changes the speed and the export is Full HD with the mark', async (tier) => {
   __setTier(tier);
   await open();
   await fireEvent.press(screen.getByRole('button', { name: 'Velocidade 0.5x' }));
   expect(repo.updateClip).toHaveBeenCalledWith('c1', { edit: { speed: 0.5, muted: false } });
   expect(payments.showPaywall).not.toHaveBeenCalled();
   await pressAction('Compartilhar');
-  expect(camera.exportClip).toHaveBeenCalledWith(expect.objectContaining({ width: 1080, height: 1920, watermark: false }));
+  expect(camera.exportClip).toHaveBeenCalledWith(expect.objectContaining({ width: 1920, height: 1080, watermark: true }));
 });

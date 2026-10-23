@@ -193,11 +193,13 @@ export function createRepo(kv: KV, files: FileProbe, newId: () => string) {
 
     /** `cutMs`: the default cut, the last N ms up to the trigger (the mode's cutSeconds). */
     addClip(input: Omit<Clip, 'id' | 'trim'>, cutMs: number = DEFAULT_TRIM_MS): Clip {
-      const clip: Clip = {
-        ...input,
-        id: newId(),
-        trim: { startMs: Math.max(0, input.durationMs - cutMs), endMs: input.durationMs },
-      };
+      const cut = { startMs: Math.max(0, input.durationMs - cutMs), endMs: input.durationMs };
+      // One after the highest number in the recording, so deleting an earlier clip never renumbers the others.
+      const stored = clipIds(input.sessionId)
+        .map((id) => read<Clip>(key.clip(id)))
+        .filter((c): c is Clip => c !== undefined);
+      const number = stored.reduce((top, c, i) => Math.max(top, c.number !== undefined ? c.number : i + 1), 0) + 1;
+      const clip: Clip = { ...input, id: newId(), trim: cut, bounds: cut, number };
       write(key.clip(clip.id), clip);
       write(key.clipsOf(clip.sessionId), [...clipIds(clip.sessionId), clip.id]);
       changed();

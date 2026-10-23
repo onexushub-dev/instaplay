@@ -18,6 +18,7 @@ jest.mock('expo', () => {
 
 import {
   getWatchStatus,
+  getDeviceUpright,
   getZoomRange,
   isVoiceSupported,
   setZoom,
@@ -167,4 +168,14 @@ test('with native zoom the range and the zoom calls go to native', () => {
   expect(mockNative.setZoom).toHaveBeenLastCalledWith(1.5, false);
   delete mockNative.getZoomRange;
   delete mockNative.setZoom;
+});
+
+test('the phone is held in portrait where native cannot tell, and native answers otherwise', () => {
+  expect(getDeviceUpright()).toBe('portrait');
+  mockNative.getUpright = jest.fn(() => 'landscapeLeft');
+  try {
+    expect(getDeviceUpright()).toBe('landscapeLeft');
+  } finally {
+    delete mockNative.getUpright;
+  }
 });

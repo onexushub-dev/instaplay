@@ -7,13 +7,13 @@ import { Button } from './Button';
 import { CheckIcon } from './icons';
 import { sourceLabel } from './sourceLabel';
 
-type Props = { number: number; source: TriggerSource; onUndo: () => void };
+type Props = { number: number; source: TriggerSource; /** The length the clip actually has. */ cutMs: number; onUndo: () => void };
 
 /**
  * Confirmation shown for ~2s after each save: an accent frame around the screen and a compact card,
  * so the camera picture stays visible and the rest of the screen still saves on tap.
  */
-export function SavedOverlay({ number, source, onUndo }: Props) {
+export function SavedOverlay({ number, source, cutMs, onUndo }: Props) {
   const { t, locale } = useT();
   return (
     <View pointerEvents="box-none" style={styles.frame}>
@@ -24,10 +24,9 @@ export function SavedOverlay({ number, source, onUndo }: Props) {
           </View>
           <View style={styles.text}>
             <Text style={styles.title}>{t('recording.savedTitle', { number })}</Text>
-            <Text style={styles.via}>{t('recording.savedVia', { source: sourceLabel(source, locale) })}</Text>
+            <Text style={styles.via}>{t('recording.savedVia', { source: sourceLabel(source, locale), seconds: Math.round(cutMs / 1000) })}</Text>
           </View>
         </View>
-        <Text style={styles.hint}>{t('recording.savedHint')}</Text>
         <Button label={t('recording.undo')} variant="secondary" onPress={onUndo} />
       </View>
     </View>

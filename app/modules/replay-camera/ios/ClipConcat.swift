@@ -17,14 +17,27 @@ enum ClipConcat {
   enum Failure: Error { case noVideo, export(Error?) }
 
   /// Blocks the calling (utility) thread until the remux ends.
-  static func normalize(_ source: URL, to dest: URL) throws {
+  /// `rotationDegrees` is the phone's position when the clip was saved (see `DeviceUpright.videoRotationDegrees`).
+  /// The writer stamps the position it saw at its first frame on the whole session, so a phone started upright and
+  /// then laid on its side would save every clip sideways; the saved clip is re-stamped here instead. The new
+  /// transform goes on a composition track, which the passthrough export keeps without re-encoding.
+  static func normalize(_ source: URL, to dest: URL, rotationDegrees: Int? = nil) throws {
     let asset = AVURLAsset(url: source)
-    guard let video = asset.tracks(withMediaType: .video).first,
-          let export = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetPassthrough)
+    guard let video = asset.tracks(withMediaType: .video).first else { throw Failure.noVideo }
+    var input: AVAsset = asset
+    if let degrees = rotationDegrees {
+      let composition = AVMutableComposition()
+      guard let track = composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid)
+      else { throw Failure.noVideo }
+      try track.insertTimeRange(video.timeRange, of: video, at: .zero)
+      track.preferredTransform = CGAffineTransform(rotationAngle: CGFloat(degrees) * .pi / 180)
+      input = composition
+    }
+    guard let export = AVAssetExportSession(asset: input, presetName: AVAssetExportPresetPassthrough)
     else { throw Failure.noVideo }
     export.outputURL = dest
     export.outputFileType = .mp4
-    export.timeRange = video.timeRange
+    export.timeRange = CMTimeRange(start: .zero, duration: video.timeRange.duration)
     let done = DispatchSemaphore(value: 0)
     export.exportAsynchronously { done.signal() }
     done.wait()

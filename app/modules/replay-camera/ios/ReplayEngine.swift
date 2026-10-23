@@ -122,9 +122,11 @@ final class ReplayEngine {
   func saveClip(completion: @escaping (SaveResult) -> Void) {
     guard running else { return completion(.failure(.noSession)) }
     let id = UUID()
+    // The phone's position at the moment of the play, not the one the session started with.
+    let rotation = gesture.currentUpright().videoRotationDegrees
     let pending = PendingSave(id: id, run: { [weak self] writer in
       guard let self else { return }
-      self.saveQueue.async { completion(self.copyClip(using: writer)) }
+      self.saveQueue.async { completion(self.copyClip(using: writer, rotationDegrees: rotation)) }
     }, fail: { completion(.failure($0)) })
 
     capture.queue.async {
@@ -138,7 +140,7 @@ final class ReplayEngine {
   }
 
   /// Runs on `saveQueue`; the ring pins the copied segments, so capture keeps going meanwhile.
-  private func copyClip(using writer: SegmentWriter) -> SaveResult {
+  private func copyClip(using writer: SegmentWriter, rotationDegrees: Int) -> SaveResult {
     // Outside the buffer dir, so the buffer's disk size measures the ring alone.
     let joined = FileManager.default.temporaryDirectory.appendingPathComponent("save-\(UUID().uuidString).mp4")
     let dest = ReplayPaths.clips.appendingPathComponent("\(UUID().uuidString).mp4")
@@ -147,7 +149,7 @@ final class ReplayEngine {
       let seconds = try ring.copyClip(lastSeconds: self.windowSeconds, to: joined) { segments, joined in
         try ClipConcat.concat(initSegment: writer.initSegmentURL, segments: segments, to: joined)
       }
-      try ClipConcat.normalize(joined, to: dest)
+      try ClipConcat.normalize(joined, to: dest, rotationDegrees: rotationDegrees)
       return .success((dest.path, Int(seconds * 1000)))
     } catch {
       try? FileManager.default.removeItem(at: dest)

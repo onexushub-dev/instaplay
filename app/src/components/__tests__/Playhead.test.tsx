@@ -53,3 +53,13 @@ test('with a floor the track starts at the floor', async () => {
   await act(async () => player.tick(35));
   expect(screen.getByTestId('playhead').props.style).toEqual(expect.arrayContaining([expect.objectContaining({ left: '50%' })]));
 });
+
+test('the touch area of the cursor is at least a thumb wide, with extra reach above and below', async () => {
+  const player = fakePlayer();
+  await render(<Playhead player={player as never} durationMs={60_000} trim={trim} speed={1} />);
+  const hit = screen.getByTestId('playhead');
+  const style = Object.assign({}, ...hit.props.style);
+  expect(style.width).toBeGreaterThanOrEqual(44);
+  expect(style.marginLeft).toBe(-style.width / 2);
+  expect(hit.props.hitSlop).toEqual({ top: 16, bottom: 16 });
+});

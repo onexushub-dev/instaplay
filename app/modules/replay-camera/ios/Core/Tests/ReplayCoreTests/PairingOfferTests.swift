@@ -58,6 +58,49 @@ final class PairingOfferTests: XCTestCase {
     XCTAssertEqual(check(&o, key: Data(code.utf8), at: t0 + 3_000), .locked)
   }
 
+  func testAGoodProofOnlyReservesTheOfferSoARetryOfTheSameRemoteIsAccepted() {
+    var o = offer()
+    XCTAssertEqual(check(&o, key: secret, at: t0 + 1_000), .accepted)
+    XCTAssertEqual(o.reservedFor, "r1")
+    // The first connection never came up and the remote tries again 6 s later.
+    XCTAssertEqual(check(&o, key: secret, at: t0 + 7_000), .accepted)
+  }
+
+  func testAnotherRemoteIsTakenWhileTheOfferIsReservedAndCanTryAfterTheRelease() {
+    var o = offer()
+    XCTAssertEqual(check(&o, key: secret, at: t0 + 1_000), .accepted)
+    let other = RemoteProof.make(key: secret, purpose: .pair, remoteId: "r2", at: t0 + 2_000)
+    XCTAssertEqual(o.check(proof: other, remoteId: "r2", at: t0 + 2_000, now: t0 + 2_000), .taken)
+    XCTAssertEqual(o.failedAttempts, 0)  // not a wrong proof
+    o.release(remoteId: "r1")
+    XCTAssertNil(o.reservedFor)
+    XCTAssertEqual(o.check(proof: other, remoteId: "r2", at: t0 + 3_000, now: t0 + 3_000), .accepted)
+  }
+
+  func testReleaseOfAnotherRemoteKeepsTheReservation() {
+    var o = offer()
+    _ = check(&o, key: secret, at: t0 + 1_000)
+    o.release(remoteId: "r2")
+    XCTAssertEqual(o.reservedFor, "r1")
+  }
+
+  func testAReservedOfferStillExpiresAfter120SecondsAndNeverBefore() {
+    var o = offer()
+    XCTAssertEqual(check(&o, key: secret, at: t0 + 1_000), .accepted)
+    XCTAssertFalse(o.isExpired(now: t0 + 119_000))
+    // A retry just before the end (the old code would have called this expired after the first accepted proof).
+    XCTAssertEqual(check(&o, key: secret, at: t0 + 119_000), .accepted)
+    XCTAssertTrue(o.isExpired(now: t0 + 121_000))
+    XCTAssertEqual(check(&o, key: secret, at: t0 + 121_000), .expired)
+  }
+
+  func testIsLockedAfterFiveWrongProofs() {
+    var o = offer()
+    XCTAssertFalse(o.isLocked)
+    for _ in 0..<5 { _ = check(&o, key: Data("x".utf8), at: t0 + 1_000) }
+    XCTAssertTrue(o.isLocked)
+  }
+
   func testMakeProducesFreshSecretsAndCodes() {
     let a = PairingOffer.make(hostId: "h1", hostName: "Quadra 1", now: t0)
     let b = PairingOffer.make(hostId: "h1", hostName: "Quadra 1", now: t0)

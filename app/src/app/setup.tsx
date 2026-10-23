@@ -19,8 +19,10 @@ import {
 } from '../../modules/replay-camera';
 import type { RemotePeer, ReplayErrorCode } from '../../modules/replay-camera/src/ReplayCamera.types';
 import { useCameraPinch } from '../camera/useCameraPinch';
+import { useDeviceLandscape } from '../camera/useDeviceLandscape';
 import { Button } from '../components/Button';
 import { Chip } from '../components/Chip';
+import { CompactDock } from '../components/CompactDock';
 import { modeTip } from '../components/format';
 import { sourceLabel } from '../components/sourceLabel';
 import { PositionGuide } from '../components/PositionGuide';
@@ -39,7 +41,8 @@ import { useT } from '../i18n/useT';
 import { remoteDeviceView } from '../devices/remoteDevice';
 import { clearRemotePress } from '../devices/remoteTest';
 import { useRemoteSheetOpen, useRemoteTest } from '../devices/useRemoteTest';
-import type { ModeSettings, Prefs } from '../data/schema';
+import { CLIP_SECONDS_OPTIONS, type ModeSettings, type Prefs } from '../data/schema';
+import type { TFunction } from '../i18n';
 import { effectiveSettings, modeById, offeredMode, withModeOverride } from '../modes/registry';
 import { clampZoom, lensFor, nextZoomStep } from '../modes/zoom';
 import { useSession } from '../session/SessionContext';
@@ -53,6 +56,21 @@ const START_ERRORS: Partial<Record<ReplayErrorCode, MessageKey>> = {
   LOW_STORAGE: 'setup.lowStorage',
   CAMERA_PERMISSION: 'common.cameraDenied',
 };
+
+/** Under "Conectar um celular controle": how many remotes are linked right now. Nothing when none is. */
+function controllersStatus(t: TFunction, linked: number): string | undefined {
+  if (linked <= 0) return undefined;
+  return linked === 1 ? t('setup.controllerLinkedOne') : t('setup.controllerLinkedMany', { count: linked });
+}
+
+/**
+ * Under "Usar este celular como controle": the camera phone this one is paired with. It says "Pareado", not
+ * "Conectado": this screen cannot tell if the link is up, because the remote side only connects while its own screen is open.
+ */
+function cameraStatus(t: TFunction, host: { name: string } | null): string | undefined {
+  if (host === null) return undefined;
+  return host.name.length > 0 ? t('setup.pairedWith', { name: host.name }) : t('setup.paired');
+}
 
 export default function Setup() {
   const session = useSession();
@@ -199,6 +217,7 @@ export default function Setup() {
 
   const summary = t('setup.summary', {
     items: [
+      t('setup.summaryClip', { seconds: settings.cutSeconds }),
       t(voiceOn ? 'setup.summaryVoiceOn' : 'setup.summaryVoiceOff'),
       t(settings.gestureEnabled ? 'setup.summaryGestureOn' : 'setup.summaryGestureOff'),
       t(
@@ -260,6 +279,10 @@ export default function Setup() {
   const starting = phase === 'starting' || opening;
   const errorText = error ? t(START_ERRORS[error] ?? 'setup.cameraFailed') : null;
 
+  // On its side the phone shows only two small buttons (the settings open on demand), so the sheet does not cover the camera.
+  const landscape = useDeviceLandscape(live && phase === 'idle');
+  const compact = landscape && !expanded;
+
   const inGame = phase === 'recording' || phase === 'stopping' || (phase === 'ended' && error !== undefined);
 
   // One camera view for the whole game: setup and recording only swap the controls drawn over it.
@@ -267,7 +290,7 @@ export default function Setup() {
     <View style={styles.root}>
       <ReplayCameraView style={StyleSheet.absoluteFill} />
       {inGame ? (
-        <RecordingPanel bufferSeconds={settings.bufferSeconds} gesture={settings.gestureEnabled} voice={voiceOn} />
+        <RecordingPanel clipSeconds={settings.cutSeconds} gesture={settings.gestureEnabled} voice={voiceOn} />
       ) : (
         renderSetupControls()
       )}
@@ -278,8 +301,8 @@ export default function Setup() {
     return (
       <>
         {zoomRange.continuous ? <View testID="zoom-pinch" style={StyleSheet.absoluteFill} {...pinch} /> : null}
-        {bubble ? <ZoomBubble value={zoom} bottom={sheetHeight + 16} /> : null}
-        <View testID="guide-area" pointerEvents="none" style={[styles.guideArea, { bottom: sheetHeight }]}>
+        {bubble ? <ZoomBubble value={zoom} bottom={(compact ? 72 : sheetHeight) + 16} /> : null}
+        <View testID="guide-area" pointerEvents="none" style={[styles.guideArea, { bottom: compact ? 72 : sheetHeight }]}>
           <PositionGuide guide={mode.guide} />
         </View>
 
@@ -294,13 +317,21 @@ export default function Setup() {
             </Pressable>
             <ZoomButton value={zoom} onPress={cycleZoom} />
           </View>
-          {mode.tip ? (
+          {mode.tip && !compact ? (
             <View style={styles.tip}>
               <Text style={styles.tipText}>{modeTip(mode.group, locale)}</Text>
             </View>
           ) : null}
         </SafeAreaView>
 
+        {compact ? (
+          <CompactDock
+            busy={starting}
+            error={errorText}
+            onSettings={() => setExpanded(true)}
+            onStart={() => session.start(modeId)}
+          />
+        ) : (
         <View testID="setup-sheet" style={styles.sheet} onLayout={(e) => setSheetHeight(e.nativeEvent.layout.height)}>
           <SafeAreaView edges={['bottom']} style={styles.sheetBody} {...swipe.panHandlers}>
             <Pressable
@@ -323,6 +354,7 @@ export default function Setup() {
             />
           </SafeAreaView>
         </View>
+        )}
       </>
     );
   }
@@ -345,6 +377,7 @@ export default function Setup() {
           <WatchIcon color={iconColor(watchOn)} size={32} />
           {remoteSupported ? <QrIcon color={iconColor(remoteLinked > 0)} size={32} /> : null}
         </View>
+        <Text style={styles.summaryClip}>{`Clipes de até ${settings.cutSeconds}s`}</Text>
       </Pressable>
     );
   }
@@ -352,6 +385,20 @@ export default function Setup() {
   function renderSettings() {
     return (
       <>
+        <View style={styles.clipLength}>
+          <Text style={styles.section}>{t('setup.clipLength')}</Text>
+          <View style={styles.chips}>
+            {CLIP_SECONDS_OPTIONS.map((seconds) => (
+              <Chip
+                key={seconds}
+                label={`${seconds}s`}
+                selected={settings.cutSeconds === seconds}
+                onPress={() => updateMode({ cutSeconds: seconds })}
+              />
+            ))}
+          </View>
+        </View>
+
         <Text style={styles.section}>{t('setup.triggers')}</Text>
         <View style={styles.grid}>
           <View style={styles.gridRow}>
@@ -399,12 +446,14 @@ export default function Setup() {
               <TriggerTile
                 icon={<QrIcon />}
                 title={t('setup.connectPhoneRemote')}
+                status={controllersStatus(t, remoteLinked)}
                 active={remoteLinked > 0}
                 onPress={() => router.push('/pairing')}
               />
               <TriggerTile
                 icon={<TapIcon />}
                 title={t('setup.useAsRemote')}
+                status={cameraStatus(t, controlHost)}
                 active={controlHost !== null}
                 onPress={() => router.push('/remote')}
               />
@@ -506,6 +555,9 @@ const styles = StyleSheet.create({
   summaryHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
   summaryChevron: { fontSize: 12, color: colors.muted },
   summaryIcons: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-evenly', minHeight: 48 },
+  summaryClip: { fontFamily: fonts.bodySemi, fontSize: 13, color: colors.soft, textAlign: 'center' },
+  clipLength: { gap: 8 },
+  clipLengthHint: { fontFamily: fonts.body, fontSize: 12, color: colors.soft },
   section: {
     fontFamily: fonts.bodyBold,
     fontSize: 12,

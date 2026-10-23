@@ -46,6 +46,39 @@ test('addClip sets the default trim to the last 30s', () => {
   expect(short.trim).toEqual({ startMs: 0, endMs: 12000 });
 });
 
+test('addClip remembers the first cut as the part of the file the clip may show', () => {
+  const repo = setup({ '/a.mp4': 1, '/b.mp4': 1 });
+  const s = repo.startSession('beachTennis', 1000, { paid: false });
+  const cut = repo.addClip({ sessionId: s.id, createdAt: 2000, source: 'screen', path: '/a.mp4', durationMs: 60000 }, 13000);
+  const whole = repo.addClip({ sessionId: s.id, createdAt: 3000, source: 'screen', path: '/b.mp4', durationMs: 12000 });
+  expect(cut.trim).toEqual({ startMs: 47000, endMs: 60000 });
+  expect(cut.bounds).toEqual({ startMs: 47000, endMs: 60000 });
+  expect(whole.bounds).toEqual({ startMs: 0, endMs: 12000 });
+});
+
+test('clips are numbered in the order they were saved, and deleting one does not renumber the others', () => {
+  const repo = setup({ '/a.mp4': 1, '/b.mp4': 1, '/c.mp4': 1, '/d.mp4': 1 });
+  const s = repo.startSession('beachTennis', 0, { paid: false });
+  const add = (path: string, at: number) => repo.addClip({ sessionId: s.id, createdAt: at, source: 'screen', path, durationMs: 1 });
+  const first = add('/a.mp4', 1);
+  const second = add('/b.mp4', 2);
+  const third = add('/c.mp4', 3);
+  expect([first.number, second.number, third.number]).toEqual([1, 2, 3]);
+
+  repo.deleteClip(first.id);
+  expect(repo.getClip(second.id)!.number).toBe(2);
+  expect(add('/d.mp4', 4).number).toBe(4);
+});
+
+test('numbers are counted per recording', () => {
+  const repo = setup({ '/a.mp4': 1, '/b.mp4': 1 });
+  const one = repo.startSession('beachTennis', 0, { paid: false });
+  const two = repo.startSession('beachTennis', 10, { paid: false });
+  repo.addClip({ sessionId: one.id, createdAt: 1, source: 'screen', path: '/a.mp4', durationMs: 1 });
+  const other = repo.addClip({ sessionId: two.id, createdAt: 11, source: 'screen', path: '/b.mp4', durationMs: 1 });
+  expect(other.number).toBe(1);
+});
+
 test('listClips returns clips of one session oldest first', () => {
   const repo = setup({ '/a.mp4': 1, '/b.mp4': 1, '/c.mp4': 1 });
   const s1 = repo.startSession('beachTennis', 0, { paid: false });

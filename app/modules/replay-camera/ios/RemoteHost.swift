@@ -1,5 +1,6 @@
 import Foundation
 import MultipeerConnectivity
+import os
 
 /// Camera-phone side of the phone remote: advertises over Multipeer, checks who is asking in, and turns a tap on a
 /// remote into `onTrigger('phone')`. The recording state and the save results go back to every connected remote.
@@ -7,6 +8,12 @@ import MultipeerConnectivity
 final class RemoteHost: NSObject {
   static let shared = RemoteHost()
   static let serviceType = "lance-remote"
+  /// Console.app (filter: subsystem `LANCE`, category `RemoteHost`) shows why each invitation was accepted or refused.
+  private static let log = Logger(subsystem: "LANCE", category: "RemoteHost")
+  /// How often every connected remote hears from this phone, recording or not. The remote calls the link silent after 12 s.
+  private static let beatEvery: TimeInterval = 5
+  /// How long a "are you there?" waits for the answer.
+  private static let pingTimeout: TimeInterval = 3
 
   /// Same shape as WatchBridge.emit: (event name, body).
   var emit: ((String, [String: Any]) -> Void)?
@@ -32,6 +39,8 @@ final class RemoteHost: NSObject {
   private var authenticated: [MCPeerID: String] = [:]
   private var lastState: RemoteMessage = .state(recording: false, clipCount: 0, startedAt: nil)
   private var heartbeat: DispatchSourceTimer?
+  /// Open "are you there?" questions: token → (remote id, when it was sent).
+  private var checks: [String: (remoteId: String, sentAt: Date)] = [:]
   /// A remote asked for (or stopped) the pictures of the camera view; wired to the capture in the module.
   var onPreview: ((Bool) -> Void)?
   /// Pending shutdown of the session; see `scheduleTeardown`.
@@ -75,6 +84,27 @@ final class RemoteHost: NSObject {
 
   var peers: [TrustedPeer] { onMain { trusted.all } }
 
+  /// Whether this remote has an authenticated link right now.
+  func isConnected(id: String) -> Bool { onMain { authenticated.values.contains(id) } }
+
+  /// Asks a remote "are you there?". The answer arrives as `onRemoteCheck` {id, ok, ms}: `ok` is false when the remote is
+  /// not linked or does not answer in `pingTimeout` seconds (its app is closed or in the background).
+  func check(id: String) {
+    onMain {
+      guard let peer = authenticated.first(where: { $0.value == id })?.key else {
+        emit?("onRemoteCheck", ["id": id, "ok": false, "ms": 0])
+        return
+      }
+      let token = String(UUID().uuidString.prefix(8))
+      checks[token] = (id, Date())
+      send(.ping(token: token), to: [peer])
+      DispatchQueue.main.asyncAfter(deadline: .now() + Self.pingTimeout) { [weak self] in
+        guard let self, self.checks.removeValue(forKey: token) != nil else { return }
+        self.emit?("onRemoteCheck", ["id": id, "ok": false, "ms": 0])
+      }
+    }
+  }
+
   /// How many remotes are connected right now (a screen that opens later cannot have heard the status events).
   var controllers: Int { onMain { authenticated.count } }
 
@@ -100,22 +130,25 @@ final class RemoteHost: NSObject {
 
   func endPairing() { onMain { offer = nil; refresh() } }
 
-  /// Called by JS whenever the recording changes. Repeated every 5 s while recording: if the app dies the beats stop
-  /// and the remote notices (see `STALE_AFTER` in remoteScreen.ts).
+  /// Called by JS whenever the recording changes; the remotes get the new state at once. The beat that repeats it
+  /// every 5 s runs whenever the host is up (see `startHeartbeat`), not only while recording.
   func sync(recording: Bool, clipCount: Int, startedAt: Double?) {
     onMain {
       lastState = .state(recording: recording, clipCount: clipCount, startedAt: startedAt)
-      heartbeat?.cancel()
-      heartbeat = nil
-      if recording {
-        let timer = DispatchSource.makeTimerSource(queue: .main)
-        timer.schedule(deadline: .now() + 5, repeating: 5)
-        timer.setEventHandler { [weak self] in self?.pushState() }
-        timer.resume()
-        heartbeat = timer
-      }
       pushState()
     }
+  }
+
+  /// A beat every `beatEvery` seconds to every connected remote, whatever the game is doing. Without it a remote that is
+  /// just waiting for the game to start hears nothing after its first state, and would call the link lost although it is
+  /// fine. If this app dies the beats stop and the remote notices (see `STALE_AFTER` in remoteScreen.ts).
+  private func startHeartbeat() {
+    guard heartbeat == nil else { return }
+    let timer = DispatchSource.makeTimerSource(queue: .main)
+    timer.schedule(deadline: .now() + Self.beatEvery, repeating: Self.beatEvery)
+    timer.setEventHandler { [weak self] in self?.pushState() }
+    timer.resume()
+    heartbeat = timer
   }
 
   /// Only to remotes that are connected now: a vibration for an old save would just be noise.
@@ -136,6 +169,7 @@ final class RemoteHost: NSObject {
         created.delegate = self
         session = created
       }
+      startHeartbeat()
       updateAdvertising()
     } else {
       scheduleTeardown()
@@ -169,6 +203,7 @@ final class RemoteHost: NSObject {
     authenticated.removeAll()
     heartbeat?.cancel()
     heartbeat = nil
+    checks.removeAll()
     emitStatus()
   }
 
@@ -210,33 +245,51 @@ final class RemoteHost: NSObject {
   // MARK: Checking who asks in
 
   private func handleInvitation(from peer: MCPeerID, context: Data?, reply: @escaping (Bool, MCSession?) -> Void) {
-    guard let session, let context, let hello = RemoteHello.decode(data: context) else { return reply(false, nil) }
+    guard let session, let context, let hello = RemoteHello.decode(data: context) else {
+      Self.log.error("invitation dropped: no session or unreadable context")
+      return reply(false, nil)
+    }
+    let who = String(hello.remoteId.prefix(8))
     switch hello.kind {
     case .reconnect:
       guard let known = trusted.peer(id: hello.remoteId) else {
         // Unknown to this phone (removed here, or never paired): let it in just long enough to say so.
+        Self.log.info("reconnect from \(who, privacy: .public): unknown remote, answering unpaired")
         pending[peer] = .unpaired
         return reply(true, session)
       }
       // A wrong proof (a wrong clock, say) is declined silently: it must never make the remote forget this phone.
+      let skew = Int((nowMs - hello.at) / 1000)
       guard RemoteProof.verify(hello.proof, key: known.key, purpose: .reconnect, remoteId: hello.remoteId,
-                               at: hello.at, now: nowMs) else { return reply(false, nil) }
+                               at: hello.at, now: nowMs) else {
+        Self.log.error("reconnect from \(who, privacy: .public): proof refused (clock difference \(skew, privacy: .public) s)")
+        return reply(false, nil)
+      }
+      Self.log.info("reconnect from \(who, privacy: .public): accepted")
       pending[peer] = .trusted(remoteId: hello.remoteId)
       reply(true, session)
     case .pair:
       guard var current = offer else {
-        pending[peer] = .refuse(.expired)
+        Self.log.info("pair from \(who, privacy: .public): refused, no pairing is open on this phone (closed)")
+        pending[peer] = .refuse(.closed)
         return reply(true, session)
       }
+      let age = Int((nowMs - current.createdAt) / 1000)
       let verdict = current.check(proof: hello.proof, remoteId: hello.remoteId, at: hello.at, now: nowMs)
       offer = current
+      Self.log.info("pair from \(who, privacy: .public): \(String(describing: verdict), privacy: .public), offer is \(age, privacy: .public) s old")
       switch verdict {
       case .accepted:
-        offer = nil  // one remote per code; the advertising mode is refreshed once the connection is up
+        // The offer is only reserved for this remote. It is spent when the pairing completes (`peerConnected`), so a
+        // retry after a connection that never came up is still welcome.
         pending[peer] = .pairing(remoteId: hello.remoteId, name: hello.remoteName)
-      case .wrongProof: pending[peer] = .refuse(.wrong)
+        emit?("onRemotePairing", ["phase": "connecting", "peer": ["id": hello.remoteId, "name": hello.remoteName]])
+      case let .wrongProof(attemptsLeft):
+        pending[peer] = .refuse(.wrong)
+        if attemptsLeft == 0 { emit?("onRemotePairing", ["phase": "offerEnded", "reason": "locked"]) }
       case .expired: pending[peer] = .refuse(.expired)
       case .locked: pending[peer] = .refuse(.locked)
+      case .taken: pending[peer] = .refuse(.used)
       }
       reply(true, session)
     }
@@ -251,6 +304,8 @@ final class RemoteHost: NSObject {
     case let .pairing(remoteId, name):
       let key = Data((0..<32).map { _ in UInt8.random(in: 0...255) })
       if trusted.add(TrustedPeer(id: remoteId, name: name, key: key)) {
+        offer = nil  // spent: one remote per code
+        Self.log.info("pairing with \(String(remoteId.prefix(8)), privacy: .public) complete")
         send(.paired(hostId: DeviceIdentity.id, hostName: DeviceIdentity.name, pairKey: key), to: [peer])
         emit?("onRemotePairing", ["phase": "paired", "peer": ["id": remoteId, "name": name]])
         authenticated[peer] = remoteId
@@ -294,6 +349,12 @@ extension RemoteHost: MCSessionDelegate {
         self.denied = false
         self.peerConnected(peerID)
       case .notConnected:
+        if case let .pairing(remoteId, _)? = self.pending[peerID] {
+          // The connection never came up: free the code for another try instead of leaving it held.
+          Self.log.info("pairing with \(String(remoteId.prefix(8)), privacy: .public): connection lost before it finished, releasing the offer")
+          self.offer?.release(remoteId: remoteId)
+          self.emit?("onRemotePairing", ["phase": "released"])
+        }
         self.pending.removeValue(forKey: peerID)
         self.authenticated.removeValue(forKey: peerID)
         if self.authenticated.isEmpty { self.onPreview?(false) }
@@ -304,7 +365,7 @@ extension RemoteHost: MCSessionDelegate {
     }
   }
 
-  /// Only `save`, `stop` and `forget` from a remote that proved who it is count; anything else is dropped. JS decides whether the
+  /// Only `save`, `stop`, `start`, `preview`, `forget` and `pong` from a remote that proved who it is count; anything else is dropped. JS decides whether the
   /// game is in a state where each one makes sense (a `save` outside a recording must not use up the debounce).
   func session(_ session: MCSession, didReceive data: Data, fromPeer peerID: MCPeerID) {
     DispatchQueue.main.async {
@@ -314,6 +375,11 @@ extension RemoteHost: MCSessionDelegate {
       case .stop: self.emit?("onRemoteStop", [:])
       case .start: self.emit?("onRemoteStart", [:])
       case let .preview(on): self.onPreview?(on)
+      case let .pong(token):
+        if let open = self.checks.removeValue(forKey: token), open.remoteId == self.authenticated[peerID] {
+          let ms = Int(Date().timeIntervalSince(open.sentAt) * 1000)
+          self.emit?("onRemoteCheck", ["id": open.remoteId, "ok": true, "ms": ms])
+        }
       case .forget:
         // The remote was unpaired on its own side: drop it here too, so the two lists agree.
         if let remoteId = self.authenticated[peerID] {

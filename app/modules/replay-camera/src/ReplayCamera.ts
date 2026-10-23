@@ -1,5 +1,6 @@
 import ReplayCameraModule from './ReplayCameraModule';
 import type {
+  DeviceUpright,
   ExportClipOptions,
   ExportedClip,
   ReplayCameraModuleEvents,
@@ -34,6 +35,12 @@ export function saveClip(opts: SaveClipOptions): Promise<SavedClip> {
 
 export function setGestureEnabled(enabled: boolean): void {
   ReplayCameraModule.setGestureEnabled(enabled);
+}
+
+/** How the phone is held right now. Portrait where the platform cannot tell (Android, older builds). */
+export function getDeviceUpright(): DeviceUpright {
+  if (typeof ReplayCameraModule.getUpright === 'function') return ReplayCameraModule.getUpright();
+  return 'portrait';
 }
 
 /** What the camera can zoom. Without native zoom there are only the two lenses: 0.5x and 1x, picked when the camera opens. */
@@ -151,6 +158,11 @@ export function remoteHostPeers(): RemotePeer[] {
 
 export function remoteHostRemove(id: string): void {
   if (ReplayCameraModule.remoteHostRemove) ReplayCameraModule.remoteHostRemove(id);
+}
+
+/** Camera phone: ask one paired remote "are you there?". The answer arrives as `onRemoteCheck`. */
+export function remoteHostCheck(id: string): void {
+  if (ReplayCameraModule.remoteHostCheck) ReplayCameraModule.remoteHostCheck(id);
 }
 
 /** Camera phone: how many remotes are connected right now. */
