@@ -10,7 +10,7 @@ const DOT: Record<ConnectionTone, string> = { ok: colors.accent, warn: colors.wa
 function spoken(tone: ConnectionTone, name: string): string {
   if (tone === 'ok') return `Conectado a ${name}`;
   if (tone === 'warn') return `Reconectando a ${name}`;
-  return 'Sem acesso à rede local';
+  return 'Sem Bluetooth';
 }
 
 /** Always-visible strip at the top of the remote: a coloured dot (never colour alone: the label says it too), the camera phone's full name (it wraps instead of being cut) and, below it, the game. */

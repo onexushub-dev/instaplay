@@ -13,8 +13,12 @@ test('the constants match the spec', () => {
   expect(SAVE_COOLDOWN).toBe(3);
 });
 
-test('a refused Local Network wins over everything else', () => {
-  expect(remoteScreen({ link: 'denied', hostName: 'Quadra 1', state: state() })).toEqual({ kind: 'denied' });
+test('Bluetooth off or not allowed wins over everything else', () => {
+  expect(remoteScreen({ link: 'denied', hostName: 'Quadra 1', state: state() })).toEqual({ kind: 'denied', reason: 'off' });
+  expect(remoteScreen({ link: 'denied', reason: 'unauthorized', hostName: 'Quadra 1', state: state() })).toEqual({
+    kind: 'denied',
+    reason: 'unauthorized',
+  });
 });
 
 test('looking for the camera phone, before anything has been heard', () => {

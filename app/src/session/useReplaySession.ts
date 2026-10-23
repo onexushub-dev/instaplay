@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useReducer, useRef, useState } from 'react';
+import { AppState } from 'react-native';
 
 import type {
   ReplayCameraModuleEvents,
@@ -45,6 +46,9 @@ export type SessionDeps = {
   /** Bluetooth remote: calls onPress per press while enabled (useVolumeRemote in the app). */
   useRemote(enabled: boolean, onPress: () => void): void;
 };
+
+/** How long after a recording starts, or the app comes back to the front, the volume buttons, gesture and voice are ignored. */
+export const SETTLE_MS = 1500;
 
 const errorCode = (e: unknown): ReplayErrorCode =>
   ((e as { code?: ReplayErrorCode })?.code ?? 'CAMERA_UNAVAILABLE') as ReplayErrorCode;
@@ -152,6 +156,14 @@ export function useReplaySession(deps: SessionDeps) {
 
   const trigger = useCallback((source: TriggerSource) => void bus.fire(source), [bus]);
 
+  // Back from the lock screen or another app: the camera and its audio restart, and iOS moves the volume on the way.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (next) => {
+      if (next === 'active') bus.quiet(SETTLE_MS);
+    });
+    return () => sub.remove();
+  }, [bus]);
+
   deps.useRemote(state.phase === 'recording', () => trigger('remote'));
 
   /**
@@ -216,9 +228,10 @@ export function useReplaySession(deps: SessionDeps) {
       deps.camera.setVoiceEnabled(settings.voiceEnabled && deps.camera.getSpeechPermission() === 'granted');
       const session = deps.repo.startSession(sport, deps.now());
       cutFloors.current = [session.startedAt];
+      bus.quiet(SETTLE_MS);
       dispatch({ type: 'started', sessionId: session.id, startedAt: session.startedAt });
     },
-    [deps, prepare]
+    [bus, deps, prepare]
   );
 
   const stop = useCallback(async (): Promise<string | undefined> => {

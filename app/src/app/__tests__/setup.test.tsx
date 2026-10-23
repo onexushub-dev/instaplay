@@ -595,7 +595,10 @@ test('"Conectar um celular controle" says how many remotes are connected, and th
   const listener = camera().addReplayListener.mock.calls.filter((c: any[]) => c[0] === 'onRemoteStatus').map((c: any[]) => c[1]);
   await act(async () => listener.forEach((l: any) => l({ link: 'connected', controllers: 2 })));
   expect(screen.getByRole('button', { name: 'Conectar um celular controle, 2 controles conectados' })).toBeTruthy();
-  await act(async () => listener.forEach((l: any) => l({ link: 'searching', controllers: 0 })));
+  // This phone's own remote side (when it is used as a remote) says nothing about its remotes.
+  await act(async () => listener.forEach((l: any) => l({ side: 'remote', link: 'searching' })));
+  expect(screen.getByRole('button', { name: 'Conectar um celular controle, 2 controles conectados' })).toBeTruthy();
+  await act(async () => listener.forEach((l: any) => l({ side: 'camera', link: 'searching', controllers: 0 })));
   expect(screen.getByRole('button', { name: 'Conectar um celular controle' })).toBeTruthy();
 });
 

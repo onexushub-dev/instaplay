@@ -239,3 +239,22 @@ export function addReplayListener<E extends keyof ReplayCameraModuleEvents>(
 ) {
   return ReplayCameraModule.addListener(event, listener);
 }
+
+/** Step 0 Bluetooth LE spike (spec 2026-10-23). No-ops where the native side does not have it. */
+export const bleSpike = {
+  camera(): void {
+    if (typeof ReplayCameraModule.bleSpikeCamera === 'function') ReplayCameraModule.bleSpikeCamera();
+  },
+  remote(): void {
+    if (typeof ReplayCameraModule.bleSpikeRemote === 'function') ReplayCameraModule.bleSpikeRemote();
+  },
+  throughput(): void {
+    if (typeof ReplayCameraModule.bleSpikeThroughput === 'function') ReplayCameraModule.bleSpikeThroughput();
+  },
+  forget(): void {
+    if (typeof ReplayCameraModule.bleSpikeForget === 'function') ReplayCameraModule.bleSpikeForget();
+  },
+  stop(): void {
+    if (typeof ReplayCameraModule.bleSpikeStop === 'function') ReplayCameraModule.bleSpikeStop();
+  },
+};

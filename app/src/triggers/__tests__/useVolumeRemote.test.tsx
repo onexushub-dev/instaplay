@@ -1,6 +1,8 @@
 import { act, renderHook } from '@testing-library/react-native';
 
-import { useVolumeRemote } from '../useVolumeRemote';
+import { AppState } from 'react-native';
+
+import { ARM_MS, useVolumeRemote } from '../useVolumeRemote';
 
 type Listener = (r: { volume: number }) => void;
 
@@ -39,7 +41,7 @@ test('a volume press calls onPress once and restores the starting level', async 
   expect(lib.VolumeManager.showNativeVolumeUI).toHaveBeenCalledWith({ enabled: false });
   expect(lib.__state.listeners.size).toBe(1);
 
-  const later = Date.now() + 1000; // a real press comes well after the initial parking
+  const later = Date.now() + ARM_MS + 500; // a real press comes well after the initial parking
   jest.spyOn(Date, 'now').mockReturnValue(later);
   await act(async () => press(0.5625));
   jest.restoreAllMocks();
@@ -91,4 +93,34 @@ test('leaving restores the volume the phone had before', async () => {
   await act(async () => unmount());
   expect(lib.VolumeManager.setVolume).toHaveBeenCalledWith(0.5, expect.anything());
   expect(lib.VolumeManager.setVolume).toHaveBeenLastCalledWith(0.95, expect.anything());
+});
+
+test('right after it starts, a volume change is the system (the other screen putting the volume back), not a press', async () => {
+  const onPress = jest.fn();
+  await renderHook(() => useVolumeRemote(true, onPress));
+  const soon = Date.now() + 400;
+  jest.spyOn(Date, 'now').mockReturnValue(soon);
+  await act(async () => press(0.8));
+  jest.restoreAllMocks();
+  expect(onPress).not.toHaveBeenCalled();
+});
+
+test('coming back to the front, the volume change iOS makes is ignored, and a press after that counts', async () => {
+  let onChange: (state: string) => void = () => {};
+  jest.spyOn(AppState, 'addEventListener').mockImplementation(((_: string, fn: (state: string) => void) => {
+    onChange = fn;
+    return { remove: jest.fn() };
+  }) as never);
+  const onPress = jest.fn();
+  await renderHook(() => useVolumeRemote(true, onPress));
+  const t0 = Date.now() + ARM_MS + 5000;
+  const now = jest.spyOn(Date, 'now').mockReturnValue(t0);
+  await act(async () => onChange('active'));
+  now.mockReturnValue(t0 + 300);
+  await act(async () => press(0.3));
+  expect(onPress).not.toHaveBeenCalled();
+  now.mockReturnValue(t0 + ARM_MS + 500);
+  await act(async () => press(0.3625));
+  expect(onPress).toHaveBeenCalledTimes(1);
+  jest.restoreAllMocks();
 });

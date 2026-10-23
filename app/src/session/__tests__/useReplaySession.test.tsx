@@ -1,7 +1,7 @@
 import { act, renderHook } from '@testing-library/react-native';
 
 import { createRepo, type KV } from '../../data/repo';
-import { type SessionDeps, useReplaySession } from '../useReplaySession';
+import { SETTLE_MS, type SessionDeps, useReplaySession } from '../useReplaySession';
 
 type Listener = (e: any) => void;
 
@@ -84,12 +84,13 @@ test('ignores trigger while saving', async () => {
 });
 
 test('native onTrigger goes through the bus', async () => {
-  const { view, camera, emit, finishSave } = await started();
+  const { view, camera, emit, finishSave, advance } = await started();
+  advance(SETTLE_MS);
 
   await act(async () => emit('onTrigger', { source: 'gesture', at: 1 }));
   await act(async () => finishSave());
 
-  expect(camera.saveClip).toHaveBeenCalledWith({ source: 'gesture', at: 1000 });
+  expect(camera.saveClip).toHaveBeenCalledWith({ source: 'gesture', at: 1000 + SETTLE_MS });
   expect(view.result.current.state.lastSaved?.source).toBe('gesture');
 });
 
@@ -269,7 +270,8 @@ test('stop turns the camera off', async () => {
 });
 
 test('signals the save the moment the trigger is accepted, before the file is ready', async () => {
-  const { view, camera } = await started();
+  const { view, camera, advance } = await started();
+  advance(SETTLE_MS);
 
   await act(async () => view.result.current.trigger('gesture'));
 
@@ -568,4 +570,14 @@ test('the remote phone is told how a save ended', async () => {
   bad.camera.saveClip.mockRejectedValueOnce(new Error('x'));
   await act(async () => bad.view.result.current.trigger('screen'));
   expect(bad.camera.remoteSignal).toHaveBeenCalledWith(false);
+});
+
+test('right after the recording starts, a gesture, voice or volume press saves nothing; a tap does', async () => {
+  const { view, camera, emit, advance } = await started();
+  await act(async () => emit('onTrigger', { source: 'gesture', at: 1 }));
+  await act(async () => view.result.current.trigger('remote'));
+  expect(camera.saveClip).not.toHaveBeenCalled();
+  advance(100);
+  await act(async () => view.result.current.trigger('screen'));
+  expect(camera.saveClip).toHaveBeenCalledWith({ source: 'screen', at: 1100 });
 });

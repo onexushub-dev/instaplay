@@ -74,7 +74,8 @@ final class PairingOfferTests: XCTestCase {
     XCTAssertEqual(o.failedAttempts, 0)  // not a wrong proof
     o.release(remoteId: "r1")
     XCTAssertNil(o.reservedFor)
-    XCTAssertEqual(o.check(proof: other, remoteId: "r2", at: t0 + 3_000, now: t0 + 3_000), .accepted)
+    // The same proof, sent again a second later: `at` is the time it was made, `now` is when it arrives.
+    XCTAssertEqual(o.check(proof: other, remoteId: "r2", at: t0 + 2_000, now: t0 + 3_000), .accepted)
   }
 
   func testReleaseOfAnotherRemoteKeepsTheReservation() {

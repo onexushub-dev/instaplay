@@ -22,6 +22,10 @@
         "NSBonjourServices": [
           "_lance-remote._tcp",
           "_lance-remote._udp"
+        ],
+        "NSBluetoothAlwaysUsageDescription": "O LANCE usa o Bluetooth para conversar com o outro celular que serve de controle.",
+        "UIBackgroundModes": [
+          "bluetooth-central"
         ]
       },
       "appleTeamId": "2J67Z98LDX"

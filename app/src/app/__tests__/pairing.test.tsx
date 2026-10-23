@@ -224,7 +224,7 @@ test('says who is linking up, and what happened when the tries ran out', async (
 test('the pairing screen lists what both phones need', async () => {
   await render(<Pairing />);
   expect(screen.getByText('Para conectar, confira:')).toBeTruthy();
-  expect(screen.getByText(/Não precisa de internet nem da mesma rede/)).toBeTruthy();
+  expect(screen.getByText(/Não precisa de internet nem de rede Wi-Fi/)).toBeTruthy();
 });
 
 test('with four remotes paired there is no new code, only the way out', async () => {

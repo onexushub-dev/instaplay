@@ -1,11 +1,24 @@
+import CoreBluetooth
 import Foundation
-import MultipeerConnectivity
+import os
+import UIKit
 
-/// Remote-phone side of the phone remote: finds the paired camera phone, proves who it is, and sends `save`.
-/// It also pairs: from the `lance://pair` link the Camera app opened (the QR secret) or from the 6 digits typed.
-/// Rules and message formats live in Core (`RemoteProof`, `RemoteMessage`, `TrustedPeers`).
+/// Remote-phone side of the phone remote, over Bluetooth LE (spec 2026-10-23-ble-remote-design.md).
+///
+/// The phone is a BLE central. It keeps a connection request pending to the paired camera phone at all times: iOS completes
+/// it by itself as soon as the camera is in range and advertising, even after a drop in the middle of a recording, so there
+/// is nothing to retry by hand. A scan runs alongside for a camera that changed its Bluetooth identity (reinstall, reset).
+/// It also pairs: from the `lance://pair` link (the QR secret) or from the 6 digits typed.
+/// Rules and formats live in Core (`BleHandshake`, `BleFrames`, `RemoteMessage`, `TrustedPeers`).
 final class RemoteController: NSObject {
   static let shared = RemoteController()
+
+  private static let log = Logger(subsystem: "LANCE", category: "RemoteController")
+  /// Where the camera phone's Bluetooth identity is remembered: "hostId|peripheral uuid".
+  private static let rememberedKey = "lance.remote.cameraPeripheral"
+  /// A phone that turned out not to be ours is left alone this long.
+  private static let blockFor: TimeInterval = 30
+  private static let pairTimeout: TimeInterval = 20
 
   /// Same shape as WatchBridge.emit: (event name, body).
   var emit: ((String, [String: Any]) -> Void)?
@@ -13,53 +26,71 @@ final class RemoteController: NSObject {
   private enum PairMode {
     case link(hostId: String, secret: Data)
     case code(String)
+
+    var key: Data {
+      switch self {
+      case let .link(_, secret): return secret
+      case let .code(code): return Data(code.utf8)
+      }
+    }
   }
 
-  private let peerID: MCPeerID
-  private var session: MCSession?
-  private var browser: MCNearbyServiceBrowser?
-  private var retryTimer: DispatchSourceTimer?
   private let hosts = TrustedPeers(store: KeychainPeerStore(account: "lance.remote.hosts"))
+  private var central: CBCentralManager?
+  private var bluetooth: CBManagerState = .unknown
+  /// The camera phone we are connecting or connected to.
+  private var camera: CBPeripheral?
+  private var rx: CBCharacteristic?
+  private var handshake: BleRemoteHandshake?
+  private var session: BleSession?
+  private var assembler = BleFrames.Assembler()
+  private var nextMessageId: UInt16 = 0
   private var wanted = false
-  private var denied = false
   private var pairMode: PairMode?
-  private var pairTimeout: DispatchWorkItem?
-  /// The camera phone we are talking to right now.
-  private var connectedHost: MCPeerID?
-  /// Camera phones the browser has seen, by their host id, and when we last invited each.
-  private var seen: [String: (peer: MCPeerID, mode: String)] = [:]
-  private var lastInvite: [MCPeerID: Date] = [:]
+  private var pairTimer: DispatchWorkItem?
+  private var blocked: [UUID: Date] = [:]
+  private let previewClient = PreviewClient()
+  private var previewWanted = false
+  private var previewLink: (service: String, token: Data, key: Data)?
+  /// The last link state told to the screen.
+  private var lastLink: String?
 
   private override init() {
-    peerID = MCPeerID(displayName: DeviceIdentity.name)
     super.init()
+    previewClient.onFrame = { [weak self] jpeg in
+      DispatchQueue.main.async { self?.emit?("onRemoteFrame", ["jpeg": jpeg.base64EncodedString()]) }
+    }
+    NotificationCenter.default.addObserver(self, selector: #selector(cameToFront), name: UIApplication.didBecomeActiveNotification,
+                                           object: nil)
   }
 
   private func onMain<T>(_ work: () -> T) -> T {
     Thread.isMainThread ? work() : DispatchQueue.main.sync(execute: work)
   }
 
-  private var nowMs: Double { Date().timeIntervalSince1970 * 1000 }
-
   // MARK: JS API
 
-  /// The remote screen is in front: look for the paired camera phone and keep the link up.
+  /// The remote screen is in front: keep the link to the paired camera phone up.
   func start() { onMain { wanted = true; refresh() } }
 
   func stop() { onMain { wanted = false; refresh() } }
 
   var host: TrustedPeer? { onMain { hosts.all.first } }
 
-  /// Unpairs from this side. When the camera phone is in reach it is told first, so it drops this remote too.
+  /// Unpairs from this side. When the camera phone is connected it is told first, so it drops this remote too.
   func forget() {
     onMain {
+      if session != nil { send(.forget) }
       for item in hosts.all { hosts.remove(id: item.id) }
-      if let peer = connectedHost {
-        if let session { try? session.send(RemoteMessage.forget.data, toPeers: [peer], with: .reliable) }
-        // Give the message a moment to leave before the link is cut.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in self?.session?.cancelConnectPeer(peer) }
+      UserDefaults.standard.removeObject(forKey: Self.rememberedKey)
+      let leaving = camera
+      // Give the message a moment to leave before the link is cut.
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+        guard let self, let leaving, self.camera === leaving || self.camera == nil else { return }
+        self.central?.cancelPeripheralConnection(leaving)
       }
-      connectedHost = nil
+      resetLink()
+      camera = nil
       emitStatus()
     }
   }
@@ -74,21 +105,24 @@ final class RemoteController: NSObject {
 
   func pair(code: String) { onMain { beginPairing(.code(code)) } }
 
-  func save() { send(.save) }
+  func save() { onMain { send(.save) } }
 
   /// Asks the camera phone to end the recording.
-  func endRecording() { send(.stop) }
+  func endRecording() { onMain { send(.stop) } }
 
   /// Asks the camera phone to start a new recording.
-  func startRecording() { send(.start) }
+  func startRecording() { onMain { send(.start) } }
 
   /// The camera view is open (`true`, said again every second) or closed.
-  func preview(_ on: Bool) { send(.preview(on: on)) }
-
-  private func send(_ message: RemoteMessage) {
+  func preview(_ on: Bool) {
     onMain {
-      guard let session, let peer = connectedHost else { return }
-      try? session.send(message.data, toPeers: [peer], with: .reliable)
+      previewWanted = on
+      send(.preview(on: on))
+      if on, let link = previewLink {
+        previewClient.open(service: link.service, token: link.token, key: link.key)
+      } else if !on {
+        previewClient.close()
+      }
     }
   }
 
@@ -98,154 +132,232 @@ final class RemoteController: NSObject {
 
   private func refresh() {
     if active {
-      if session == nil {
-        let created = MCSession(peer: peerID, securityIdentity: nil, encryptionPreference: .required)
-        created.delegate = self
-        session = created
-      }
-      if browser == nil {
-        let created = MCNearbyServiceBrowser(peer: peerID, serviceType: RemoteHost.serviceType)
-        created.delegate = self
-        created.startBrowsingForPeers()
-        browser = created
-      }
-      if retryTimer == nil {
-        let timer = DispatchSource.makeTimerSource(queue: .main)
-        timer.schedule(deadline: .now() + 2, repeating: 3)
-        timer.setEventHandler { [weak self] in self?.tick() }
-        timer.resume()
-        retryTimer = timer
+      if central == nil {
+        central = CBCentralManager(delegate: self, queue: .main,
+                                   options: [CBCentralManagerOptionRestoreIdentifierKey: "lance.remote.central"])
+      } else {
+        lookForCamera()
       }
     } else {
-      browser?.stopBrowsingForPeers()
-      browser = nil
-      retryTimer?.cancel()
-      retryTimer = nil
-      session?.disconnect()
-      session = nil
-      connectedHost = nil
-      seen.removeAll()
-      lastInvite.removeAll()
+      central?.stopScan()
+      if let camera { central?.cancelPeripheralConnection(camera) }
+      camera = nil
+      resetLink()
     }
     emitStatus()
   }
 
+  /// Back in front: tell the screen again how the link is. Status events sent while the app was in the background (the
+  /// link usually stays up there) can be missed by the screen, which then showed "Reconectando" over a working link.
+  @objc private func cameToFront() {
+    onMain {
+      if active && session == nil { lookForCamera() }
+      emitStatus()
+    }
+  }
+
+  /// Everything about the current link, not the camera we are trying to reach.
+  private func resetLink() {
+    rx = nil
+    handshake = nil
+    session = nil
+    assembler = BleFrames.Assembler()
+    previewLink = nil
+    previewClient.close()
+  }
+
+  private func rememberedPeripheral() -> UUID? {
+    guard let host = hosts.all.first, let saved = UserDefaults.standard.string(forKey: Self.rememberedKey) else { return nil }
+    let parts = saved.split(separator: "|").map(String.init)
+    guard parts.count == 2, parts[0] == host.id else { return nil }
+    return UUID(uuidString: parts[1])
+  }
+
+  private func remember(_ peripheral: CBPeripheral, hostId: String) {
+    UserDefaults.standard.set("\(hostId)|\(peripheral.identifier.uuidString)", forKey: Self.rememberedKey)
+  }
+
+  /// A pending connection to the remembered camera (it never times out) plus a scan for a camera with a new identity.
+  /// While pairing, only the scan, and only phones that have a pairing open.
+  private func lookForCamera() {
+    guard let central, central.state == .poweredOn, active, session == nil else { return }
+    if pairMode == nil {
+      guard !hosts.all.isEmpty else { return }
+      if camera == nil, let id = rememberedPeripheral(), let known = central.retrievePeripherals(withIdentifiers: [id]).first {
+        camera = known
+      }
+      if let camera, camera.state != .connected {
+        camera.delegate = self
+        central.connect(camera, options: nil)
+      }
+    }
+    central.scanForPeripherals(withServices: [RemoteHost.serviceUUID], options: nil)
+  }
+
   private func beginPairing(_ mode: PairMode) {
     pairMode = mode
-    pairTimeout?.cancel()
+    pairTimer?.cancel()
     let timeout = DispatchWorkItem { [weak self] in
       guard let self, self.pairMode != nil else { return }
       self.fail("notFound")
     }
-    pairTimeout = timeout
-    DispatchQueue.main.asyncAfter(deadline: .now() + 20, execute: timeout)
+    pairTimer = timeout
+    DispatchQueue.main.asyncAfter(deadline: .now() + Self.pairTimeout, execute: timeout)
+    // Pairing needs its own handshake: let go of the current link first.
+    if let camera { central?.cancelPeripheralConnection(camera) }
+    camera = nil
+    resetLink()
     refresh()
-    tryReconnect()
   }
 
   private func fail(_ reason: String) {
+    let wasPairing = pairMode != nil
     pairMode = nil
-    pairTimeout?.cancel()
+    pairTimer?.cancel()
+    if wasPairing, let camera, session == nil { central?.cancelPeripheralConnection(camera) }
     emit?("onRemotePairing", ["phase": "failed", "reason": reason])
     refresh()
   }
 
   private func emitStatus() {
-    let link: String
-    if denied { link = "denied" } else if connectedHost != nil && pairMode == nil { link = "connected" } else {
-      link = active ? "searching" : "idle"
+    // The same app runs both sides, and both send this event: `side` tells the screens whose status it is.
+    var body: [String: Any] = ["side": "remote"]
+    switch bluetooth {
+    case .unauthorized:
+      body["link"] = "denied"
+      body["reason"] = "unauthorized"
+    case .poweredOff:
+      body["link"] = "denied"
+      body["reason"] = "off"
+    default:
+      if session != nil && pairMode == nil { body["link"] = "connected" } else { body["link"] = active ? "searching" : "idle" }
     }
-    var body: [String: Any] = ["link": link]
     if let name = hosts.all.first?.name { body["peerName"] = name }
+    lastLink = body["link"] as? String
     emit?("onRemoteStatus", body)
   }
 
-  // MARK: Inviting
-
-  private static func decodeSecret(_ text: String) -> Data? {
-    var base64 = text.replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
-    while base64.count % 4 != 0 { base64 += "=" }
-    guard let data = Data(base64Encoded: base64), data.count == 16 else { return nil }
-    return data
+  private func block(_ peripheral: CBPeripheral, why: String) {
+    let who = String(peripheral.identifier.uuidString.prefix(8))
+    Self.log.info("leaving \(who, privacy: .public) alone: \(why, privacy: .public)")
+    blocked[peripheral.identifier] = Date()
+    central?.cancelPeripheralConnection(peripheral)
+    if camera === peripheral { camera = nil }
+    resetLink()
   }
 
-  private func invite(_ peer: MCPeerID, as hello: RemoteHello) {
-    guard let session, let browser else { return }
-    lastInvite[peer] = Date()
-    browser.invitePeer(peer, to: session, withContext: hello.data, timeout: 8)
+  // MARK: Sending
+
+  private func send(_ message: RemoteMessage) {
+    guard var current = session, let sealed = current.seal(message.data) else { return }
+    session = current
+    writeRaw(sealed)
   }
 
-  private func hello(_ kind: RemoteHello.Kind, key: Data) -> RemoteHello {
-    let at = nowMs
-    let id = DeviceIdentity.id
-    return RemoteHello(kind: kind, remoteId: id, remoteName: DeviceIdentity.name,
-                       proof: RemoteProof.make(key: key, purpose: kind == .pair ? .pair : .reconnect, remoteId: id, at: at),
-                       at: at)
+  private func writeRaw(_ message: Data) {
+    guard let camera, let rx else { return }
+    let frames = BleFrames.split(message, id: nextMessageId, maxFrame: camera.maximumWriteValueLength(for: .withResponse))
+    nextMessageId &+= 1
+    for frame in frames { camera.writeValue(frame, for: rx, type: .withResponse) }
   }
 
-  /// Invites the camera phone(s) we want, unless one was invited in the last 5 s or we are already connected.
-  private func tryReconnect() {
-    if let mode = pairMode {
-      for (hostId, found) in seen where found.mode == "pairing" && !recentlyInvited(found.peer) {
-        switch mode {
-        case let .link(wantedHost, secret) where hostId == wantedHost:
-          invite(found.peer, as: hello(.pair, key: secret))
-        case let .code(code):
-          invite(found.peer, as: hello(.pair, key: Data(code.utf8)))
-        default:
-          break
-        }
+  // MARK: Receiving
+
+  private func startHandshake() {
+    let mode: BleRemoteHandshake.Mode
+    if let pairing = pairMode {
+      mode = .pair(key: pairing.key)
+    } else if let host = hosts.all.first {
+      mode = .reconnect(host: host)
+    } else {
+      if let camera { central?.cancelPeripheralConnection(camera) }
+      return
+    }
+    let created = BleRemoteHandshake(mode: mode, remoteId: DeviceIdentity.id, remoteName: DeviceIdentity.name)
+    handshake = created
+    writeRaw(created.hello())
+  }
+
+  private func handle(_ message: Data) {
+    if session != nil {
+      // The only plain message after the handshake: the camera phone removed this remote.
+      if let first = message.first, first == BleWire.handshake {
+        if case .unpaired? = BleHandshakeMessage.decode(message) { heardUnpaired() }
+        return
       }
-    } else if connectedHost == nil, let paired = hosts.all.first, let found = seen[paired.id], !recentlyInvited(found.peer) {
-      invite(found.peer, as: hello(.reconnect, key: paired.key))
+      guard var current = session, let plain = current.open(message), let decoded = RemoteMessage.decode(data: plain) else { return }
+      session = current
+      received(decoded)
+      return
     }
-  }
-
-  /// Without a link for this long the search starts over: a browser that has been looking for a while may never
-  /// notice a camera phone that went away and came back.
-  private static let restartAfter: TimeInterval = 8
-  private var lastBrowserRestart = Date()
-
-  /// Every 3 s: restart a search that found nothing for too long, then invite whoever we should.
-  private func tick() {
-    if wanted, pairMode == nil, connectedHost == nil, Date().timeIntervalSince(lastBrowserRestart) > Self.restartAfter {
-      restartBrowser()
-    }
-    tryReconnect()
-  }
-
-  private func restartBrowser() {
-    lastBrowserRestart = Date()
-    browser?.stopBrowsingForPeers()
-    seen.removeAll()
-    lastInvite.removeAll()
-    let created = MCNearbyServiceBrowser(peer: peerID, serviceType: RemoteHost.serviceType)
-    created.delegate = self
-    created.startBrowsingForPeers()
-    browser = created
-  }
-
-  private func recentlyInvited(_ peer: MCPeerID) -> Bool {
-    if let last = lastInvite[peer] { return Date().timeIntervalSince(last) < 5 }
-    return false
-  }
-
-  private func received(_ message: RemoteMessage, from peer: MCPeerID) {
-    switch message {
-    case let .paired(hostId, hostName, pairKey):
-      guard pairMode != nil else { return }
+    guard var current = handshake, let camera else { return }
+    let outcome = current.receive(message)
+    handshake = current
+    switch outcome {
+    case let .send(data):
+      writeRaw(data)
+    case let .paired(host, linkSession):
       for item in hosts.all { hosts.remove(id: item.id) }  // a remote has one camera phone
-      hosts.add(TrustedPeer(id: hostId, name: hostName, key: pairKey))
+      hosts.add(host)
+      remember(camera, hostId: host.id)
       pairMode = nil
-      pairTimeout?.cancel()
-      connectedHost = peer
-      emit?("onRemotePairing", ["phase": "paired", "peer": ["id": hostId, "name": hostName]])
+      pairTimer?.cancel()
+      session = linkSession
+      handshake = nil
+      central?.stopScan()
+      Self.log.info("paired with \(String(host.id.prefix(8)), privacy: .public)")
+      emit?("onRemotePairing", ["phase": "paired", "peer": ["id": host.id, "name": host.name]])
       emitStatus()
-    case let .refused(reason):
-      fail(reason.rawValue)
-    case .unpaired:
-      forget()
-      emit?("onRemotePairing", ["phase": "failed", "reason": "denied"])
+    case let .connected(linkSession):
+      if let host = hosts.all.first { remember(camera, hostId: host.id) }
+      session = linkSession
+      handshake = nil
+      central?.stopScan()
+      Self.log.info("connected")
+      if previewWanted { send(.preview(on: true)) }
+      emitStatus()
+    case let .failed(failure):
+      switch failure {
+      case let .refused(reason):
+        if pairMode != nil {
+          fail(reason.rawValue)
+        } else {
+          block(camera, why: "refused \(reason.rawValue)")
+        }
+      case .unpaired:
+        if pairMode != nil {
+          block(camera, why: "unpaired while pairing")
+        } else if camera.identifier == rememberedPeripheral() {
+          heardUnpaired()
+        } else {
+          // Another camera phone that does not know us: not ours, nothing to forget.
+          block(camera, why: "another camera")
+        }
+      case .wrongHost:
+        block(camera, why: "could not prove it is our camera")
+      case .malformed:
+        block(camera, why: "bad handshake message")
+      }
+      lookForCamera()
+    }
+  }
+
+  /// Our camera phone says it does not know this remote any more: forget it, like the remote's own "Esquecer".
+  private func heardUnpaired() {
+    Self.log.info("the camera phone removed this remote")
+    for item in hosts.all { hosts.remove(id: item.id) }
+    UserDefaults.standard.removeObject(forKey: Self.rememberedKey)
+    if let camera { central?.cancelPeripheralConnection(camera) }
+    camera = nil
+    resetLink()
+    emit?("onRemotePairing", ["phase": "failed", "reason": "denied"])
+    emitStatus()
+  }
+
+  private func received(_ message: RemoteMessage) {
+    // A sealed message is proof the link is up: make sure the screen agrees.
+    if lastLink != "connected" { emitStatus() }
+    switch message {
     case let .state(recording, clipCount, startedAt):
       var body: [String: Any] = ["recording": recording, "clipCount": clipCount]
       if let startedAt { body["startedAt"] = startedAt }
@@ -255,78 +367,109 @@ final class RemoteController: NSObject {
     case let .ping(token):
       // The camera phone asks "are you there?" (its Verificar button): answer at once.
       send(.pong(token: token))
-    case .save, .stop, .forget, .start, .preview, .pong:
+    case let .previewLink(service, token, key):
+      previewLink = (service, token, key)
+      if previewWanted { previewClient.open(service: service, token: token, key: key) }
+    default:
       break
     }
   }
-}
 
-extension RemoteController: MCNearbyServiceBrowserDelegate {
-  func browser(_ browser: MCNearbyServiceBrowser, foundPeer peerID: MCPeerID, withDiscoveryInfo info: [String: String]?) {
-    DispatchQueue.main.async {
-      guard let info, let hostId = info["host"], let mode = info["mode"] else { return }
-      self.seen[hostId] = (peerID, mode)
-      self.tryReconnect()
-    }
-  }
-
-  func browser(_ browser: MCNearbyServiceBrowser, lostPeer peerID: MCPeerID) {
-    DispatchQueue.main.async {
-      // When it comes back (a restarted advertiser) it is a new chance to connect, not a repeat of an old invite.
-      self.lastInvite.removeValue(forKey: peerID)
-      for (hostId, found) in self.seen where found.peer == peerID { self.seen.removeValue(forKey: hostId) }
-    }
-  }
-
-  /// Most often: the person refused the Local Network permission.
-  func browser(_ browser: MCNearbyServiceBrowser, didNotStartBrowsingForPeers error: Error) {
-    DispatchQueue.main.async {
-      self.denied = true
-      self.emitStatus()
-    }
+  private static func decodeSecret(_ text: String) -> Data? {
+    var base64 = text.replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
+    while base64.count % 4 != 0 { base64 += "=" }
+    guard let data = Data(base64Encoded: base64), data.count == 16 else { return nil }
+    return data
   }
 }
 
-extension RemoteController: MCSessionDelegate {
-  func session(_ session: MCSession, peer peerID: MCPeerID, didChange state: MCSessionState) {
-    DispatchQueue.main.async {
-      switch state {
-      case .connected:
-        self.denied = false
-        // While pairing, the link counts as up only once the camera phone has answered (`paired`).
-        if self.pairMode == nil { self.connectedHost = peerID }
-        self.emitStatus()
-      case .notConnected:
-        if self.connectedHost == peerID {
-          self.connectedHost = nil
-          self.lastBrowserRestart = Date()  // give the quick retry below a few seconds before starting the search over
-          // A working link was lost: forget the last invite so the next try is not held back by its 5 s window,
-          // and try again right away instead of waiting for the next tick of the retry timer.
-          self.lastInvite.removeValue(forKey: peerID)
-          DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in self?.tryReconnect() }
-        }
-        self.emitStatus()
-      default:
-        break
-      }
+extension RemoteController: CBCentralManagerDelegate {
+  func centralManagerDidUpdateState(_ central: CBCentralManager) {
+    bluetooth = central.state
+    Self.log.info("bluetooth state \(central.state.rawValue, privacy: .public)")
+    if central.state == .poweredOn {
+      lookForCamera()
+    } else {
+      // Turning Bluetooth off ends every link without a disconnect callback: treat it as a drop here.
+      camera = nil
+      resetLink()
+    }
+    emitStatus()
+  }
+
+  func centralManager(_ central: CBCentralManager, willRestoreState dict: [String: Any]) {
+    if let restored = (dict[CBCentralManagerRestoredStatePeripheralsKey] as? [CBPeripheral])?.first {
+      camera = restored
+      restored.delegate = self
     }
   }
 
-  func session(_ session: MCSession, didReceive data: Data, fromPeer peerID: MCPeerID) {
-    DispatchQueue.main.async {
-      // A JPEG (a picture of the camera view) starts with FF D8; every other message is JSON.
-      if data.count > 2, data[data.startIndex] == 0xFF, data[data.startIndex + 1] == 0xD8 {
-        self.emit?("onRemoteFrame", ["jpeg": data.base64EncodedString()])
-        return
-      }
-      guard let message = RemoteMessage.decode(data: data) else { return }
-      self.received(message, from: peerID)
+  func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral,
+                      advertisementData: [String: Any], rssi RSSI: NSNumber) {
+    guard active, session == nil else { return }
+    if let since = blocked[peripheral.identifier], Date().timeIntervalSince(since) < Self.blockFor { return }
+    let name = advertisementData[CBAdvertisementDataLocalNameKey] as? String
+    if pairMode != nil {
+      guard name == RemoteHost.advertisedPairingName else { return }
+    }
+    if let current = camera {
+      // Its pending connection will finish by itself; a different phone is tried only while ours is not connecting.
+      if current.identifier == peripheral.identifier || current.state == .connecting && pairMode == nil { return }
+      central.cancelPeripheralConnection(current)
+    }
+    camera = peripheral
+    peripheral.delegate = self
+    central.connect(peripheral, options: nil)
+  }
+
+  func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
+    guard peripheral === camera else { return central.cancelPeripheralConnection(peripheral) }
+    resetLink()
+    peripheral.discoverServices([RemoteHost.serviceUUID])
+  }
+
+  func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
+    guard peripheral === camera else { return }
+    resetLink()
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in self?.lookForCamera() }
+  }
+
+  func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
+    guard peripheral === camera else { return }
+    let wasConnected = session != nil
+    resetLink()
+    if wasConnected {
+      Self.log.info("link lost: \(error.map { $0.localizedDescription } ?? "no error", privacy: .public)")
+    }
+    emitStatus()
+    // Ask again at once: iOS keeps the request open and completes it when the camera phone is back.
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in self?.lookForCamera() }
+  }
+}
+
+extension RemoteController: CBPeripheralDelegate {
+  func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
+    guard let service = peripheral.services?.first(where: { $0.uuid == RemoteHost.serviceUUID }) else {
+      return block(peripheral, why: "no remote service")
+    }
+    peripheral.discoverCharacteristics([RemoteHost.rxUUID, RemoteHost.txUUID], for: service)
+  }
+
+  func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
+    for characteristic in service.characteristics ?? [] {
+      if characteristic.uuid == RemoteHost.rxUUID { rx = characteristic }
+      if characteristic.uuid == RemoteHost.txUUID { peripheral.setNotifyValue(true, for: characteristic) }
     }
   }
 
-  func session(_ session: MCSession, didReceive stream: InputStream, withName streamName: String, fromPeer peerID: MCPeerID) {}
-  func session(_ session: MCSession, didStartReceivingResourceWithName resourceName: String, fromPeer peerID: MCPeerID,
-               with progress: Progress) {}
-  func session(_ session: MCSession, didFinishReceivingResourceWithName resourceName: String, fromPeer peerID: MCPeerID,
-               at localURL: URL?, withError error: Error?) {}
+  func peripheral(_ peripheral: CBPeripheral, didUpdateNotificationStateFor characteristic: CBCharacteristic, error: Error?) {
+    guard characteristic.uuid == RemoteHost.txUUID, peripheral === camera else { return }
+    guard error == nil, characteristic.isNotifying, rx != nil else { return block(peripheral, why: "could not subscribe") }
+    startHandshake()
+  }
+
+  func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
+    guard peripheral === camera, characteristic.uuid == RemoteHost.txUUID, let value = characteristic.value else { return }
+    if let message = assembler.add(value, now: Date().timeIntervalSince1970) { handle(message) }
+  }
 }

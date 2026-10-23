@@ -31,6 +31,14 @@ enum ClipConcat {
       else { throw Failure.noVideo }
       try track.insertTimeRange(video.timeRange, of: video, at: .zero)
       track.preferredTransform = CGAffineTransform(rotationAngle: CGFloat(degrees) * .pi / 180)
+      // The sound goes along, on the same timeline as the picture (without it the clip was saved silent).
+      for audio in asset.tracks(withMediaType: .audio) {
+        guard let audioTrack = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid)
+        else { continue }
+        let range = CMTimeRangeGetIntersection(audio.timeRange, otherRange: video.timeRange)
+        guard range.duration > .zero else { continue }
+        try audioTrack.insertTimeRange(range, of: audio, at: CMTimeSubtract(range.start, video.timeRange.start))
+      }
       input = composition
     }
     guard let export = AVAssetExportSession(asset: input, presetName: AVAssetExportPresetPassthrough)

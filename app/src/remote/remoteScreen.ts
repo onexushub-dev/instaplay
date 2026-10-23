@@ -1,4 +1,4 @@
-import type { RemoteLink } from '../../modules/replay-camera/src/ReplayCamera.types';
+import type { RemoteLink, RemoteLinkReason } from '../../modules/replay-camera/src/ReplayCamera.types';
 
 /** A recording state older than this many seconds is not believed: the camera phone is gone even if the link looks up. */
 export const STALE_AFTER = 12;
@@ -8,10 +8,16 @@ export const SAVE_COOLDOWN = 3;
 const GENERIC_HOST = 'Celular da câmera';
 
 export type RemoteState = { recording: boolean; clipCount: number; startedAt: number | null; ageSec: number };
-export type RemoteInput = { link: RemoteLink; hostName: string | null; state: RemoteState | null };
+export type RemoteInput = {
+  link: RemoteLink;
+  /** Why the link is denied; Bluetooth off when unknown. */
+  reason?: RemoteLinkReason;
+  hostName: string | null;
+  state: RemoteState | null;
+};
 
 export type RemoteScreen =
-  | { kind: 'denied' }
+  | { kind: 'denied'; reason: RemoteLinkReason }
   | { kind: 'searching'; hostName: string | null }
   | { kind: 'waiting'; hostName: string }
   | { kind: 'recording'; hostName: string; clipCount: number; startedAt: number | null }
@@ -22,12 +28,12 @@ export type RemoteScreen =
 
 /**
  * What the remote phone shows, from the link and the last state the camera phone sent.
- * The link (Multipeer) is the truth about being connected; the age of the last state only matters while the link says
+ * The link (Bluetooth) is the truth about being connected; the age of the last state only matters while the link says
  * connected. The camera phone sends a beat every 5 s whether or not it is recording, so a connected link with no news
  * for `STALE_AFTER` seconds is a real problem, and a waiting screen never looks like one.
  */
 export function remoteScreen(input: RemoteInput): RemoteScreen {
-  if (input.link === 'denied') return { kind: 'denied' };
+  if (input.link === 'denied') return { kind: 'denied', reason: input.reason === 'unauthorized' ? 'unauthorized' : 'off' };
   const state = input.state;
   const hostName = input.hostName === null ? GENERIC_HOST : input.hostName;
   // Linked but the first state has not been heard yet (it can arrive while the pairing screen was still open): the link

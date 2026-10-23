@@ -1,5 +1,4 @@
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
-import { Linking } from 'react-native';
 
 import Pair from '../pair';
 
@@ -63,7 +62,7 @@ test('each failure says what happened', async () => {
     screen.getByText('Não encontrei o celular da câmera. Chegue mais perto e confira se o LANCE está aberto lá.'),
   ).toBeTruthy();
   await emit({ phase: 'failed', reason: 'denied' });
-  expect(screen.getByText('Libere a rede local nos Ajustes para usar o controle.')).toBeTruthy();
+  expect(screen.getByText('Este celular não está mais pareado com a câmera. Pareie de novo.')).toBeTruthy();
 });
 
 test('a broken link does not try to pair', async () => {
@@ -111,12 +110,11 @@ test('an expired or locked code sends the player to type a new one', async () =>
   expect(router().replace).toHaveBeenCalledWith('/remote');
 });
 
-test('Local Network denied offers Settings', async () => {
-  const open = jest.spyOn(Linking, 'openSettings').mockResolvedValue(undefined);
+test('a camera phone that no longer knows this remote offers to pair again', async () => {
   await render(<Pair />);
   await emit({ phase: 'failed', reason: 'denied' });
-  await fireEvent.press(screen.getByRole('button', { name: 'Abrir Ajustes' }));
-  expect(open).toHaveBeenCalled();
+  await fireEvent.press(screen.getByRole('button', { name: 'Digitar código' }));
+  expect(router().replace).toHaveBeenCalledWith('/remote');
 });
 
 test('a broken link offers to type the code instead', async () => {

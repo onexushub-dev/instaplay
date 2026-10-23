@@ -41,3 +41,24 @@ test('unsubscribe stops notifications', () => {
   bus.fire('remote');
   expect(fn).not.toHaveBeenCalled();
 });
+
+test('quiet drops the volume buttons, gesture and voice for a while, never a tap', () => {
+  const c = clock(10_000);
+  const bus = createTriggerBus({ now: c.now });
+  bus.quiet(1500);
+  expect(bus.fire('remote')).toBe(false);
+  expect(bus.fire('gesture')).toBe(false);
+  expect(bus.fire('voice')).toBe(false);
+  expect(bus.fire('screen')).toBe(true);
+  c.set(15_000);
+  expect(bus.fire('remote')).toBe(true);
+});
+
+test('a later quiet never shortens an earlier one', () => {
+  const c = clock(0);
+  const bus = createTriggerBus({ now: c.now });
+  bus.quiet(5000);
+  bus.quiet(100);
+  c.set(4000);
+  expect(bus.fire('gesture')).toBe(false);
+});

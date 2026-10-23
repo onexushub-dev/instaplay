@@ -47,10 +47,17 @@ public struct PairingOffer {
   /// Only a wrong proof uses up an attempt. A good proof from the remote that already holds the reservation is accepted
   /// again (its first try may have been lost on the way); a good proof from a different remote is `.taken`.
   public mutating func check(proof: String, remoteId: String, at: Double, now: Double) -> Verdict {
+    check(remoteId: remoteId, now: now) { key in
+      RemoteProof.verify(proof, key: key, purpose: .pair, remoteId: remoteId, at: at, now: now)
+    }
+  }
+
+  /// The same rules for any kind of proof: `proves` answers whether the remote's proof was made with this key (the QR
+  /// secret, then the UTF-8 bytes of the code). The BLE handshake proves over its transcript instead of a timestamp.
+  public mutating func check(remoteId: String, now: Double, proves: (Data) -> Bool) -> Verdict {
     if isExpired(now: now) { return .expired }
     if failedAttempts >= Self.maxAttempts { return .locked }
-    for key in [secret, Data(code.utf8)]
-    where RemoteProof.verify(proof, key: key, purpose: .pair, remoteId: remoteId, at: at, now: now) {
+    for key in [secret, Data(code.utf8)] where proves(key) {
       if let holder = reservedFor, holder != remoteId { return .taken }
       reservedFor = remoteId
       return .accepted

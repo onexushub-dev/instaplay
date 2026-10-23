@@ -1,6 +1,6 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Linking, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
@@ -35,7 +35,7 @@ function failureText(reason: RemotePairFailure): string {
     case 'notFound':
       return 'Não encontrei o celular da câmera. Chegue mais perto e confira se o LANCE está aberto lá.';
     case 'denied':
-      return 'Libere a rede local nos Ajustes para usar o controle.';
+      return 'Este celular não está mais pareado com a câmera. Pareie de novo.';
     case 'full':
       return 'O celular da câmera já tem 4 controles. Remova um lá para conectar este.';
     case 'used':
@@ -139,8 +139,7 @@ export default function Pair() {
             <Text style={styles.warning}>{failureText(failure)}</Text>
             {failure === 'notFound' ? <RequirementsChecklist /> : null}
             {failure === 'notFound' ? <Button label="Tentar de novo" onPress={retry} /> : null}
-            {failure === 'denied' ? <Button label="Abrir Ajustes" onPress={() => Linking.openSettings()} /> : null}
-            {failure !== 'notFound' && failure !== 'denied' ? (
+            {failure !== 'notFound' ? (
               <Button label="Digitar código" onPress={() => router.replace('/remote')} />
             ) : null}
           </>

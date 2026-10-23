@@ -44,6 +44,7 @@ final class RemoteMessageTests: XCTestCase {
       .refused(reason: .closed),
       .ping(token: "a1b2"),
       .pong(token: "a1b2"),
+      .previewLink(service: "lance-1a2b3c4d", token: Data(repeating: 7, count: 16), key: key),
     ]
     for message in cases {
       XCTAssertEqual(RemoteMessage.decode(message.payload), message)
@@ -71,6 +72,8 @@ final class RemoteMessageTests: XCTestCase {
     XCTAssertNil(RemoteMessage.decode(["paired": ["hostId": "h1", "hostName": "Quadra", "key": "not base64!"]]))
     let shortKey = Data(repeating: 1, count: 16).base64EncodedString()
     XCTAssertNil(RemoteMessage.decode(["paired": ["hostId": "h1", "hostName": "Quadra", "key": shortKey]]))
+    XCTAssertNil(RemoteMessage.decode(["previewLink": ["service": "s", "token": "AAAA", "key": key.base64EncodedString()]]))
+    XCTAssertNil(RemoteMessage.decode(["previewLink": ["service": "", "token": Data(count: 16).base64EncodedString(), "key": key.base64EncodedString()]]))
     XCTAssertNil(RemoteMessage.decode(data: Data("[1,2]".utf8)))
     XCTAssertNil(RemoteMessage.decode(data: Data("nope".utf8)))
   }

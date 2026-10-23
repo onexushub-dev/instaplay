@@ -147,7 +147,8 @@ export default function Pairing() {
   // The camera phone tells us when a remote connected or left: that is how the list stays true, and how we know a new
   // remote was paired.
   useEffect(() => {
-    const sub = addReplayListener('onRemoteStatus', () => {
+    const sub = addReplayListener('onRemoteStatus', (e) => {
+      if (e.side === 'remote') return;
       const added = readPeers();
       if (added && pairingRef.current) setPaired(added.name);
     });

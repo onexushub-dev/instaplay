@@ -1,6 +1,6 @@
 # Phone remote over Bluetooth LE — design
 
-Date: 2026-10-23 · Status: draft, awaiting approval · Supersedes the transport part of `2026-10-19-phone-remote-design.md`
+Date: 2026-10-23 · Status: approved; step 0 done, step 1 in progress · Supersedes the transport part of `2026-10-19-phone-remote-design.md`
 
 ## 1. Why
 
@@ -126,3 +126,49 @@ Video files never travel over BLE: joining angles needs Wi-Fi peer-to-peer or th
 - Swift/CoreBluetooth cannot be compiled or tested in the assistant's environment: every native step needs a device build by Victor.
 - L2CAP throughput may not carry the preview (section 8 fallback).
 - iOS may still end a background central link after a long time; the pending connect brings it back when the app returns.
+
+## 13. Step 0 results (2026-10-23, iPhone 16 Pro Max camera ↔ iPhone XR remote)
+
+- Round trip (write with response + notify): ~55–70 ms average, peaks 100–250 ms, no lost pings while still. MTU 512.
+- Link lost walking away ("connection timed out unexpectedly"): came back by itself in 4.2 s, twice, no user action.
+- Remote app reopened: connected to the remembered camera in ~1 s (pending connect).
+- Remote Bluetooth off for 7 s, then on: connected ~1 s after it came back. Turning Bluetooth off does not call
+  `didDisconnect`; the glue must treat `poweredOff` as a drop (clear the link, emit status) and look again on `poweredOn`.
+- L2CAP throughput: 24 KB/s average, and while streaming the command round trip went up to ~4 s with 8 lost pings.
+
+Decisions
+- Go: commands, state and pairing over BLE as designed.
+- Preview: not over BLE (needs ~100 KB/s and would delay Save). It moves to Wi-Fi peer-to-peer (Network framework,
+  `includePeerToPeer`, Bonjour), started only while the preview is visible, keyed and sealed with the BLE session key.
+  Step 3 becomes that. Commands never share that channel.
+- Accepted risk: pairing by 6-digit code is open to an offline guess only by an active attacker impersonating the
+  camera during the 2-minute window; QR pairing (128-bit secret) is not. Same exposure as the MPC design.
+- `unpaired` is only believed from the camera's remembered Bluetooth identity (or inside the sealed session, when the
+  camera removes the remote); from any other phone it just means "not our camera" and that phone is left alone for 30 s.
+  Worst case of a spoof is a lost pairing (denial of service), never a wrong camera.
+
+## 14. Step 2 implementation notes (2026-10-23)
+
+- `RemoteHost.swift` / `RemoteController.swift` rewritten on CoreBluetooth with the same public API, so the module and
+  the JS calls are unchanged. Service `6E3F1001-…`, `rx` (write) `6E3F1002-…`, `tx` (notify) `6E3F1003-…`.
+- The camera advertises the local name `LANCE` (paired remotes) or `LANCE+` (pairing open); a pairing remote only
+  connects to `LANCE+`, so a nearby camera that is not pairing never gets its attempts used up.
+- A peripheral cannot drop a central: refusals and removals are sent as messages and the remote disconnects.
+- Remote: pending connect to the remembered camera ("hostId|peripheral uuid" in UserDefaults) + scan; Bluetooth off is
+  handled as a drop; coming back to the foreground looks again; state restoration id `lance.remote.central`.
+- Preview: `PreviewLink.swift` (Network framework, `_lance-remote._tcp`, peer-to-peer on). The camera grants each remote
+  a token + key over the sealed BLE session (`RemoteMessage.previewLink`) and stops the service 10 s after the last ask.
+- JS: `onRemoteStatus.reason` (`off | unauthorized`), Bluetooth texts, checklist, "Tentar agora" primary with a
+  6-second busy state.
+- Still to do (step 5): remove `BleSpike.swift`, `ble-spike.tsx`, `RemoteHello`/`RemoteProof` (MPC-only).
+
+### 14.1 Field fixes (2026-10-23 afternoon)
+
+- Remote showed "Reconectando" after the app came back from the background although the link was up (saves still
+  reached it). The link survives in the background; the screen missed the status event. The remote now re-sends its
+  status when the app comes to the front, and whenever a sealed message arrives while the last status told to the screen
+  was not `connected`.
+- Real cause of the "Reconectando" after background (the fix above was not enough): the same app runs both sides, and
+  `_layout` starts the camera side (`RemoteHost`) on every return to the front, also on the remote phone. Its
+  `onRemoteStatus` (`searching`, no remotes) was read by the remote screen as its own link. Both natives now send
+  `side: 'camera' | 'remote'`; the remote screen reads only `remote`, the camera screens ignore `remote`.

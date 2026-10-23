@@ -1,0 +1,31 @@
+/* global jest */
+// Reanimated needs its native side, which Jest does not have (its own mock still loads it). The app only uses a few
+// APIs (PulseRing); this stand-in renders the final styles without animating.
+jest.mock('react-native-reanimated', () => {
+  const React = require('react');
+  const { View } = require('react-native');
+  const useSharedValue = (initial) => {
+    const [box] = React.useState(() => ({
+      value: initial,
+      get() {
+        return this.value;
+      },
+      set(next) {
+        this.value = next;
+      },
+    }));
+    return box;
+  };
+  return {
+    __esModule: true,
+    default: { View },
+    useSharedValue,
+    useAnimatedStyle: (worklet) => worklet(),
+    useReducedMotion: () => false,
+    withRepeat: (animation) => animation,
+    withTiming: (to) => to,
+    cancelAnimation: () => {},
+    Easing: { out: (f) => f, quad: (t) => t },
+    ReduceMotion: { System: 'system', Always: 'always', Never: 'never' },
+  };
+});
