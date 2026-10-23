@@ -11,6 +11,7 @@ import {
   startPlan,
 } from './rules';
 import { EMPTY_SNAPSHOT, type Plan, type Snapshot, type StartDecision } from './types';
+import { UNLOCK_ALL_FOR_TESTING } from './testingUnlock';
 
 /**
  * A paywall purchase not seen yet (SDK lag). Its Pass is a credit like any other; the marker only keeps it from being
@@ -124,7 +125,7 @@ export function createPaymentsStore(
       const t = now();
       const snap = current ?? EMPTY_SNAPSHOT;
       return startPlan({
-        proActive: snap.proActive,
+        proActive: UNLOCK_ALL_FOR_TESTING || snap.proActive,
         credit: availableCredit(snap, spent()),
         freeUsed: repo.freeCount(t),
       });
