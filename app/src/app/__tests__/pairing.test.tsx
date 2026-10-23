@@ -91,22 +91,46 @@ test('"Gerar novo código" opens a new pairing', async () => {
 const listener = (name: string) =>
   camera().addReplayListener.mock.calls.filter((c: any[]) => c[0] === name).map((c: any[]) => c[1]);
 
-test('with remotes already paired it opens on the list and makes no code until asked', async () => {
+test('with a remote paired it opens on it and makes no code until the player swaps it for another', async () => {
   camera().remoteHostPeers.mockReturnValue([{ id: 'a', name: 'iPhone da Ana', connected: true }]);
+  const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
   await render(<Pairing />);
-  expect(screen.getByText('Celulares de controle')).toBeTruthy();
+  expect(screen.getByText('Celular de controle')).toBeTruthy();
   expect(screen.getByText('iPhone da Ana')).toBeTruthy();
+  expect(screen.getByText('Cada câmera tem um celular de controle por vez.')).toBeTruthy();
   expect(camera().remoteHostBeginPairing).not.toHaveBeenCalled();
   expect(screen.queryByLabelText('Código QR para parear')).toBeNull();
-  await fireEvent.press(screen.getByRole('button', { name: 'Parear outro celular' }));
+  expect(screen.queryByRole('button', { name: 'Parear um celular' })).toBeNull();
+
+  // Asks first, naming the remote that goes.
+  await fireEvent.press(screen.getByRole('button', { name: 'Esquecer e parear outro' }));
+  const [title, , buttons] = alert.mock.calls[0] as [string, string, { text: string; onPress?: () => void }[]];
+  expect(title).toBe('Esquecer iPhone da Ana?');
+  expect(camera().remoteHostRemove).not.toHaveBeenCalled();
+  expect(camera().remoteHostBeginPairing).not.toHaveBeenCalled();
+
+  // Confirmed: the old remote is removed and the code for the new one opens.
+  camera().remoteHostPeers.mockReturnValue([]);
+  const confirm = buttons.find((b) => b.text === 'Esquecer e parear outro');
+  await act(async () => confirm!.onPress!());
+  expect(camera().remoteHostRemove).toHaveBeenCalledWith('a');
   expect(camera().remoteHostBeginPairing).toHaveBeenCalledTimes(1);
   expect(screen.getByLabelText('Código QR para parear')).toBeTruthy();
   expect(screen.getByText('Válido por 1:59')).toBeTruthy();
-  // Cancel goes back to the list and closes the pairing.
-  await fireEvent.press(screen.getByRole('button', { name: 'Cancelar' }));
-  expect(camera().remoteHostEndPairing).toHaveBeenCalled();
-  expect(screen.queryByLabelText('Código QR para parear')).toBeNull();
-  expect(screen.getByRole('button', { name: 'Parear outro celular' })).toBeTruthy();
+  alert.mockRestore();
+});
+
+test('cancelling the question keeps the paired remote', async () => {
+  camera().remoteHostPeers.mockReturnValue([{ id: 'a', name: 'iPhone da Ana', connected: true }]);
+  const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+  await render(<Pairing />);
+  await fireEvent.press(screen.getByRole('button', { name: 'Esquecer e parear outro' }));
+  const buttons = alert.mock.calls[0][2] as { text: string; onPress?: () => void }[];
+  const cancel = buttons.find((b) => b.text === 'Cancelar');
+  if (cancel !== undefined && cancel.onPress !== undefined) await act(async () => cancel.onPress!());
+  expect(camera().remoteHostRemove).not.toHaveBeenCalled();
+  expect(camera().remoteHostBeginPairing).not.toHaveBeenCalled();
+  alert.mockRestore();
 });
 
 test('each remote says whether it is linked right now', async () => {
@@ -119,7 +143,6 @@ test('each remote says whether it is linked right now', async () => {
   expect(screen.getByText('Offline')).toBeTruthy();
   expect(screen.getByText('Pronto para salvar lances')).toBeTruthy();
   expect(screen.getByText('Abra o LANCE neste celular para reconectar')).toBeTruthy();
-  expect(screen.getByText('2 de 4')).toBeTruthy();
   // The list follows the link: when the status changes it is read again.
   camera().remoteHostPeers.mockReturnValue([
     { id: 'a', name: 'iPhone da Ana', connected: true },
@@ -227,13 +250,13 @@ test('the pairing screen lists what both phones need', async () => {
   expect(screen.getByText(/Não precisa de internet nem de rede Wi-Fi/)).toBeTruthy();
 });
 
-test('with four remotes paired there is no new code, only the way out', async () => {
+test('with a remote paired no code is made on its own: the native side refuses one until it is removed', async () => {
   camera().remoteHostBeginPairing.mockReturnValue(null);
-  camera().remoteHostPeers.mockReturnValue(['a', 'b', 'c', 'd'].map((id) => ({ id, name: `iPhone ${id}` })));
+  camera().remoteHostPeers.mockReturnValue([{ id: 'a', name: 'iPhone a' }]);
   await render(<Pairing />);
-  expect(screen.getByText('Você já tem 4 celulares de controle. Remova um para conectar outro.')).toBeTruthy();
   expect(screen.queryByText('042517')).toBeNull();
   expect(screen.queryByRole('button', { name: 'Gerar novo código' })).toBeNull();
+  expect(screen.getByRole('button', { name: 'Esquecer e parear outro' })).toBeTruthy();
 });
 
 test('shows that a remote paired as soon as the camera phone says so', async () => {

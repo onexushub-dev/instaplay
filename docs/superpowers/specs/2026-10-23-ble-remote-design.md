@@ -1,6 +1,6 @@
 # Phone remote over Bluetooth LE — design
 
-Date: 2026-10-23 · Status: approved; step 0 done, step 1 in progress · Supersedes the transport part of `2026-10-19-phone-remote-design.md`
+Date: 2026-10-23 · Status: implemented and field-tested (2026-10-23) · Supersedes the transport part of `2026-10-19-phone-remote-design.md`
 
 ## 1. Why
 
@@ -160,7 +160,8 @@ Decisions
   a token + key over the sealed BLE session (`RemoteMessage.previewLink`) and stops the service 10 s after the last ask.
 - JS: `onRemoteStatus.reason` (`off | unauthorized`), Bluetooth texts, checklist, "Tentar agora" primary with a
   6-second busy state.
-- Still to do (step 5): remove `BleSpike.swift`, `ble-spike.tsx`, `RemoteHello`/`RemoteProof` (MPC-only).
+- Step 5 done: `BleSpike.swift`, `ble-spike.tsx`, `RemoteHello` and `RemoteProof` removed; `PairingOffer.check` takes a
+  `proves` closure only; Bonjour keeps only `_lance-remote._tcp` (preview) and the Local Network text speaks of the preview.
 
 ### 14.1 Field fixes (2026-10-23 afternoon)
 
@@ -172,3 +173,21 @@ Decisions
   `_layout` starts the camera side (`RemoteHost`) on every return to the front, also on the remote phone. Its
   `onRemoteStatus` (`searching`, no remotes) was read by the remote screen as its own link. Both natives now send
   `side: 'camera' | 'remote'`; the remote screen reads only `remote`, the camera screens ignore `remote`.
+- The retry button on the remote is "Tentar reconexão" ("Reconectando…" while it works, 6 s lock). With the `side` fix
+  it should rarely be needed; kept as a manual fallback.
+
+## 15. One remote per camera phone (2026-10-23)
+
+Decision (Victor): the camera phone has one remote at a time, like the remote has one camera. Reason: a phone paired on an
+earlier day, near the court, could otherwise save or end someone else's game. It also keeps the roles clear for the
+multi-camera feature (`2026-10-23-multi-camera-design.md`), where secondary cameras are a separate role, not remotes.
+
+- `RemoteHost.maxRemotes = 1`: `beginPairing()` returns nil while a remote is paired (the existing guard, new limit).
+  `TrustedPeers.limit` (4, storage) is unchanged.
+- Migration: on `start()` the camera keeps only the most recently paired remote (`TrustedPeers.keepNewest`); the dropped
+  ones are told `unpaired` if connected, or hear it on their next reconnect, and forget this camera. `TrustedPeers.add`
+  now moves a re-paired peer to the end, so "most recent" is right.
+- Screen (`pairing.tsx`): "Celular de controle" (singular), the remote's card unchanged (Verificar / Remover), and
+  "Esquecer e parear outro" with a confirmation ("Esquecer {nome}?") that removes it and opens the QR/code at once.
+  With nobody paired: "Parear um celular".
+- Not touched: BLE link, handshake, reconnection, commands, preview, the remote phone's code.

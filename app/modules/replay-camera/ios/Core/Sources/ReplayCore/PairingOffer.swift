@@ -1,7 +1,7 @@
 import Foundation
 
 /// One pairing attempt on the camera phone: a QR secret and a 6-digit code that stop working after two minutes or
-/// after five wrong proofs. The remote phone proves it knows one of them with `RemoteProof` (purpose `.pair`).
+/// after five wrong proofs. The remote phone proves it knows one of them in the BLE handshake (`BleHostHandshake`).
 ///
 /// A good proof only *reserves* the offer for that remote; the host spends it (drops the offer) when the pairing is
 /// complete. If the connection never comes up the reservation is released, and the same remote (or another one) can
@@ -43,17 +43,10 @@ public struct PairingOffer {
     return PairingOffer(hostId: hostId, hostName: hostName, secret: secret, code: code, createdAt: now)
   }
 
-  /// `at` is the timestamp the remote used in its proof; `now` is this phone's clock (both ms since 1970).
-  /// Only a wrong proof uses up an attempt. A good proof from the remote that already holds the reservation is accepted
-  /// again (its first try may have been lost on the way); a good proof from a different remote is `.taken`.
-  public mutating func check(proof: String, remoteId: String, at: Double, now: Double) -> Verdict {
-    check(remoteId: remoteId, now: now) { key in
-      RemoteProof.verify(proof, key: key, purpose: .pair, remoteId: remoteId, at: at, now: now)
-    }
-  }
-
-  /// The same rules for any kind of proof: `proves` answers whether the remote's proof was made with this key (the QR
-  /// secret, then the UTF-8 bytes of the code). The BLE handshake proves over its transcript instead of a timestamp.
+  /// `proves` answers whether the remote's proof was made with this key (the QR secret, then the UTF-8 bytes of the
+  /// code); `now` is this phone's clock (ms since 1970). Only a wrong proof uses up an attempt. A good proof from the
+  /// remote that already holds the reservation is accepted again (its first try may have been lost on the way); a good
+  /// proof from a different remote is `.taken`.
   public mutating func check(remoteId: String, now: Double, proves: (Data) -> Bool) -> Verdict {
     if isExpired(now: now) { return .expired }
     if failedAttempts >= Self.maxAttempts { return .locked }

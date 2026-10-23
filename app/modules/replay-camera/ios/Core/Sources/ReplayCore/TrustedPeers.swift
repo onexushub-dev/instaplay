@@ -35,18 +35,29 @@ public final class TrustedPeers {
 
   public func peer(id: String) -> TrustedPeer? { peers.first { $0.id == id } }
 
-  /// Adds a peer, or replaces the one with the same id (pairing again gives a new key). False when the list is full
-  /// and the id is new.
+  /// Adds a peer, or replaces the one with the same id (pairing again gives a new key). The list is kept oldest
+  /// first, so a peer paired again moves to the end. False when the list is full and the id is new.
   @discardableResult
   public func add(_ peer: TrustedPeer) -> Bool {
     if let index = peers.firstIndex(where: { $0.id == peer.id }) {
-      peers[index] = peer
+      peers.remove(at: index)
+      peers.append(peer)
     } else {
       guard peers.count < Self.limit else { return false }
       peers.append(peer)
     }
     store.save(peers)
     return true
+  }
+
+  /// Keeps only the `count` most recently paired peers; returns the ones it dropped (oldest first).
+  @discardableResult
+  public func keepNewest(_ count: Int) -> [TrustedPeer] {
+    guard peers.count > count else { return [] }
+    let dropped = Array(peers.prefix(peers.count - max(0, count)))
+    peers.removeFirst(dropped.count)
+    store.save(peers)
+    return dropped
   }
 
   public func remove(id: String) {

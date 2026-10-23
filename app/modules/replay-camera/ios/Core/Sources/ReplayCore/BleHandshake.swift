@@ -16,8 +16,11 @@ import Foundation
 /// - Reconnect: the key is the stored pair key, and both sides prove they hold it (the camera first).
 ///
 /// The structs are pure state machines: the BLE glue moves bytes, these decide.
+/// Why a remote phone opens a link: to pair with a code or QR, or to reconnect with its pair key.
+public enum BleLinkKind: String { case pair, reconnect }
+
 enum BleHandshakeMessage {
-  case hello(kind: RemoteHello.Kind, remoteId: String, remoteName: String, nonce: Data, pub: Data?)
+  case hello(kind: BleLinkKind, remoteId: String, remoteName: String, nonce: Data, pub: Data?)
   case challenge(hostId: String, hostName: String, nonce: Data, pub: Data?, hostProof: Data?)
   case proof(Data)
   case accept(hostProof: Data?, paired: Data?)
@@ -62,7 +65,7 @@ enum BleHandshakeMessage {
     }
     switch type {
     case "hello":
-      guard let raw = object["kind"] as? String, let kind = RemoteHello.Kind(rawValue: raw),
+      guard let raw = object["kind"] as? String, let kind = BleLinkKind(rawValue: raw),
             let remoteId = object["remoteId"] as? String, !remoteId.isEmpty,
             let remoteName = object["remoteName"] as? String,
             let nonce = bytesOf("nonce"), nonce.count == BleWire.nonceSize else { return nil }
@@ -87,7 +90,7 @@ enum BleHandshakeMessage {
     }
   }
 
-  static func transcript(kind: RemoteHello.Kind, remoteId: String, hostId: String, remoteNonce: Data, hostNonce: Data,
+  static func transcript(kind: BleLinkKind, remoteId: String, hostId: String, remoteNonce: Data, hostNonce: Data,
                          remotePub: Data, hostPub: Data) -> Data {
     var out = Data("lance-ble-1|\(kind.rawValue)|\(remoteId)|\(hostId)|".utf8)
     out.append(remoteNonce)
@@ -147,7 +150,7 @@ public struct BleRemoteHandshake {
     self.privateKey = privateKey
   }
 
-  private var kind: RemoteHello.Kind {
+  private var kind: BleLinkKind {
     if case .pair = mode { return .pair }
     return .reconnect
   }
@@ -230,7 +233,7 @@ public struct BleHostHandshake {
   }
 
   private struct Remote {
-    let kind: RemoteHello.Kind
+    let kind: BleLinkKind
     let id: String
     let name: String
     let nonce: Data

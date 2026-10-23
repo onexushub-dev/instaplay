@@ -21,12 +21,6 @@ declare class ReplayCameraModule extends NativeModule<ReplayCameraModuleEvents> 
   setGestureEnabled(enabled: boolean): void;
   // The phone's position (iOS only: missing on Android and in older builds).
   getUpright?(): DeviceUpright;
-  // Step 0 Bluetooth LE spike (iOS only).
-  bleSpikeCamera?(): void;
-  bleSpikeRemote?(): void;
-  bleSpikeThroughput?(): void;
-  bleSpikeForget?(): void;
-  bleSpikeStop?(): void;
   // Continuous zoom (iOS only: missing on Android and in older builds).
   getZoomRange?(): ZoomRange;
   setZoom?(factor: number, animated: boolean): void;

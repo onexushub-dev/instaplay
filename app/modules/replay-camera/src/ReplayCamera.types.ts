@@ -83,22 +83,6 @@ export type ReplayCameraModuleEvents = {
   onError: (e: { code: ReplayErrorCode; message: string }) => void;
   /** Diagnostic (Etapa 0): what the gesture detector saw in the last second. iOS only for now. */
   onGestureDebug: (e: GestureDebug) => void;
-  /** Step 0 Bluetooth LE spike: a log line or the latest numbers. */
-  onBleSpike: (e: { line?: string; stats?: BleSpikeStats }) => void;
-};
-
-export type BleSpikeStats = {
-  connected?: boolean;
-  controllers?: number;
-  lost?: number;
-  drops?: number;
-  pings?: number;
-  rttAvg?: number;
-  rttMax?: number;
-  rttLast?: number;
-  reconnectMs?: number;
-  kbps?: number;
-  kbpsAvg?: number;
 };
 
 export type GestureDebug = {

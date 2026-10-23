@@ -51,4 +51,22 @@ final class TrustedPeersTests: XCTestCase {
     XCTAssertEqual(peers.peer(id: "a")?.name, "Ana")
     XCTAssertNil(peers.peer(id: "zzz"))
   }
+
+  func testPairingAgainMovesThePeerToTheNewestPlace() {
+    let peers = TrustedPeers(store: MemoryStore())
+    peers.add(peer("a"))
+    peers.add(peer("b"))
+    peers.add(peer("a", name: "Again", key: 3))
+    XCTAssertEqual(peers.all.map { $0.id }, ["b", "a"])
+  }
+
+  func testKeepNewestDropsTheOldestAndPersists() {
+    let store = MemoryStore()
+    let peers = TrustedPeers(store: store)
+    for id in ["a", "b", "c"] { peers.add(peer(id)) }
+    XCTAssertEqual(peers.keepNewest(1).map { $0.id }, ["a", "b"])
+    XCTAssertEqual(peers.all.map { $0.id }, ["c"])
+    XCTAssertEqual(store.peers.map { $0.id }, ["c"])
+    XCTAssertTrue(peers.keepNewest(1).isEmpty, "nothing more to drop")
+  }
 }

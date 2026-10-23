@@ -10,12 +10,9 @@ final class PairingOfferTests: XCTestCase {
     PairingOffer(hostId: "h1", hostName: "Quadra 1", secret: secret, code: code, createdAt: t0)
   }
 
-  private func proof(key: Data, at: Double) -> String {
-    RemoteProof.make(key: key, purpose: .pair, remoteId: "r1", at: at)
-  }
-
-  private func check(_ offer: inout PairingOffer, key: Data, at: Double) -> PairingOffer.Verdict {
-    offer.check(proof: proof(key: key, at: at), remoteId: "r1", at: at, now: at)
+  /// A remote whose proof was made with `key`, arriving at `at`.
+  private func check(_ offer: inout PairingOffer, key: Data, at: Double, remoteId: String = "r1") -> PairingOffer.Verdict {
+    offer.check(remoteId: remoteId, now: at) { $0 == key }
   }
 
   func testAcceptsAProofMadeWithTheSecret() {
@@ -69,13 +66,11 @@ final class PairingOfferTests: XCTestCase {
   func testAnotherRemoteIsTakenWhileTheOfferIsReservedAndCanTryAfterTheRelease() {
     var o = offer()
     XCTAssertEqual(check(&o, key: secret, at: t0 + 1_000), .accepted)
-    let other = RemoteProof.make(key: secret, purpose: .pair, remoteId: "r2", at: t0 + 2_000)
-    XCTAssertEqual(o.check(proof: other, remoteId: "r2", at: t0 + 2_000, now: t0 + 2_000), .taken)
+    XCTAssertEqual(check(&o, key: secret, at: t0 + 2_000, remoteId: "r2"), .taken)
     XCTAssertEqual(o.failedAttempts, 0)  // not a wrong proof
     o.release(remoteId: "r1")
     XCTAssertNil(o.reservedFor)
-    // The same proof, sent again a second later: `at` is the time it was made, `now` is when it arrives.
-    XCTAssertEqual(o.check(proof: other, remoteId: "r2", at: t0 + 2_000, now: t0 + 3_000), .accepted)
+    XCTAssertEqual(check(&o, key: secret, at: t0 + 3_000, remoteId: "r2"), .accepted)
   }
 
   func testReleaseOfAnotherRemoteKeepsTheReservation() {

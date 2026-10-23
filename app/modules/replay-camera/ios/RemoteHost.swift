@@ -26,6 +26,9 @@ final class RemoteHost: NSObject {
   private static let pingTimeout: TimeInterval = 3
   /// How long the host stays up after nothing wants it any more.
   private static let teardownGrace: TimeInterval = 3
+  /// One remote per camera phone (the remote side is already one camera per remote): a phone paired on an older day,
+  /// lying around the court, can never save or stop someone else's game. The Keychain list can hold more (`TrustedPeers`).
+  static let maxRemotes = 1
   /// The preview service stops when no remote has asked for pictures for this long.
   private static let previewIdle: TimeInterval = 10
 
@@ -92,6 +95,7 @@ final class RemoteHost: NSObject {
   /// starts advertising over, since iOS may have dropped it while the app was away.
   func start() {
     onMain {
+      keepNewestRemote()
       if wanted { advertisedPairing = nil }
       wanted = true
       refresh()
@@ -142,10 +146,23 @@ final class RemoteHost: NSObject {
     }
   }
 
-  /// Opens a pairing (QR + code). Nil when the list of remotes is already full.
+  /// A phone updated from the time of up to 4 remotes keeps only the most recently paired one. The others are told, so
+  /// they forget this phone the next time they connect (the same as "Remover").
+  private func keepNewestRemote() {
+    for dropped in trusted.keepNewest(Self.maxRemotes) {
+      Self.log.info("only one remote now: removed \(String(dropped.id.prefix(8)), privacy: .public)")
+      preview.revoke(remoteId: dropped.id)
+      for link in links.values where link.remoteId == dropped.id {
+        sendRaw(BleHandshakeMessage.unpaired.wire, to: link)
+        link.closed = true
+      }
+    }
+  }
+
+  /// Opens a pairing (QR + code). Nil while a remote is paired: it has to be removed first (one remote per camera phone).
   func beginPairing() -> (url: String, code: String, expiresAt: Double, qrPath: String)? {
     onMain {
-      guard trusted.all.count < TrustedPeers.limit else { return nil }
+      guard trusted.all.count < Self.maxRemotes else { return nil }
       let fresh = PairingOffer.make(hostId: DeviceIdentity.id, hostName: DeviceIdentity.name, now: nowMs)
       guard let qrPath = QRCode.png(for: fresh.qrURL) else { return nil }
       offer = fresh

@@ -67,14 +67,13 @@ public class ReplayCameraModule: Module {
 
     Events("onTrigger", "onThermalChange", "onInterrupted", "onResumed", "onError", "onGestureDebug", "onWatchStatus",
            "onRemoteStatus", "onRemoteState", "onRemoteResult", "onRemotePairing", "onRemoteStop",
-           "onRemoteStart", "onRemoteFrame", "onRemoteCheck", "onBleSpike")
+           "onRemoteStart", "onRemoteFrame", "onRemoteCheck")
 
     OnCreate {
       self.engine.emit = { [weak self] name, body in self?.sendEvent(name, body) }
       WatchBridge.shared.emit = { [weak self] name, body in self?.sendEvent(name, body) }
       RemoteHost.shared.emit = { [weak self] name, body in self?.sendEvent(name, body) }
       RemoteController.shared.emit = { [weak self] name, body in self?.sendEvent(name, body) }
-      BleSpike.shared.emit = { [weak self] name, body in self?.sendEvent(name, body) }
       WatchBridge.shared.preview = self.engine.watchPreview
       self.engine.remotePreview.onFrame = { RemoteHost.shared.sendFrame($0) }
       RemoteHost.shared.onPreview = { [weak self] on in self?.engine.remotePreview.ask(on) }
@@ -101,13 +100,6 @@ public class ReplayCameraModule: Module {
         }
       }
     }
-
-    // Step 0 Bluetooth LE spike (spec 2026-10-23): throwaway, removed with the spike screen.
-    Function("bleSpikeCamera") { BleSpike.shared.startCamera() }
-    Function("bleSpikeRemote") { BleSpike.shared.startRemote() }
-    Function("bleSpikeThroughput") { BleSpike.shared.measureThroughput() }
-    Function("bleSpikeForget") { BleSpike.shared.forget() }
-    Function("bleSpikeStop") { BleSpike.shared.stop() }
 
     // The phone's physical position from the accelerometer, so the setup screen can get out of the way when it is on its side.
     Function("getUpright") { () -> String in

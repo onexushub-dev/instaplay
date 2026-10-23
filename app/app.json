@@ -18,10 +18,9 @@
           "instagram-stories"
         ],
         "NSPhotoLibraryAddUsageDescription": "O LANCE salva os clipes que você exportar na sua galeria.",
-        "NSLocalNetworkUsageDescription": "O LANCE usa a rede local para conversar com o outro celular que serve de controle.",
+        "NSLocalNetworkUsageDescription": "O LANCE usa a rede local para mostrar a imagem da câmera no celular que serve de controle.",
         "NSBonjourServices": [
-          "_lance-remote._tcp",
-          "_lance-remote._udp"
+          "_lance-remote._tcp"
         ],
         "NSBluetoothAlwaysUsageDescription": "O LANCE usa o Bluetooth para conversar com o outro celular que serve de controle.",
         "UIBackgroundModes": [
