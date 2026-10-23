@@ -101,6 +101,16 @@ public class ReplayCameraModule: Module {
       }
     }
 
+    // The phone's physical position from the accelerometer, so the setup screen can get out of the way when it is on its side.
+    Function("getUpright") { () -> String in
+      switch self.engine.gesture.currentUpright() {
+      case .portrait: return "portrait"
+      case .portraitUpsideDown: return "portraitUpsideDown"
+      case .landscapeLeft: return "landscapeLeft"
+      case .landscapeRight: return "landscapeRight"
+      }
+    }
+
     Function("setGestureEnabled") { (enabled: Bool) in
       self.engine.gesture.enabled = enabled
     }

@@ -19,8 +19,10 @@ import {
 } from '../../modules/replay-camera';
 import type { RemotePeer, ReplayErrorCode } from '../../modules/replay-camera/src/ReplayCamera.types';
 import { useCameraPinch } from '../camera/useCameraPinch';
+import { useDeviceLandscape } from '../camera/useDeviceLandscape';
 import { Button } from '../components/Button';
 import { Chip } from '../components/Chip';
+import { CompactDock } from '../components/CompactDock';
 import { PositionGuide } from '../components/PositionGuide';
 import { RecordingPanel } from '../components/RecordingPanel';
 import { ArmsUpIcon, MicIcon, QrIcon, RemoteIcon, TapIcon, WatchIcon } from '../components/icons';
@@ -233,6 +235,10 @@ export default function Setup() {
   const starting = phase === 'starting' || opening;
   const errorText = error ? (START_ERRORS[error] ?? 'Não foi possível abrir a câmera. Tente de novo.') : null;
 
+  // On its side the phone shows only two small buttons (the settings open on demand), so the sheet does not cover the camera.
+  const landscape = useDeviceLandscape(live && phase === 'idle');
+  const compact = landscape && !expanded;
+
   const inGame = phase === 'recording' || phase === 'stopping' || (phase === 'ended' && error !== undefined);
 
   // One camera view for the whole game: setup and recording only swap the controls drawn over it.
@@ -251,8 +257,8 @@ export default function Setup() {
     return (
       <>
         {zoomRange.continuous ? <View testID="zoom-pinch" style={StyleSheet.absoluteFill} {...pinch} /> : null}
-        {bubble ? <ZoomBubble value={zoom} bottom={sheetHeight + 16} /> : null}
-        <View testID="guide-area" pointerEvents="none" style={[styles.guideArea, { bottom: sheetHeight }]}>
+        {bubble ? <ZoomBubble value={zoom} bottom={(compact ? 72 : sheetHeight) + 16} /> : null}
+        <View testID="guide-area" pointerEvents="none" style={[styles.guideArea, { bottom: compact ? 72 : sheetHeight }]}>
           <PositionGuide guide={mode.guide} />
         </View>
 
@@ -267,13 +273,21 @@ export default function Setup() {
             </Pressable>
             <ZoomButton value={zoom} onPress={cycleZoom} />
           </View>
-          {mode.tip.length > 0 ? (
+          {mode.tip.length > 0 && !compact ? (
             <View style={styles.tip}>
               <Text style={styles.tipText}>{mode.tip}</Text>
             </View>
           ) : null}
         </SafeAreaView>
 
+        {compact ? (
+          <CompactDock
+            busy={starting}
+            error={errorText}
+            onSettings={() => setExpanded(true)}
+            onStart={() => session.start(modeId)}
+          />
+        ) : (
         <View testID="setup-sheet" style={styles.sheet} onLayout={(e) => setSheetHeight(e.nativeEvent.layout.height)}>
           <SafeAreaView edges={['bottom']} style={styles.sheetBody} {...swipe.panHandlers}>
             <Pressable
@@ -295,6 +309,7 @@ export default function Setup() {
             />
           </SafeAreaView>
         </View>
+        )}
       </>
     );
   }

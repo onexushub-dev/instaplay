@@ -48,3 +48,9 @@ test('a turned clip exports with its rotation, and none by default', () => {
   expect(exportOptions('pro', undefined, trim).rotation).toBe(0);
   expect(exportOptions('pro', { speed: 1, muted: false, rotation: 90 }, trim).rotation).toBe(90);
 });
+
+test('a landscape clip gets the frame turned on its side, in both tiers', () => {
+  expect(exportOptions('pro', undefined, trim, true)).toMatchObject({ width: 1920, height: 1080 });
+  expect(exportOptions('free', undefined, trim, true)).toMatchObject({ width: 1280, height: 720 });
+  expect(exportOptions('free', undefined, trim)).toMatchObject({ width: 720, height: 1280 });
+});

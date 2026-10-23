@@ -16,13 +16,19 @@ export type ExportOptions = {
   watermark: boolean;
 };
 
-/** Free: 720x1280 (spec 6). Every export carries the app mark. Any speed other than 1x plays without sound. */
-export function exportOptions(tier: Tier, edit: Clip['edit'], trim: Clip['trim']): ExportOptions {
+/**
+ * Free: 720x1280 (spec 6), pro: 1080x1920. A landscape clip gets the same frame turned on its side, so it fills
+ * the screen when the phone is held sideways, like any video in Photos. Every export carries the app mark.
+ * Any speed other than 1x plays without sound.
+ */
+export function exportOptions(tier: Tier, edit: Clip['edit'], trim: Clip['trim'], landscape = false): ExportOptions {
   const pro = tier === 'pro';
+  const short = pro ? 1080 : 720;
+  const long = pro ? 1920 : 1280;
   const { speed, muted, zoom, rotation } = readEdit(edit);
   return {
-    width: pro ? 1080 : 720,
-    height: pro ? 1920 : 1280,
+    width: landscape ? long : short,
+    height: landscape ? short : long,
     startMs: trim.startMs,
     endMs: trim.endMs,
     speed,

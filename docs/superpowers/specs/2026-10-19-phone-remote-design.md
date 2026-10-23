@@ -220,3 +220,39 @@ Field checklist for this update (two physical iPhones):
 4. Remote connected and waiting for 2 minutes with no game: must stay "Conectado", never "Sem conexão".
 5. Close the app on the remote: "Verificar" on the camera phone says "Sem resposta" within about 3 s.
 6. Wi-Fi off, Bluetooth off, both on different Wi-Fi networks, and a Wi-Fi with client isolation: note what happens.
+
+## 14. Update 2026-10-22: clip orientation and watermark anchor
+
+**Problem.** `SegmentWriter` stamps the phone's position on the track once, at the first frame of a session. A phone opened upright and then mounted sideways saved every clip rotated, which also gave the clip screen the wrong video shape (and so the wrong watermark position).
+
+**Change.**
+- `ReplayEngine.saveClip` reads `gesture.currentUpright().videoRotationDegrees` when the save is requested and passes it to `ClipConcat.normalize(_:to:rotationDegrees:)`.
+- `normalize` inserts the video into an `AVMutableComposition`, sets the track `preferredTransform` to that rotation and exports with the passthrough preset (no re-encode).
+- `ShareOverlay` anchors the logo (and the bottom gradient) to the bottom-right corner of the video image instead of the 9:16 frame, with the same margin (4.5% of frame width). Vertical clips look unchanged; landscape clips get the mark inside the image.
+- Clips saved before this change keep their stored rotation; the "Girar" edit still fixes them.
+
+**Field checklist (device, Release build).**
+1. Open the camera upright, then mount the phone sideways and save: the clip plays landscape, mark inside the video's bottom-right corner.
+2. Open the camera sideways and save: same result.
+3. Rotate between plays in the same session: each clip follows the position at the time of its play.
+4. Vertical clip: mark in the bottom-right corner, equal right and bottom margins.
+5. If a clip still comes out with the wrong rotation, the passthrough export did not keep the composition transform; fall back to applying the rotation in `ClipExporter`.
+
+### 14.1 Landscape frame (same day)
+Landscape clips are previewed and exported in a landscape frame (1280×720 free, 1920×1080 pro) with no bands; vertical clips keep 720×1280 / 1080×1920. The shape comes from the clip (after the manual "Girar"). The mark is anchored to the frame's bottom-right corner and sized from the frame's short side, so it has the same pixel size in both orientations. The app stays portrait-locked: a landscape clip previews 16:9 at full width, and "Tela cheia" shows the raw video. Field check: record sideways, export, and open in Photos with the phone held sideways; the mark reads normally in the bottom-right corner.
+
+## 15. Update 2026-10-22: setup screen with the phone on its side
+
+**Problem.** The app is portrait-locked, so with the phone held sideways the settings sheet (summary + "Começar gravação") covers a wide strip of the camera view, and the mode tip competes with the positioning guide.
+
+**Change.**
+- Native: `getUpright()` (`ReplayCameraModule.swift`) returns the accelerometer position; JS wrapper `getDeviceUpright()` falls back to `'portrait'` where unavailable.
+- `useDeviceLandscape(active)` polls every 300 ms while the setup screen is live and idle; a change needs two matching reads, so a tilt in passing does not flicker the layout.
+- On its side, the sheet is replaced by `CompactDock`: "Ajustes" and "Gravar" buttons at the edge. The mode tip is hidden and the guide area uses the whole screen. "Ajustes" opens the full sheet over the camera on demand; closing it returns to the compact dock. Upright behaviour is unchanged.
+
+**Field checklist.**
+1. Open setup upright: sheet as before. Turn the phone on its side: sheet becomes "Ajustes" + "Gravar", guide larger.
+2. Tilt briefly and back: no flicker.
+3. "Ajustes" shows all settings; closing returns to the two buttons.
+4. "Gravar" starts the game; errors (storage, permission) show above the buttons.
+5. Both sideways positions (left and right) behave the same.

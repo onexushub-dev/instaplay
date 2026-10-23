@@ -13,6 +13,7 @@ jest.mock('../../../modules/replay-camera', () => {
     getSpeechPermission: jest.fn(() => 'granted'),
     getWatchStatus: jest.fn(() => 'unsupported'),
     getZoomRange: jest.fn(() => ({ min: 0.5, max: 5, continuous: true })),
+    getDeviceUpright: jest.fn(() => 'portrait'),
     isRemoteSupported: jest.fn(() => false),
     remoteControllerHost: jest.fn(() => null),
     remoteControllerForget: jest.fn(),
@@ -100,6 +101,7 @@ beforeEach(() => {
   module.isRemoteSupported.mockReturnValue(false);
   module.getZoomRange.mockReturnValue({ min: 0.5, max: 5, continuous: true });
   module.remoteHostPeers.mockReturnValue([]);
+  module.getDeviceUpright.mockReturnValue('portrait');
   module.remoteControllerHost.mockReturnValue(null);
 });
 
@@ -653,6 +655,49 @@ test('the Dispositivos sheet over the setup keeps the camera and the volume butt
   await act(async () => setRemoteSheetOpen(false));
   expect(useVolumeRemote).toHaveBeenLastCalledWith(false, expect.any(Function));
   jest.requireMock('expo-router').useIsFocused.mockReturnValue(true);
+});
+
+describe('phone held on its side', () => {
+  beforeEach(() => jest.requireMock('../../../modules/replay-camera').getDeviceUpright.mockReturnValue('landscapeLeft'));
+
+  test('the sheet gives way to two small buttons and the guide takes the whole screen', async () => {
+    session({});
+    await render(<Setup />);
+    expect(screen.queryByTestId('setup-sheet')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Gravar' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Ajustes' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Começar gravação' })).toBeNull();
+  });
+
+  test('Gravar starts the game with the mode', async () => {
+    const s = session({});
+    await render(<Setup />);
+    await fireEvent.press(screen.getByRole('button', { name: 'Gravar' }));
+    expect(s.start).toHaveBeenCalledWith('quadra');
+  });
+
+  test('Ajustes opens the full settings over the camera, and closing them brings the small buttons back', async () => {
+    session({});
+    await render(<Setup />);
+    await fireEvent.press(screen.getByRole('button', { name: 'Ajustes' }));
+    expect(screen.getByTestId('setup-sheet')).toBeTruthy();
+    expect(screen.getByText('TAMANHO DO CLIPE')).toBeTruthy();
+    await fireEvent.press(screen.getByRole('button', { name: 'Fechar ajustes' }));
+    expect(screen.getByRole('button', { name: 'Gravar' })).toBeTruthy();
+  });
+
+  test('Gravar waits while the camera opens', async () => {
+    session({ camera: 'starting' });
+    await render(<Setup />);
+    expect(screen.getByRole('button', { name: 'Gravar' })).toBeDisabled();
+  });
+});
+
+test('held upright the setup sheet stays as it was', async () => {
+  session({});
+  await render(<Setup />);
+  expect(screen.getByTestId('setup-sheet')).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'Gravar' })).toBeNull();
 });
 
 test('coming back from another app, a remote shown as connected goes back to paired until it is pressed again', async () => {

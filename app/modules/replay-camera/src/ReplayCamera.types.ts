@@ -17,6 +17,9 @@ export type ReplayErrorCode =
  */
 export type SessionOptions = { lens: Lens; zoom?: number; maxQuality: Quality; bufferSeconds?: number };
 /** What the camera can zoom: `continuous` is false where only the two lenses exist (Android). */
+/** Which edge of the phone points up (UIDeviceOrientation naming). */
+export type DeviceUpright = 'portrait' | 'portraitUpsideDown' | 'landscapeLeft' | 'landscapeRight';
+
 export type ZoomRange = { min: number; max: number; continuous: boolean };
 /** `at` = ms since epoch when the trigger happened. */
 export type SaveClipOptions = { source: TriggerSource; at: number };

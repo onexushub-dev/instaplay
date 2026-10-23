@@ -1,13 +1,22 @@
 import { type ComponentRef, forwardRef } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Image, StyleSheet, View } from 'react-native';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
-import { colors, fonts } from '../theme/tokens';
+import { colors } from '../theme/tokens';
+import { BRAND_LOGO, logoAspect } from './brandLogo';
 import type { Rect as Box } from './layout';
 
-/** Instagram draws its own UI over the bottom of a Story; the mark stays above this margin. */
+/** Height of the dark gradient at the bottom of the video, so the mark reads on any video, capped at this share of the video height so a landscape clip is not mostly shadow. */
 export const SAFE_BOTTOM = 340;
-const SIDE = 64;
+const GRADIENT_MAX = SAFE_BOTTOM + 520;
+const GRADIENT_SHARE = 0.6;
+/** The logo is this share of the frame's short side, so it reads the same in a 720 and in a 1080 export, vertical or landscape. */
+export const LOGO_SHARE = 0.272;
+/** Room around the logo inside the dark pill, as a share of the frame's short side. */
+const PAD_X = 0.021;
+const PAD_Y = 0.011;
+/** Where the pill sits: the same distance from the right and from the bottom edge of the video image, as a share of the frame's short side (about 32 px in a 720 frame). */
+const MARK_MARGIN = 0.045;
 
 type Props = {
   frame: { width: number; height: number };
@@ -18,7 +27,7 @@ type Props = {
 
 /**
  * What every exported clip carries: dark bands where the video leaves room (landscape), a soft gradient
- * and the app mark, so whoever sees a shared clip knows which app made it. The same component draws the
+ * and the app logo in the video's bottom-right corner, so whoever sees a shared clip knows which app made it. The same component draws the
  * preview and, captured to PNG, the export overlay.
  */
 export const ShareOverlay = forwardRef<ComponentRef<typeof View>, Props>(function ShareOverlay(
@@ -26,6 +35,12 @@ export const ShareOverlay = forwardRef<ComponentRef<typeof View>, Props>(functio
   ref,
 ) {
   const s = (n: number) => n * scale;
+  const unit = Math.min(frame.width, frame.height);
+  // The mark and the gradient belong to the video image, so they follow its corner whatever its shape
+  // (a landscape clip sits in the middle of the frame, with bands above and below).
+  const videoRight = layout.video.x + layout.video.width;
+  const videoBottom = layout.video.y + layout.video.height;
+  const gradientHeight = Math.min(GRADIENT_MAX, layout.video.height * GRADIENT_SHARE);
   const box = (r: Box) => ({
     position: 'absolute' as const,
     left: s(r.x),
@@ -48,10 +63,10 @@ export const ShareOverlay = forwardRef<ComponentRef<typeof View>, Props>(functio
           </LinearGradient>
         </Defs>
         <Rect
-          x={0}
-          y={s(frame.height - SAFE_BOTTOM - 520)}
-          width={s(frame.width)}
-          height={s(SAFE_BOTTOM + 520)}
+          x={s(layout.video.x)}
+          y={s(videoBottom - gradientHeight)}
+          width={s(layout.video.width)}
+          height={s(gradientHeight)}
           fill="url(#bottom)"
         />
       </Svg>
@@ -59,13 +74,20 @@ export const ShareOverlay = forwardRef<ComponentRef<typeof View>, Props>(functio
       <View
         style={[
           styles.mark,
-          styles.row,
-          { bottom: s(SAFE_BOTTOM - 90), right: s(SIDE), paddingHorizontal: s(20), paddingVertical: s(10), gap: s(10) },
+          {
+            bottom: s(frame.height - videoBottom + unit * MARK_MARGIN),
+            right: s(frame.width - videoRight + unit * MARK_MARGIN),
+            paddingHorizontal: s(unit * PAD_X),
+            paddingVertical: s(unit * PAD_Y),
+          },
         ]}>
-        <View style={[styles.dot, { width: s(16), height: s(16), borderRadius: s(8) }]} />
-        <Text allowFontScaling={false} style={[styles.markText, { fontSize: s(28) }]}>
-          feito com LANCE
-        </Text>
+        <Image
+          accessibilityLabel="Repplay"
+          fadeDuration={0}
+          resizeMode="contain"
+          source={BRAND_LOGO}
+          style={{ width: s(unit * LOGO_SHARE), height: s(unit * LOGO_SHARE) / logoAspect() }}
+        />
       </View>
     </View>
   );
@@ -73,8 +95,5 @@ export const ShareOverlay = forwardRef<ComponentRef<typeof View>, Props>(functio
 
 const styles = StyleSheet.create({
   band: { backgroundColor: colors.ground },
-  row: { flexDirection: 'row', alignItems: 'center' },
-  dot: { backgroundColor: colors.accent },
-  mark: { position: 'absolute', backgroundColor: 'rgba(15,16,13,0.7)', borderRadius: 999 },
-  markText: { fontFamily: fonts.bodyBold, color: colors.text },
+  mark: { position: 'absolute', backgroundColor: 'rgba(15,16,13,0.8)', borderRadius: 999 },
 });

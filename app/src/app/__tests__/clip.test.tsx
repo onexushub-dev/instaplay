@@ -227,10 +227,17 @@ test('Compartilhar exports with the cut, speed, zoom and the app mark, then open
     expect.objectContaining({
       clipPath: '/c1.mp4', startMs: 30000, endMs: 60000, speed: 2, muted: true,
       crop: { x: 0, y: 0.5, width: 0.5, height: 0.5 },
-      width: 1080, height: 1920, overlayPngPath: '/tmp/overlay.png', watermark: true,
+      width: 1920, height: 1080, overlayPngPath: '/tmp/overlay.png', watermark: true,
     }),
   );
   expect(sharing.shareAsync).toHaveBeenCalledWith('file:///exports/e1.mp4', expect.objectContaining({ mimeType: 'video/mp4' }));
+});
+
+test('a vertical clip is exported in a vertical frame', async () => {
+  (Image.getSize as jest.Mock).mockResolvedValueOnce({ width: 1080, height: 1920 });
+  await open();
+  await pressAction('Compartilhar');
+  expect(camera.exportClip).toHaveBeenCalledWith(expect.objectContaining({ width: 1080, height: 1920 }));
 });
 
 test('Salvar na galeria asks for photo access and saves the export', async () => {

@@ -169,10 +169,14 @@ function ClipEditor({ id }: { id: string }) {
   const made = useRef<string[]>([]);
   const captureRefView = useRef<ComponentRef<typeof View>>(null);
 
-  const options = clip ? exportOptions(tier, clip.edit, clip.trim) : undefined;
-  const frame = { width: options?.width ?? 1080, height: options?.height ?? 1920 };
   // The shape after the player's own turn; the clip's own rotation is already in the thumbnail's shape.
   const shape = turnedSize(videoSize, edit.rotation);
+  // A landscape clip is exported (and previewed) in a landscape frame; a vertical one in a vertical frame.
+  const landscape = shape.width > shape.height;
+  const options = clip ? exportOptions(tier, clip.edit, clip.trim, landscape) : undefined;
+  const frame = landscape
+    ? { width: options?.width ?? 1920, height: options?.height ?? 1080 }
+    : { width: options?.width ?? 1080, height: options?.height ?? 1920 };
   const layout = frameLayout(shape, frame);
   // The real aspect ratio (rotation applied) comes from the clip's thumbnail.
   const clipPath = clip?.path;
@@ -401,7 +405,7 @@ function ClipEditor({ id }: { id: string }) {
       repo.updateClip(id, { sharedAt: Date.now() });
     });
 
-  // Preview: the export's 9:16 frame as large as the whole screen allows; the controls sit over it.
+  // Preview: the export's frame as large as the whole screen allows; the controls sit over it.
   const previewHeight = Math.min(window.height, (window.width * frame.height) / frame.width);
   const scale = previewHeight / frame.height;
   const pr = PixelRatio.get();
