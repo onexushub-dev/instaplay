@@ -497,7 +497,7 @@ const camera = () => jest.requireMock('../../../modules/replay-camera');
 
 test.each([
   ['unsupported', 'Sem relógio pareado'],
-  ['notInstalled', 'Instale o app no relógio'],
+  ['notInstalled', 'Instale o app no Apple Watch'],
   ['ready', 'Pronto'],
 ])('the Relógio tile says %s as "%s"', async (status, text) => {
   camera().getWatchStatus.mockReturnValueOnce(status);

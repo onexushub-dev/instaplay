@@ -1,7 +1,7 @@
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { router, useIsFocused } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, AppState, PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, AppState, PanResponder, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
@@ -155,8 +155,10 @@ export default function Setup() {
     watch === 'ready' ? t('setup.watchReady') : watch === 'notInstalled' ? t('setup.watchNotInstalled') : t('setup.watchNone');
   // The watch trigger is paid: before a game the next start's plan decides; the lock opens the paywall.
   const plan = usePlan();
+  // Apple Watch only: no Android smartwatch was tested, so the tile stays visible but disabled there.
+  const watchSupported = Platform.OS === 'ios';
   const watchAllowed = triggerAllowed('watch', plan);
-  const watchOn = watchAllowed && watch === 'ready';
+  const watchOn = watchSupported && watchAllowed && watch === 'ready';
   // The Bluetooth remote and the phone remote are paid too. Pairing and testing them stays open to everyone; the lock
   // is on turning them on for a game.
   const bluetoothAllowed = triggerAllowed('remote', plan);
@@ -442,12 +444,12 @@ export default function Setup() {
             <TriggerTile
               icon={<WatchIcon />}
               title={sourceLabel('watch', locale)}
-              status={watchStatus}
+              status={watchSupported ? watchStatus : t('setup.watchIosOnly')}
               active={watchOn}
-              disabled={watchAllowed && watch === 'unsupported'}
-              lockedBadge={watchAllowed ? undefined : t('setup.watchProBadge')}
-              lockedHint={watchAllowed ? undefined : t('setup.watchProOnly')}
-              onPress={watchAllowed ? undefined : () => void openPaywall(t)}
+              disabled={!watchSupported || (watchAllowed && watch === 'unsupported')}
+              lockedBadge={watchSupported && !watchAllowed ? t('setup.watchProBadge') : undefined}
+              lockedHint={watchSupported && !watchAllowed ? t('setup.watchProOnly') : undefined}
+              onPress={watchSupported && !watchAllowed ? () => void openPaywall(t) : undefined}
             />
           </View>
         </View>
