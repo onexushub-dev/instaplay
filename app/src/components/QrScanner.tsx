@@ -20,7 +20,7 @@ export function QrScanner({ onCode, active = true }: Props) {
   if (!permission.granted) {
     return (
       <View style={[styles.box, styles.ask]}>
-        <Text style={styles.askText}>Para ler o código, o LANCE precisa usar a câmera deste celular.</Text>
+        <Text style={styles.askText}>Para ler o código, o Repplay precisa usar a câmera deste celular.</Text>
         {permission.canAskAgain ? (
           <Button label="Permitir câmera" onPress={() => void requestPermission()} />
         ) : (

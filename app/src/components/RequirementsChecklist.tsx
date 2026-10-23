@@ -5,8 +5,8 @@ import { colors, fonts, radius } from '../theme/tokens';
 /** What both phones need for the link to work. Shown wherever pairing can fail, so nobody has to guess. */
 export const REQUIREMENTS: string[] = [
   'Bluetooth ligado nos dois celulares. Não precisa de internet nem de rede Wi-Fi.',
-  'LANCE aberto nos dois celulares, perto um do outro.',
-  'Para ver a câmera no controle: Wi-Fi ligado e Rede Local liberada para o LANCE em Ajustes.',
+  'Repplay aberto nos dois celulares, perto um do outro.',
+  'Para ver a câmera no controle: Wi-Fi ligado e Rede Local liberada para o Repplay em Ajustes.',
 ];
 
 /** The things to check when the phones do not find each other (the last one only matters for the camera preview). */

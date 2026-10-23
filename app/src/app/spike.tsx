@@ -202,7 +202,7 @@ const styles = StyleSheet.create({
   actions: { position: 'absolute', bottom: 40, left: 16, right: 16, flexDirection: 'row', gap: 12 },
   button: { height: 64, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   toggle: { flex: 1, backgroundColor: '#1B1D18' },
-  save: { flex: 2, backgroundColor: '#D6F23F' },
+  save: { flex: 2, backgroundColor: '#CFEA79' },
   disabled: { opacity: 0.4 },
   buttonText: { color: '#F3EFE4', fontSize: 18, fontWeight: '700' },
   saveText: { color: '#0F100D', fontSize: 20, fontWeight: '800' },

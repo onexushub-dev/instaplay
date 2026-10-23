@@ -55,7 +55,7 @@ function failureText(reason: RemotePairFailure): string {
     case 'locked':
       return 'Muitas tentativas. Gere um novo código.';
     case 'notFound':
-      return 'Não encontrei o celular da câmera. Chegue mais perto e confira se o LANCE está aberto lá.';
+      return 'Não encontrei o celular da câmera. Chegue mais perto e confira se o Repplay está aberto lá.';
     case 'denied':
       return 'Este controle não está mais pareado';
     case 'full':
@@ -321,7 +321,7 @@ export default function Remote() {
           <Text style={styles.role}>ESTE IPHONE É O CONTROLE</Text>
           <Text style={styles.title}>Conectar à câmera</Text>
           {notice !== null ? <Text style={styles.warning}>{notice}</Text> : null}
-          <Step n={1} text="No celular que vai filmar, abra o LANCE e toque em “Celular” para começar o pareamento." />
+          <Step n={1} text="No celular que vai filmar, abra o Repplay e toque em “Celular” para começar o pareamento." />
           <Step n={2} text="Aponte a câmera deste celular para o código QR que aparece lá." />
           <QrScanner active={!connecting} onCode={onQr} />
           {connecting ? (
@@ -393,7 +393,7 @@ export default function Remote() {
           <View style={styles.center}>
             {screenModel.reason === 'unauthorized' ? (
               <>
-                <Text style={styles.text}>Libere o Bluetooth para o LANCE nos Ajustes para usar o controle.</Text>
+                <Text style={styles.text}>Libere o Bluetooth para o Repplay nos Ajustes para usar o controle.</Text>
                 <Button label="Abrir Ajustes" onPress={() => Linking.openSettings()} />
               </>
             ) : (
@@ -420,7 +420,7 @@ export default function Remote() {
               onPress={startRecording}
             />
             {startFailed ? (
-              <Text style={styles.warning}>A gravação não começou. Confira se o LANCE está aberto no celular da câmera.</Text>
+              <Text style={styles.warning}>A gravação não começou. Confira se o Repplay está aberto no celular da câmera.</Text>
             ) : (
               <Text style={styles.hint}>Ou comece pelo próprio celular da câmera.</Text>
             )}
@@ -432,7 +432,7 @@ export default function Remote() {
           <View style={styles.center}>
             <PulseRing color={colors.warning} size={64} />
             <Text style={styles.status}>{`Reconectando a ${screenModel.hostName}…`}</Text>
-            <Text style={styles.hint}>Deixe o LANCE aberto nos dois celulares.</Text>
+            <Text style={styles.hint}>Deixe o Repplay aberto nos dois celulares.</Text>
             <Button label={retryShown ? 'Reconectando…' : 'Tentar reconexão'} loading={retryShown} onPress={retryNow} />
             <ForgetCamera name={hostLabel} onPress={forgetCamera} />
           </View>

@@ -36,7 +36,7 @@ type Popup = { id: string; name: string; view: CheckView };
 
 /** The line under a remote's name: what its state means for the player. */
 export function peerHint(linked: boolean): string {
-  return linked ? 'Pronto para salvar lances' : 'Abra o LANCE neste celular para reconectar';
+  return linked ? 'Pronto para salvar lances' : 'Abra o Repplay neste celular para reconectar';
 }
 
 function RowButton({ label, accessibilityLabel, tone, disabled, onPress }: {
@@ -314,7 +314,7 @@ export default function Pairing() {
             ) : (
               <>
                 <View style={styles.steps}>
-                  <Step n={1} text="No outro celular, abra o LANCE e toque em “Usar este celular como controle”." />
+                  <Step n={1} text="No outro celular, abra o Repplay e toque em “Usar este celular como controle”." />
                   <Step n={2} text="Aponte a câmera dele para este código QR." />
                 </View>
                 {offer !== null ? (
@@ -343,7 +343,7 @@ export default function Pairing() {
                           ? 'Código vencido. Gere um novo.'
                           : `Válido por ${clock(secondsLeft)}`}
                     </Text>
-                    <Text style={styles.note}>O LANCE precisa estar instalado no outro celular.</Text>
+                    <Text style={styles.note}>O Repplay precisa estar instalado no outro celular.</Text>
                   </>
                 ) : (
                   <Text style={styles.warning}>Não foi possível gerar o código. Tente de novo.</Text>

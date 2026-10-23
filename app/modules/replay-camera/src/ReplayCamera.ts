@@ -191,7 +191,7 @@ export function remoteControllerForget(): void {
   if (ReplayCameraModule.remoteControllerForget) ReplayCameraModule.remoteControllerForget();
 }
 
-/** Pairs with the camera phone named in a scanned `lance://pair` link; the result arrives as `onRemotePairing`. */
+/** Pairs with the camera phone named in a scanned `repplay://pair` link; the result arrives as `onRemotePairing`. */
 export function remoteControllerPairWithLink(hostId: string, secret: string, hostName: string): void {
   if (ReplayCameraModule.remoteControllerPairWithLink) {
     ReplayCameraModule.remoteControllerPairWithLink(hostId, secret, hostName);

@@ -1,12 +1,13 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Linking, StyleSheet, Text, View } from 'react-native';
+import { Image, Linking, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { requestPermissions } from '../../modules/replay-camera';
 import { Button } from '../components/Button';
 import { PhoneIcon, ShareIcon, ShieldIcon, ArmsUpIcon } from '../components/icons';
 import { repo } from '../data/mmkv';
+import { BRAND_LOGO, logoAspect } from '../share/brandLogo';
 import { colors, fonts } from '../theme/tokens';
 
 const STEPS = [
@@ -29,10 +30,7 @@ export default function Onboarding() {
 
   return (
     <SafeAreaView style={styles.root}>
-      <View style={styles.brand}>
-        <View style={styles.dot} />
-        <Text style={styles.wordmark}>LANCE</Text>
-      </View>
+      <Image source={BRAND_LOGO} style={styles.logo} resizeMode="contain" accessibilityLabel="Repplay" />
 
       <Text style={styles.title} accessibilityRole="header">
         GRAVE TUDO.{'\n'}
@@ -71,9 +69,7 @@ export default function Onboarding() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.ground, paddingHorizontal: 24, paddingTop: 24, gap: 28 },
-  brand: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  dot: { width: 12, height: 12, borderRadius: 6, backgroundColor: colors.accent },
-  wordmark: { fontFamily: fonts.displayBold, fontSize: 26, letterSpacing: 2, color: colors.text },
+  logo: { height: 30, aspectRatio: logoAspect(), alignSelf: 'flex-start' },
   title: { fontFamily: fonts.displayBold, fontSize: 46, lineHeight: 46, color: colors.text },
   steps: { gap: 14 },
   step: { flexDirection: 'row', gap: 12, alignItems: 'flex-start' },

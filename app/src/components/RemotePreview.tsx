@@ -70,7 +70,7 @@ function PreviewBody({ onClose }: { onClose: () => void }) {
               {frame === null ? 'Abrindo a imagem da câmera…' : 'Imagem parada. Reconectando…'}
             </Text>
             {frame === null ? (
-              <Text style={styles.hint}>O LANCE precisa estar aberto e com a câmera ligada no outro celular.</Text>
+              <Text style={styles.hint}>O Repplay precisa estar aberto e com a câmera ligada no outro celular.</Text>
             ) : null}
           </View>
         ) : null}
