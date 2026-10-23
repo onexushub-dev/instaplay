@@ -176,9 +176,9 @@ test('updateClip stores the new trim and edit', () => {
 test('listSessions finds games stored before the game index existed', () => {
   const map = new Map<string, string>();
   const old = { id: 'old', sport: 'beachTennis', startedAt: 5, endedAt: 9 };
-  map.set('lance:v1:session:old', JSON.stringify(old));
-  map.set('lance:v1:clip:c1', JSON.stringify({ id: 'c1', sessionId: 'old', createdAt: 6, source: 'screen', path: '/a.mp4', durationMs: 1, trim: { startMs: 0, endMs: 1 } }));
-  map.set('lance:v1:clips-of:old', JSON.stringify(['c1']));
+  map.set('repplay:v1:session:old', JSON.stringify(old));
+  map.set('repplay:v1:clip:c1', JSON.stringify({ id: 'c1', sessionId: 'old', createdAt: 6, source: 'screen', path: '/a.mp4', durationMs: 1, trim: { startMs: 0, endMs: 1 } }));
+  map.set('repplay:v1:clips-of:old', JSON.stringify(['c1']));
   const repo = createRepo(memoryKV(map), fakeFiles({ '/a.mp4': 1 }), () => 'x');
   expect(repo.listSessions().map((g) => g.session.id)).toEqual(['old']);
 });

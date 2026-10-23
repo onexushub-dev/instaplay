@@ -8,14 +8,14 @@ import UIKit
 /// The phone is a BLE central. It keeps a connection request pending to the paired camera phone at all times: iOS completes
 /// it by itself as soon as the camera is in range and advertising, even after a drop in the middle of a recording, so there
 /// is nothing to retry by hand. A scan runs alongside for a camera that changed its Bluetooth identity (reinstall, reset).
-/// It also pairs: from the `lance://pair` link (the QR secret) or from the 6 digits typed.
+/// It also pairs: from the `repplay://pair` link (the QR secret) or from the 6 digits typed.
 /// Rules and formats live in Core (`BleHandshake`, `BleFrames`, `RemoteMessage`, `TrustedPeers`).
 final class RemoteController: NSObject {
   static let shared = RemoteController()
 
-  private static let log = Logger(subsystem: "LANCE", category: "RemoteController")
+  private static let log = Logger(subsystem: "Repplay", category: "RemoteController")
   /// Where the camera phone's Bluetooth identity is remembered: "hostId|peripheral uuid".
-  private static let rememberedKey = "lance.remote.cameraPeripheral"
+  private static let rememberedKey = "repplay.remote.cameraPeripheral"
   /// A phone that turned out not to be ours is left alone this long.
   private static let blockFor: TimeInterval = 30
   private static let pairTimeout: TimeInterval = 20
@@ -35,7 +35,7 @@ final class RemoteController: NSObject {
     }
   }
 
-  private let hosts = TrustedPeers(store: KeychainPeerStore(account: "lance.remote.hosts"))
+  private let hosts = TrustedPeers(store: KeychainPeerStore(account: "repplay.remote.hosts"))
   private var central: CBCentralManager?
   private var bluetooth: CBManagerState = .unknown
   /// The camera phone we are connecting or connected to.
@@ -95,7 +95,7 @@ final class RemoteController: NSObject {
     }
   }
 
-  /// `secret` is the base64url text of the `lance://pair` link. The result arrives as `onRemotePairing`.
+  /// `secret` is the base64url text of the `repplay://pair` link. The result arrives as `onRemotePairing`.
   func pair(hostId: String, secret: String, hostName: String) {
     onMain {
       guard let key = Self.decodeSecret(secret) else { return fail("notFound") }
@@ -134,7 +134,7 @@ final class RemoteController: NSObject {
     if active {
       if central == nil {
         central = CBCentralManager(delegate: self, queue: .main,
-                                   options: [CBCentralManagerOptionRestoreIdentifierKey: "lance.remote.central"])
+                                   options: [CBCentralManagerOptionRestoreIdentifierKey: "repplay.remote.central"])
       } else {
         lookForCamera()
       }

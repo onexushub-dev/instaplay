@@ -14,13 +14,13 @@ export interface FileProbe {
 }
 
 const key = {
-  prefs: 'lance:v1:prefs',
-  session: (id: string) => `lance:v1:session:${id}`,
-  clip: (id: string) => `lance:v1:clip:${id}`,
-  clipsOf: (sessionId: string) => `lance:v1:clips-of:${sessionId}`,
-  sessions: 'lance:v1:sessions',
+  prefs: 'repplay:v1:prefs',
+  session: (id: string) => `repplay:v1:session:${id}`,
+  clip: (id: string) => `repplay:v1:clip:${id}`,
+  clipsOf: (sessionId: string) => `repplay:v1:clips-of:${sessionId}`,
+  sessions: 'repplay:v1:sessions',
 };
-const SESSION_PREFIX = 'lance:v1:session:';
+const SESSION_PREFIX = 'repplay:v1:session:';
 
 /** Sessions and clips stored on the phone, one JSON value per record. IDs are UUIDs, ready for a future account. */
 export function createRepo(kv: KV, files: FileProbe, newId: () => string) {

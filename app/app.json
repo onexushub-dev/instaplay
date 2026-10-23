@@ -1,29 +1,29 @@
 {
   "expo": {
-    "name": "LANCE",
-    "slug": "lance",
+    "name": "Repplay",
+    "slug": "repplay",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "lance",
+    "scheme": "repplay",
     "userInterfaceStyle": "dark",
     "ios": {
       "icon": "./assets/expo.icon",
-      "bundleIdentifier": "app.lance.mobile",
+      "bundleIdentifier": "app.repplay.mobile",
       "infoPlist": {
-        "NSCameraUsageDescription": "O LANCE usa a câmera para gravar seus clipes.",
-        "NSMicrophoneUsageDescription": "O LANCE grava o som dos seus clipes.",
-        "NSSpeechRecognitionUsageDescription": "O LANCE escuta você dizer \"salvar\" ou \"gravar\" para salvar o clipe sem tocar no celular.",
+        "NSCameraUsageDescription": "O Repplay usa a câmera para gravar seus clipes.",
+        "NSMicrophoneUsageDescription": "O Repplay grava o som dos seus clipes.",
+        "NSSpeechRecognitionUsageDescription": "O Repplay escuta você dizer \"salvar\" ou \"gravar\" para salvar o clipe sem tocar no celular.",
         "LSApplicationQueriesSchemes": [
           "instagram-stories"
         ],
-        "NSPhotoLibraryAddUsageDescription": "O LANCE salva os clipes que você exportar na sua galeria.",
-        "NSLocalNetworkUsageDescription": "O LANCE usa a rede local para conversar com o outro celular que serve de controle.",
+        "NSPhotoLibraryAddUsageDescription": "O Repplay salva os clipes que você exportar na sua galeria.",
+        "NSLocalNetworkUsageDescription": "O Repplay usa a rede local para conversar com o outro celular que serve de controle.",
         "NSBonjourServices": [
-          "_lance-remote._tcp",
-          "_lance-remote._udp"
+          "_repplay-remote._tcp",
+          "_repplay-remote._udp"
         ],
-        "NSBluetoothAlwaysUsageDescription": "O LANCE usa o Bluetooth para conversar com o outro celular que serve de controle.",
+        "NSBluetoothAlwaysUsageDescription": "O Repplay usa o Bluetooth para conversar com o outro celular que serve de controle.",
         "UIBackgroundModes": [
           "bluetooth-central"
         ]
@@ -32,13 +32,13 @@
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#0B0B09",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "app.lance.mobile",
+      "package": "app.repplay.mobile",
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO"
@@ -53,9 +53,9 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#208AEF",
+          "backgroundColor": "#0F100D",
           "image": "./assets/images/splash-icon.png",
-          "imageWidth": 76
+          "imageWidth": 200
         }
       ],
       "expo-font",

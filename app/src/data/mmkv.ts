@@ -5,7 +5,7 @@ import { createMMKV } from 'react-native-mmkv';
 import { createRepo, type FileProbe, type KV } from './repo';
 import { thumbnailPath } from './thumbnailPath';
 
-const storage = createMMKV({ id: 'lance' });
+const storage = createMMKV({ id: 'repplay' });
 
 export const kv: KV = {
   getString: (k) => storage.getString(k),

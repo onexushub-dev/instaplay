@@ -25,12 +25,12 @@ export type ZoomRange = { min: number; max: number; continuous: boolean };
 export type SaveClipOptions = { source: TriggerSource; at: number };
 export type SavedClip = { clipPath: string; durationMs: number };
 
-/** Apple Watch link: no paired watch · paired without the LANCE app · ready. */
+/** Apple Watch link: no paired watch · paired without the Repplay app · ready. */
 export type WatchStatus = 'unsupported' | 'notInstalled' | 'ready';
 
 /** Second iPhone as a remote: idle · looking for the other phone · talking to it · Local Network not allowed. */
 export type RemoteLink = 'idle' | 'searching' | 'connected' | 'denied';
-/** Why the link is `denied`: Bluetooth is off, or the LANCE is not allowed to use it. */
+/** Why the link is `denied`: Bluetooth is off, or the Repplay is not allowed to use it. */
 export type RemoteLinkReason = 'off' | 'unauthorized';
 /** `connected` is only filled in for the paired remotes of the camera phone (`remoteHostPeers`): is the link up right now. */
 export type RemotePeer = { id: string; name: string; connected?: boolean };

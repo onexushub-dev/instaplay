@@ -19,7 +19,7 @@ export function checkTitle(name: string, view: CheckView): string {
 /** The line under the title; null while it is still checking. */
 export function checkDetail(view: CheckView): string | null {
   if (view.phase === 'ok') return `${view.ms} ms`;
-  if (view.phase === 'failed') return 'Abra o LANCE nesse celular e tente de novo.';
+  if (view.phase === 'failed') return 'Abra o Repplay nesse celular e tente de novo.';
   return null;
 }
 

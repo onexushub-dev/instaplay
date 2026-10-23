@@ -1,5 +1,5 @@
 // Step 0 Bluetooth LE spike (spec docs/superpowers/specs/2026-10-23-ble-remote-design.md, section 9).
-// Throwaway test screen, reached with the link lance://ble-spike. Not the product UI.
+// Throwaway test screen, reached with the link repplay://ble-spike. Not the product UI.
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';

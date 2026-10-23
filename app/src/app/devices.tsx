@@ -19,11 +19,11 @@ const WAITED_LONG_MS = 15_000;
 const STEPS = [
   'Ligue o controle e deixe em modo de pareamento.',
   'Abra Ajustes > Bluetooth e toque no nome dele.',
-  'Volte ao LANCE e aperte um botão do controle.',
+  'Volte ao Repplay e aperte um botão do controle.',
 ];
 
 const FORGET_HELP =
-  'O LANCE deixa de mostrar este controle como pareado. Para desconectar de vez: Ajustes > Bluetooth > ⓘ ao lado do controle > Ignorar este dispositivo.';
+  'O Repplay deixa de mostrar este controle como pareado. Para desconectar de vez: Ajustes > Bluetooth > ⓘ ao lado do controle > Ignorar este dispositivo.';
 
 /** The Bluetooth remote's side of the Dispositivos sheet: what to do to connect it, and proof when it works. */
 export default function Devices() {

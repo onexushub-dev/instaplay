@@ -33,7 +33,7 @@ function failureText(reason: RemotePairFailure): string {
     case 'locked':
       return 'Muitas tentativas. Gere um novo código.';
     case 'notFound':
-      return 'Não encontrei o celular da câmera. Chegue mais perto e confira se o LANCE está aberto lá.';
+      return 'Não encontrei o celular da câmera. Chegue mais perto e confira se o Repplay está aberto lá.';
     case 'denied':
       return 'Este celular não está mais pareado com a câmera. Pareie de novo.';
     case 'full':
@@ -47,7 +47,7 @@ function failureText(reason: RemotePairFailure): string {
   }
 }
 
-/** Where the `lance://pair?...` link (read by the Camera app from the QR code) lands. */
+/** Where the `repplay://pair?...` link (read by the Camera app from the QR code) lands. */
 export default function Pair() {
   const params = useLocalSearchParams<{ h?: string; s?: string; n?: string }>();
   const h = one(params.h);

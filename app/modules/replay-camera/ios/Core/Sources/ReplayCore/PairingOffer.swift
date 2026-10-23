@@ -87,6 +87,6 @@ public struct PairingOffer {
       .replacingOccurrences(of: "+", with: "-")
       .replacingOccurrences(of: "/", with: "_")
       .replacingOccurrences(of: "=", with: "")
-    return "lance://pair?h=\(hostId)&s=\(encodedSecret)&n=\(name)"
+    return "repplay://pair?h=\(hostId)&s=\(encodedSecret)&n=\(name)"
   }
 }

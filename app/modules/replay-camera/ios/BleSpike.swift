@@ -16,7 +16,7 @@ final class BleSpike: NSObject {
   static let rxUUID = CBUUID(string: "6E3F0002-8C1B-4F6E-9D4B-2A7C5E0B1A10")
   static let txUUID = CBUUID(string: "6E3F0003-8C1B-4F6E-9D4B-2A7C5E0B1A10")
   static let psmUUID = CBUUID(string: "6E3F0004-8C1B-4F6E-9D4B-2A7C5E0B1A10")
-  private static let knownKey = "lance.blespike.camera"
+  private static let knownKey = "repplay.blespike.camera"
   private static let frameSize = 24 * 1024
   private static let streamSeconds = 10.0
 
@@ -81,7 +81,7 @@ final class BleSpike: NSObject {
     DispatchQueue.main.async {
       self.stopAll()
       self.central = CBCentralManager(
-        delegate: self, queue: .main, options: [CBCentralManagerOptionRestoreIdentifierKey: "lance.blespike.central"])
+        delegate: self, queue: .main, options: [CBCentralManagerOptionRestoreIdentifierKey: "repplay.blespike.central"])
       self.log("controle: ligando o Bluetooth")
     }
   }
