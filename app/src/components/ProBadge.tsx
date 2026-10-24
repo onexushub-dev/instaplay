@@ -4,9 +4,9 @@ import { colors, fonts } from '../theme/tokens';
 import { LockIcon } from './icons';
 
 /** The "Pro" mark of a paid option the player does not have: lock and text in an accent pill, pinned over the upper edge of its parent. */
-export function ProBadge({ label, right = 10 }: { label: string; right?: number }) {
+export function ProBadge({ label, right = 10, top = -9 }: { label: string; right?: number; top?: number }) {
   return (
-    <View pointerEvents="none" style={[styles.badge, { right }]}>
+    <View pointerEvents="none" style={[styles.badge, { top, right }]}>
       <LockIcon color={colors.onAccent} size={9} />
       <Text style={styles.text}>{label}</Text>
     </View>
@@ -16,7 +16,6 @@ export function ProBadge({ label, right = 10 }: { label: string; right?: number 
 const styles = StyleSheet.create({
   badge: {
     position: 'absolute',
-    top: -9,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 2,

@@ -160,8 +160,8 @@ export default function Setup() {
   const watchSupported = Platform.OS === 'ios';
   const watchAllowed = triggerAllowed('watch', plan);
   const watchOn = watchSupported && watchAllowed && watch === 'ready';
-  // The Bluetooth remote and the phone remote are paid too. Pairing and testing them stays open to everyone; the lock
-  // is on turning them on for a game.
+  // The Bluetooth remote and the phone remote are paid too: on the free plan their tiles open the paywall instead of
+  // their screens.
   const bluetoothAllowed = triggerAllowed('remote', plan);
   const phoneAllowed = triggerAllowed('phone', plan);
   const triggersLocked = !bluetoothAllowed || !phoneAllowed || (watchSupported && !watchAllowed);
@@ -389,7 +389,6 @@ export default function Setup() {
           <WatchIcon color={iconColor(watchOn)} size={32} />
           {remoteSupported ? <QrIcon color={iconColor(remoteLinked > 0)} size={32} /> : null}
         </View>
-        <Text style={styles.summaryClip}>{t('setup.clipUpTo', { seconds: clipSeconds })}</Text>
       </Pressable>
     );
   }
@@ -448,6 +447,7 @@ export default function Setup() {
         </View>
 
         <View style={triggersLocked ? styles.triggerGroup : styles.triggerPlain}>
+          {triggersLocked ? <View pointerEvents="none" style={styles.triggerOutline} /> : null}
           <View style={styles.gridRow}>
             <TriggerTile
               icon={<RemoteIcon />}
@@ -455,7 +455,9 @@ export default function Setup() {
               status={remoteView.statusText}
               active={remoteWorks}
               lockedHint={bluetoothAllowed ? undefined : t('setup.proOnly')}
-              onPress={() => router.push({ pathname: '/devices', params: { kind: 'remote' } })}
+              onPress={
+                bluetoothAllowed ? () => router.push({ pathname: '/devices', params: { kind: 'remote' } }) : () => void openPaywall(t)
+              }
             />
             <TriggerTile
               icon={<WatchIcon />}
@@ -476,7 +478,7 @@ export default function Setup() {
                   status={controllersStatus(t, remoteLinked)}
                   active={remoteLinked > 0}
                   lockedHint={phoneAllowed ? undefined : t('setup.proOnly')}
-                  onPress={() => router.push('/pairing')}
+                  onPress={phoneAllowed ? () => router.push('/pairing') : () => void openPaywall(t)}
                 />
                 <TriggerTile
                   icon={<TapIcon />}
@@ -484,7 +486,7 @@ export default function Setup() {
                   status={cameraStatus(t, controlHost)}
                   active={controlHost !== null}
                   lockedHint={phoneAllowed ? undefined : t('setup.proOnly')}
-                  onPress={() => router.push('/remote')}
+                  onPress={phoneAllowed ? () => router.push('/remote') : () => void openPaywall(t)}
                 />
               </View>
               {controlHost !== null ? (
@@ -499,7 +501,7 @@ export default function Setup() {
               ) : null}
             </>
           ) : null}
-          {triggersLocked ? <ProBadge label={t('setup.proBadge')} right={6} /> : null}
+          {triggersLocked ? <ProBadge label={t('setup.proBadge')} top={-15} right={-1} /> : null}
         </View>
 
         {speechDenied ? <Text style={styles.error}>{t('setup.speechDenied')}</Text> : null}
@@ -586,7 +588,6 @@ const styles = StyleSheet.create({
   summaryHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
   summaryChevron: { fontSize: 12, color: colors.muted },
   summaryIcons: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-evenly', minHeight: 48 },
-  summaryClip: { fontFamily: fonts.bodySemi, fontSize: 13, color: colors.soft, textAlign: 'center' },
   clipLength: { gap: 8 },
   clipLengthHint: { fontFamily: fonts.body, fontSize: 12, color: colors.soft },
   section: {
@@ -604,9 +605,10 @@ const styles = StyleSheet.create({
     color: colors.soft,
     textDecorationLine: 'underline',
   },
-  // The outline reaches out into the sheet's side padding, so the tiles inside are as wide as the free ones, and rows keep one gap.
-  triggerGroup: { gap: 8, padding: 6, marginHorizontal: -7, marginTop: -4, borderWidth: 1, borderColor: colors.accent, borderRadius: radius.card },
-  triggerPlain: { gap: 8, marginTop: -4 },
+  // The outline is drawn around the tiles, out in the sheet's side padding, so the tiles keep the width of the free ones.
+  triggerGroup: { gap: 8, marginTop: 2 },
+  triggerOutline: { position: 'absolute', top: -7, left: -7, right: -7, bottom: -7, borderWidth: 1, borderColor: colors.accent, borderRadius: radius.card },
+  triggerPlain: { gap: 8 },
   grid: { gap: 8 },
   gridRow: { flexDirection: 'row', gap: 8 },
   error: { fontFamily: fonts.bodySemi, fontSize: 14, color: colors.warning },
