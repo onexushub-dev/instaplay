@@ -43,6 +43,7 @@ function fakeDeps() {
     haptic: jest.fn(),
     now: () => t,
     useRemote: () => {},
+    onClipSaved: jest.fn(),
   };
   return {
     deps,
@@ -580,4 +581,12 @@ test('right after the recording starts, a gesture, voice or volume press saves n
   advance(100);
   await act(async () => view.result.current.trigger('screen'));
   expect(camera.saveClip).toHaveBeenCalledWith({ source: 'screen', at: 1100 });
+});
+
+test('a saved clip is handed over for the Modo Foco analysis', async () => {
+  const { view, deps, finishSave } = await started();
+  await act(async () => view.result.current.trigger('screen'));
+  await act(async () => finishSave());
+  const [clip] = deps.repo.listClips(view.result.current.state.sessionId!);
+  expect(deps.onClipSaved).toHaveBeenCalledWith(clip.id);
 });

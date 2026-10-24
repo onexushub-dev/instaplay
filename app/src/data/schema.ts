@@ -46,6 +46,8 @@ export type Session = { id: string; sport: Sport; startedAt: number; endedAt?: n
 export const MAX_GAME_NAME = 40;
 export const MAX_CLIP_NAME = 40;
 
+export type ClipFocus = { v: 1; status: 'pending' | 'ready' | 'none' | 'failed'; file?: string };
+
 export type Clip = {
   id: string;
   sessionId: string;
@@ -65,7 +67,20 @@ export type Clip = {
   /** Where the useful video starts after a black start (0 = from the beginning); unset until the editor first checked. */
   contentStartMs?: number;
   /** Editor choices; absent = normal speed, with sound, no zoom. `slowmo` is how clips saved before speeds were stored. */
-  edit?: { slowmo?: boolean; speed?: 0.5 | 1 | 1.5 | 2; muted: boolean; zoom?: { scale: number; cx: number; cy: number }; rotation?: 0 | 90 | 180 | 270 };
+  edit?: {
+    slowmo?: boolean;
+    speed?: 0.5 | 1 | 1.5 | 2;
+    muted: boolean;
+    zoom?: { scale: number; cx: number; cy: number };
+    rotation?: 0 | 90 | 180 | 270;
+    /** Modo Foco for this clip; absent = on. */
+    focus?: boolean;
+  };
+  /**
+   * The Modo Foco analysis: `pending` while queued or running, `ready` with the framing `file`, `none` when there were
+   * too few people for a framing, `failed` when the analysis broke. Absent = never analysed (clips from before it).
+   */
+  focus?: ClipFocus;
   /** Optional name the player gives the clip (like a recording's name). */
   name?: string;
   /** When the edited video was last saved to Photos / sent through the share sheet (the clip itself stays inside the app). */
@@ -85,6 +100,8 @@ export type Prefs = {
   voiceEnabled: boolean;
   /** When a press of the Bluetooth remote was first heard; the app cannot see the iOS pairing, only presses. */
   remoteTestedAt?: number;
+  /** The Modo Foco introduction (the first framed clip) was shown. */
+  focusIntroSeen?: boolean;
   /** The player's changes to a mode's defaults, kept per mode. */
   modeSettings?: Partial<Record<ModeId, StoredModeSettings>>;
 };

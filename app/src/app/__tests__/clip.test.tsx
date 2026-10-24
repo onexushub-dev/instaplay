@@ -19,20 +19,31 @@ jest.mock('../../../modules/replay-camera', () => ({
   exportClip: jest.fn(async () => ({ path: '/exports/e1.mp4', durationMs: 30000 })),
   createThumbnail: jest.fn(async () => '/c1.jpg'),
   findContentStart: jest.fn(async () => 0),
+  isFocusSupported: jest.fn(() => true),
 }));
+jest.mock('../../focus/appFocusQueue', () => ({ focusQueue: { ensure: jest.fn() } }));
+jest.mock('../../data/focusFile', () => ({ ...jest.requireActual('../../data/focusFile'), readFocusFile: jest.fn(() => undefined) }));
+jest.mock('../../components/useReduceMotion', () => ({ useReduceMotion: jest.fn(() => false) }));
+jest.mock('../../share/ZoomableVideo', () => {
+  const props: { last?: any } = {};
+  return { __props: props, ZoomableVideo: (p: any) => ((props.last = p), null) };
+});
 jest.mock('../../components/TrimBar', () => {
   const props: { last?: any } = {};
   return { __props: props, TrimBar: (p: any) => ((props.last = p), null) };
 });
 jest.mock('../../data/mmkv', () => {
   let clip: any;
+  let prefs: any = jest.requireActual('../../data/schema').DEFAULT_PREFS;
   return {
     __setClip: (c: any) => (clip = c),
+    __setPrefs: (p: any) => (prefs = p),
     removeFile: jest.fn(),
     repo: {
       getClip: () => clip,
       listClips: () => (clip ? [{ id: 'c0' }, clip] : []),
-      getPrefs: () => jest.requireActual('../../data/schema').DEFAULT_PREFS,
+      getPrefs: () => prefs,
+      setPrefs: jest.fn((p: object) => (prefs = { ...prefs, ...p })),
       getSession: () => ({ id: 's1', sport: clip?.durationMs > 60000 ? 'musculacao' : 'beachTennis', startedAt: 0 }),
       updateClip: jest.fn((id: string, patch: object) => (clip = { ...clip, ...patch })),
       renameClip: jest.fn(),
@@ -58,6 +69,8 @@ const base = {
 beforeEach(() => {
   jest.clearAllMocks();
   __setClip({ ...base });
+  // The intro is covered by its own tests; elsewhere it was already seen.
+  jest.requireMock('../../data/mmkv').__setPrefs({ ...jest.requireActual('../../data/schema').DEFAULT_PREFS, focusIntroSeen: true });
   // jest-expo's ImageLoader mock predates RN 0.88's promise-based getSize.
   (jest.spyOn(Image, 'getSize') as jest.Mock).mockResolvedValue({ width: 1920, height: 1080 });
 });
@@ -381,5 +394,127 @@ describe('a black start', () => {
     await open();
     expect(screen.getByText('-0:46')).toBeTruthy();
     expect(jest.requireMock('../../components/TrimBar').__props.last.floorMs).toBe(10750);
+  });
+});
+
+describe('Modo Foco', () => {
+  const { focusQueue } = jest.requireMock('../../focus/appFocusQueue');
+  const { readFocusFile } = jest.requireMock('../../data/focusFile');
+  const { __props: video } = jest.requireMock('../../share/ZoomableVideo');
+  const { useReduceMotion } = jest.requireMock('../../components/useReduceMotion');
+  const { __setPrefs } = jest.requireMock('../../data/mmkv');
+  const ready = { v: 1, status: 'ready', file: '/c1.focus.json' };
+  const track = { startMs: 30000, stepMs: 100, rects: [[0.1, 0.1, 0.8, 0.8]] };
+  const chip = () => screen.getByRole('switch', { name: 'Modo Foco' });
+
+  beforeEach(() => {
+    readFocusFile.mockImplementation((path: string) => (path === '/c1.focus.json' ? track : undefined));
+  });
+
+  test('a ready clip opens with Modo Foco on and the picture following the play', async () => {
+    __setClip({ ...base, focus: ready });
+    await open();
+    expect(chip().props.accessibilityState).toMatchObject({ checked: true });
+    expect(video.last.follow).toBeDefined();
+    expect(readFocusFile).toHaveBeenCalledWith('/c1.focus.json', 'landscape');
+  });
+
+  test('turning it off is stored on the clip and shows the whole video', async () => {
+    __setClip({ ...base, focus: ready });
+    await open();
+    await act(async () => fireEvent.press(chip()));
+    expect(repo.updateClip).toHaveBeenLastCalledWith('c1', { edit: { speed: 1, muted: false, focus: false } });
+    // The repo stand-in does not notify the screen: open the stored clip again.
+    await open();
+    expect(chip().props.accessibilityState).toMatchObject({ checked: false });
+    expect(video.last.follow).toBeUndefined();
+  });
+
+  test('turned off stays off when another choice is made', async () => {
+    __setClip({ ...base, focus: ready, edit: { muted: false, focus: false } });
+    await open();
+    await fireEvent.press(screen.getByRole('button', { name: 'Velocidade 2x' }));
+    expect(repo.updateClip).toHaveBeenLastCalledWith('c1', { edit: { speed: 2, muted: false, focus: false } });
+  });
+
+  test('while the analysis runs the chip says it is preparing', async () => {
+    __setClip({ ...base, focus: { v: 1, status: 'pending' } });
+    await open();
+    expect(screen.getByText('Modo Foco · preparando')).toBeTruthy();
+    expect(video.last.follow).toBeUndefined();
+  });
+
+  test.each([
+    ['nobody found', { focus: { v: 1, status: 'none', file: '/c1.focus.json' } }],
+    ['analysis failed', { focus: { v: 1, status: 'failed' } }],
+    ['video turned by hand', { focus: ready, edit: { muted: false, rotation: 90 } }],
+    ['framing file unreadable', { focus: { v: 1, status: 'ready', file: '/gone.focus.json' } }],
+  ])('no chip when %s', async (_name, extra) => {
+    __setClip({ ...base, ...extra });
+    await open();
+    expect(screen.queryByRole('switch', { name: 'Modo Foco' })).toBeNull();
+    expect(video.last.follow).toBeUndefined();
+  });
+
+  test('no chip on a phone without the analysis', async () => {
+    camera.isFocusSupported.mockReturnValueOnce(false).mockReturnValue(false);
+    await open();
+    expect(screen.queryByRole('switch', { name: 'Modo Foco' })).toBeNull();
+    camera.isFocusSupported.mockReturnValue(true);
+  });
+
+  test('opening a clip makes sure it gets analysed', async () => {
+    await open();
+    expect(focusQueue.ensure).toHaveBeenCalledWith(expect.objectContaining({ id: 'c1' }));
+  });
+
+  test('a pinch while following takes over: the zoom is kept and Modo Foco turns off', async () => {
+    __setClip({ ...base, focus: ready });
+    await open();
+    await act(async () => video.last.onCommit({ scale: 2, cx: 0.4, cy: 0.5 }));
+    expect(repo.updateClip).toHaveBeenLastCalledWith('c1', {
+      edit: { speed: 1, muted: false, zoom: { scale: 2, cx: 0.4, cy: 0.5 }, focus: false },
+    });
+  });
+
+  test('turning Modo Foco back on drops the hand zoom', async () => {
+    __setClip({ ...base, focus: ready, edit: { muted: false, focus: false, zoom: { scale: 2, cx: 0.5, cy: 0.5 } } });
+    await open();
+    expect(chip().props.accessibilityState).toMatchObject({ checked: false });
+    await act(async () => fireEvent.press(chip()));
+    expect(repo.updateClip).toHaveBeenLastCalledWith('c1', { edit: { speed: 1, muted: false } });
+  });
+
+  test('saving to Photos exports with the framing', async () => {
+    __setClip({ ...base, focus: ready });
+    await open();
+    await pressAction('Salvar na galeria');
+    expect(camera.exportClip).toHaveBeenCalledWith(
+      expect.objectContaining({ focus: { path: '/c1.focus.json', aspect: 'landscape' } }),
+    );
+  });
+
+  test('the first framed clip introduces Modo Foco once', async () => {
+    __setPrefs({ ...jest.requireActual('../../data/schema').DEFAULT_PREFS, focusIntroSeen: false });
+    __setClip({ ...base, focus: ready });
+    await open();
+    expect(screen.getByText('Modo Foco: a câmera acompanha o lance')).toBeTruthy();
+    expect(repo.setPrefs).toHaveBeenCalledWith({ focusIntroSeen: true });
+  });
+
+  test('with reduced motion the intro is the caption only', async () => {
+    useReduceMotion.mockReturnValue(true);
+    __setPrefs({ ...jest.requireActual('../../data/schema').DEFAULT_PREFS, focusIntroSeen: false });
+    __setClip({ ...base, focus: ready });
+    await open();
+    expect(screen.getByText('Modo Foco: a câmera acompanha o lance')).toBeTruthy();
+    expect(video.last.enterMs).toBe(0);
+    useReduceMotion.mockReturnValue(false);
+  });
+
+  test('a clip already introduced opens without the caption', async () => {
+    __setClip({ ...base, focus: ready });
+    await open();
+    expect(screen.queryByText('Modo Foco: a câmera acompanha o lance')).toBeNull();
   });
 });

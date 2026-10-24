@@ -8,6 +8,6 @@ let package = Package(
   products: [.library(name: "ReplayCore", targets: ["ReplayCore"])],
   targets: [
     .target(name: "ReplayCore"),
-    .testTarget(name: "ReplayCoreTests", dependencies: ["ReplayCore"])
+    .testTarget(name: "ReplayCoreTests", dependencies: ["ReplayCore"], resources: [.copy("Fixtures")])
   ]
 )

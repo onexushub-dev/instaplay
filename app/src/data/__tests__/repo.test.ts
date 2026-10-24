@@ -222,3 +222,54 @@ test('deleteSession removes the game, its clips and the index entry, and returns
   expect(repo.listClips(s.id)).toEqual([]);
   expect(repo.listSessions()).toEqual([]);
 });
+
+test('updateClip stores the Modo Foco status and never brings back a deleted clip', () => {
+  const repo = setup({ '/c/1.mp4': 10 });
+  const clip = repo.addClip({ sessionId: 's', createdAt: 1, source: 'screen', path: '/c/1.mp4', durationMs: 60000 });
+  const focus = { v: 1 as const, status: 'ready' as const, file: '/c/1.focus.json' };
+  expect(repo.updateClip(clip.id, { focus })!.focus).toEqual(focus);
+  expect(repo.getClip(clip.id)!.focus).toEqual(focus);
+  repo.deleteClip(clip.id);
+  expect(repo.updateClip(clip.id, { focus })).toBeUndefined();
+  expect(repo.getClip(clip.id)).toBeUndefined();
+});
+
+describe('clips after iOS moved the app folder', () => {
+  // iOS can give the app a new data folder on reinstall: same files, new absolute path.
+  const oldDocs = '/var/mobile/Containers/Data/Application/OLD-ID/Documents/';
+  const newDocs = '/var/mobile/Containers/Data/Application/NEW-ID/Documents/';
+
+  function setupMoved(existing: string[]) {
+    const sizes: Record<string, number> = {};
+    for (const p of existing) sizes[p] = 10;
+    let n = 0;
+    const kv = memoryKV();
+    const write = createRepo(kv, { exists: () => true, sizeBytes: () => 1 }, () => `id-${++n}`);
+    const session = write.startSession('quadra', 1000);
+    const a = write.addClip({ sessionId: session.id, createdAt: 2000, source: 'screen', path: `${oldDocs}clips/a.mp4`, durationMs: 60000 });
+    write.updateClip(a.id, { focus: { v: 1, status: 'ready', file: `${oldDocs}clips/a.focus.json` } });
+    const b = write.addClip({ sessionId: session.id, createdAt: 3000, source: 'screen', path: `${oldDocs}clips/b.mp4`, durationMs: 60000 });
+    const repo = createRepo(kv, fakeFiles(sizes), () => `id-${++n}`);
+    return { repo, session, a, b };
+  }
+
+  test('a clip found in the new folder gets its new path back, and its game shows again', () => {
+    const { repo, session, a } = setupMoved([`${newDocs}clips/a.mp4`]);
+    expect(repo.listSessions()).toHaveLength(0);
+    expect(repo.relocateClips(newDocs)).toBe(1);
+    expect(repo.getClip(a.id)!.path).toBe(`${newDocs}clips/a.mp4`);
+    expect(repo.getClip(a.id)!.focus!.file).toBe(`${newDocs}clips/a.focus.json`);
+    expect(repo.listSessions().map((g) => g.session.id)).toEqual([session.id]);
+  });
+
+  test('a clip whose file is gone everywhere is left as it was', () => {
+    const { repo, b } = setupMoved([`${newDocs}clips/a.mp4`]);
+    repo.relocateClips(newDocs);
+    expect(repo.getClip(b.id)!.path).toBe(`${oldDocs}clips/b.mp4`);
+  });
+
+  test('clips already in place are not touched', () => {
+    const { repo } = setupMoved([`${oldDocs}clips/a.mp4`, `${oldDocs}clips/b.mp4`]);
+    expect(repo.relocateClips(newDocs)).toBe(0);
+  });
+});

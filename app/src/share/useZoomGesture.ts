@@ -6,17 +6,23 @@ import { NO_ZOOM, panZoom, pinchZoom, type Zoom } from './editing';
 type Touch = { pageX: number; pageY: number };
 type Props = {
   zoom: Zoom;
+  /** Where a gesture starts from when the picture is not showing `zoom` (Modo Foco's moving framing). */
+  baseZoom?: () => Zoom;
   /** Where the video sits inside the touch area, to turn finger movement into a fraction of it. */
   box: { left: number; top: number; width: number; height: number };
   onChange: (zoom: Zoom) => void;
   onCommit: (zoom: Zoom) => void;
   onTap: () => void;
   onSwipe?: (step: 1 | -1) => void;
+  /** A still finger held past HOLD_MS: true when it starts, false when the finger lifts (no tap, no commit then). */
+  onHold?: (down: boolean) => void;
 };
 
 const TAP_SLOP = 10;
 const TAP_MS = 350;
 const SWIPE_MIN = 60;
+/** Longer than a tap, so a slow tap never turns into a hold. */
+const HOLD_MS = 400;
 
 /** Two fingers pinch and move the picture, one finger moves it when zoomed in; a short touch without movement is a tap. */
 export function useZoomGesture(props: Props) {
@@ -36,6 +42,23 @@ export function useZoomGesture(props: Props) {
     let multi = false;
     let totalX = 0;
     let totalY = 0;
+    // Over a followed picture (Modo Foco) one finger only flicks between clips; two fingers take over the framing.
+    let following = false;
+    let holdTimer: ReturnType<typeof setTimeout> | undefined;
+    let holding = false;
+    const stopHoldTimer = () => {
+      if (holdTimer !== undefined) clearTimeout(holdTimer);
+      holdTimer = undefined;
+    };
+    /** Ends a hold; true when there was one (the touch then means nothing else). */
+    const endHold = () => {
+      stopHoldTimer();
+      if (!holding) return false;
+      holding = false;
+      const onHold = latest.current.onHold;
+      if (onHold) onHold(false);
+      return true;
+    };
 
     const read = (touches: readonly Touch[]) => {
       const x = touches.reduce((sum, t) => sum + t.pageX, 0) / touches.length;
@@ -48,7 +71,8 @@ export function useZoomGesture(props: Props) {
     return PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onPanResponderGrant: (e) => {
-        current = latest.current.zoom;
+        following = latest.current.baseZoom !== undefined;
+        current = latest.current.baseZoom ? latest.current.baseZoom() : latest.current.zoom;
         previous = read(e.nativeEvent.touches);
         startedAt = Date.now();
         travelled = 0;
@@ -58,8 +82,20 @@ export function useZoomGesture(props: Props) {
         // Where the touch area starts on screen: the touch's page position minus its position inside the area.
         const first = e.nativeEvent.touches[0] as Touch & { locationX?: number; locationY?: number };
         origin = { x: first.pageX - (first.locationX ?? 0), y: first.pageY - (first.locationY ?? 0) };
+        stopHoldTimer();
+        holding = false;
+        if (latest.current.onHold) {
+          holdTimer = setTimeout(() => {
+            holdTimer = undefined;
+            const onHold = latest.current.onHold;
+            if (multi || travelled >= TAP_SLOP || !onHold) return;
+            holding = true;
+            onHold(true);
+          }, HOLD_MS);
+        }
       },
       onPanResponderMove: (e) => {
+        if (holding) return; // the picture is shown whole until the finger lifts
         const touches = e.nativeEvent.touches;
         if (!touches.length) return;
         const next = read(touches);
@@ -73,6 +109,10 @@ export function useZoomGesture(props: Props) {
           travelled += Math.hypot(dx, dy);
           totalX += dx;
           totalY += dy;
+          if (following && !multi) {
+            previous = next;
+            return;
+          }
           let zoom = current;
           if (next.count > 1 && previous.distance > 0) {
             const focal = { x: (next.x - origin.x - box.left) / width, y: (next.y - origin.y - box.top) / height };
@@ -87,14 +127,18 @@ export function useZoomGesture(props: Props) {
         previous = next;
       },
       onPanResponderRelease: () => {
+        if (endHold()) return;
         const tap = !multi && travelled < TAP_SLOP && Date.now() - startedAt < TAP_MS;
         const swipe =
-          !multi && latest.current.zoom.scale <= 1.01 && Math.abs(totalX) > SWIPE_MIN && Math.abs(totalX) > 2 * Math.abs(totalY);
+          !multi && (following || latest.current.zoom.scale <= 1.01) && Math.abs(totalX) > SWIPE_MIN && Math.abs(totalX) > 2 * Math.abs(totalY);
         if (tap) latest.current.onTap();
         else if (swipe && latest.current.onSwipe) latest.current.onSwipe(totalX < 0 ? 1 : -1);
         else latest.current.onCommit(current);
       },
-      onPanResponderTerminate: () => latest.current.onCommit(current),
+      onPanResponderTerminate: () => {
+        if (endHold()) return;
+        latest.current.onCommit(current);
+      },
     });
   });
 

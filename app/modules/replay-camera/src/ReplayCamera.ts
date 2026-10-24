@@ -1,8 +1,10 @@
 import ReplayCameraModule from './ReplayCameraModule';
 import type {
+  AnalyzeFocusOptions,
   DeviceUpright,
   ExportClipOptions,
   ExportedClip,
+  FocusAnalysis,
   ReplayCameraModuleEvents,
   SaveClipOptions,
   RemotePairing,
@@ -111,6 +113,26 @@ export async function findContentStart(clipPath: string): Promise<number> {
 /** Renders the cut (optionally slowed/muted) into a width×height video with the overlay on top. */
 export function exportClip(opts: ExportClipOptions): Promise<ExportedClip> {
   return ReplayCameraModule.exportClip(opts);
+}
+
+// ---- Modo Foco (iOS only). Without the native functions there is no analysis.
+
+/** Whether this phone can analyse clips for Modo Foco. False on Android and web. */
+export function isFocusSupported(): boolean {
+  return typeof ReplayCameraModule.analyzeFocus === 'function';
+}
+
+/** Analyses the clip between `startMs` and `endMs`; rejects with code `CANCELLED` after `cancelFocus`. */
+export function analyzeFocus(opts: AnalyzeFocusOptions): Promise<FocusAnalysis> {
+  const analyze = ReplayCameraModule.analyzeFocus;
+  if (typeof analyze !== 'function') return Promise.reject(new Error('Modo Foco is not supported here'));
+  return analyze.call(ReplayCameraModule, opts);
+}
+
+/** Stops the analysis of this clip if it is waiting or running. */
+export function cancelFocus(clipPath: string): void {
+  const cancel = ReplayCameraModule.cancelFocus;
+  if (typeof cancel === 'function') cancel.call(ReplayCameraModule, clipPath);
 }
 
 /** Opens Instagram's Story composer with the video; 'unavailable' without a Meta App ID or Instagram. */

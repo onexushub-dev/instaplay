@@ -1,9 +1,11 @@
 import { NativeModule, requireNativeModule } from 'expo';
 
 import type {
+  AnalyzeFocusOptions,
   DeviceUpright,
   ExportClipOptions,
   ExportedClip,
+  FocusAnalysis,
   ReplayCameraModuleEvents,
   SaveClipOptions,
   RemotePairing,
@@ -34,6 +36,9 @@ declare class ReplayCameraModule extends NativeModule<ReplayCameraModuleEvents> 
   createThumbnail(clipPath: string, atMs: number): Promise<string>;
   findContentStart?(clipPath: string): Promise<number>;
   exportClip(opts: ExportClipOptions): Promise<ExportedClip>;
+  // Modo Foco (iOS only: missing on Android and in older builds).
+  analyzeFocus?(opts: AnalyzeFocusOptions): Promise<FocusAnalysis>;
+  cancelFocus?(clipPath: string): void;
   getWatchStatus(): WatchStatus;
   watchSync(recording: boolean, clipCount: number, startedAt: number | null): void;
   watchSignal(saved: boolean): void;

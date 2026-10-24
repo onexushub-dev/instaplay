@@ -64,3 +64,17 @@ Itens adiados nas revisões finais. Nada aqui bloqueia o uso, mas vale resolver 
 ## Editor unificado (zoom e velocidades)
 - Android: a exportação ignora `crop` (zoom da prévia não vai para o arquivo). Fazer com `Crop` do Media3 na etapa do Android.
 - Android: a exportação também ignora `rotation` (botão Girar do editor). Usar `ScaleAndRotateTransformation` do Media3.
+
+## Modo Foco (2026-10-23)
+- Medir no iPhone XR: tempo de análise e de exportação (meta: clipe de 30 s analisado em até ~30 s).
+- Exportar um clipe horizontal com Modo Foco e conferir a marca d'água no canto em todos os quadros.
+- Checklist de campo da spec (§8): contra-ataque, jogada parada, público perto da quadra, jogo inteiro com calor e bateria.
+- Story a partir de clipe horizontal com o enquadramento vertical (decisão própria: muda o "nunca cortar a quadra").
+- Bola por esporte (Create ML ou modelo Apache 2.0; nunca Ultralytics/AGPL no app).
+- Modo Foco pago: entra no `entitlement` antes da loja.
+- (revisão) Espelhar o zoom manual nos valores animados em `onChange`, não em `useEffect` (1 quadro de atraso na pinça e possível piscada do quadro inteiro ao assumir o enquadramento).
+- (revisão) `focusQueue.ensure` deve pôr o clipe aberto na frente da fila (hoje espera atrás do acúmulo de um jogo quente).
+- (revisão) Testar o filtro de pessoas paradas diretamente (o teste da arquibancada distingue 0,46 de 0,50 só).
+- (revisão) Segurar para ver o original: limpar o timer ao desmontar e soltar o `peek` se o acompanhamento mudar durante o toque.
+- (revisão) Vídeo quadrado: analisador usa largura >= altura, editor usa largura > altura.
+- (revisão) Teste do layout do overlay (retrato e paisagem) prometido na spec §4.5.

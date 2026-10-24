@@ -14,18 +14,28 @@ export type ExportOptions = {
   /** Extra clockwise turn on top of the one stored in the clip. */
   rotation: 0 | 90 | 180 | 270;
   watermark: boolean;
+  /** Modo Foco: the framing file and the track of the clip's shape; absent = no moving framing. */
+  focus?: { path: string; aspect: 'landscape' | 'portrait' };
 };
 
 /**
  * Free: 720x1280 (spec 6), pro: 1080x1920. A landscape clip gets the same frame turned on its side, so it fills
  * the screen when the phone is held sideways, like any video in Photos. Every export carries the app mark.
- * Any speed other than 1x plays without sound.
+ * Any speed other than 1x plays without sound. Modo Foco applies when on, ready, not turned and not zoomed by hand.
  */
-export function exportOptions(tier: Tier, edit: Clip['edit'], trim: Clip['trim'], landscape = false): ExportOptions {
+export function exportOptions(
+  tier: Tier,
+  edit: Clip['edit'],
+  trim: Clip['trim'],
+  landscape = false,
+  focus?: { path: string; ready: boolean },
+): ExportOptions {
   const pro = tier === 'pro';
   const short = pro ? 1080 : 720;
   const long = pro ? 1920 : 1280;
-  const { speed, muted, zoom, rotation } = readEdit(edit);
+  const { speed, muted, zoom, rotation, focus: focusOn } = readEdit(edit);
+  const manualZoom = zoom !== undefined && zoom.scale > 1;
+  const follow = focus !== undefined && focus.ready && focusOn && rotation === 0 && !manualZoom;
   return {
     width: landscape ? long : short,
     height: landscape ? short : long,
@@ -36,5 +46,6 @@ export function exportOptions(tier: Tier, edit: Clip['edit'], trim: Clip['trim']
     crop: zoom && zoom.scale > 1 ? cropRect(zoom) : undefined,
     rotation,
     watermark: true,
+    ...(follow ? { focus: { path: focus.path, aspect: landscape ? ('landscape' as const) : ('portrait' as const) } } : {}),
   };
 }

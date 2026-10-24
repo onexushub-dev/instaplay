@@ -111,6 +111,34 @@ export function createRepo(kv: KV, files: FileProbe, newId: () => string) {
       return clip;
     },
 
+    /**
+     * iOS can give the app a new data folder on reinstall: the clip files are still there but the stored absolute paths
+     * point to the old folder. Clips whose file is missing but exists under `documentsDir` (the current Documents
+     * folder, ending in '/') get their path, and their Modo Foco file, moved there. Returns how many moved.
+     */
+    relocateClips(documentsDir: string): number {
+      const MARK = '/Documents/';
+      const rebase = (path: string) => {
+        const at = path.indexOf(MARK);
+        return at < 0 ? undefined : documentsDir + path.slice(at + MARK.length);
+      };
+      let moved = 0;
+      for (const sessionId of sessionIds()) {
+        for (const clipId of clipIds(sessionId)) {
+          const clip = read<Clip>(key.clip(clipId));
+          if (!clip || files.exists(clip.path)) continue;
+          const path = rebase(clip.path);
+          if (!path || path === clip.path || !files.exists(path)) continue;
+          const file = clip.focus && clip.focus.file ? rebase(clip.focus.file) : undefined;
+          const focus = clip.focus && file ? { ...clip.focus, file } : clip.focus;
+          write(key.clip(clipId), { ...clip, path, ...(focus ? { focus } : {}) });
+          moved += 1;
+        }
+      }
+      if (moved > 0) changed();
+      return moved;
+    },
+
     /** Games with at least one existing clip, newest first. */
     listSessions(): { session: Session; clips: number; firstClip?: Clip }[] {
       return sessionIds()
@@ -124,7 +152,10 @@ export function createRepo(kv: KV, files: FileProbe, newId: () => string) {
         .sort((a, b) => b.session.startedAt - a.session.startedAt);
     },
 
-    updateClip(id: string, patch: { trim?: Clip['trim']; edit?: Clip['edit']; contentStartMs?: number; savedAt?: number; sharedAt?: number }): Clip | undefined {
+    updateClip(
+      id: string,
+      patch: { trim?: Clip['trim']; edit?: Clip['edit']; contentStartMs?: number; savedAt?: number; sharedAt?: number; focus?: Clip['focus'] },
+    ): Clip | undefined {
       const existing = read<Clip>(key.clip(id));
       if (!existing) return undefined; // deleted meanwhile: never resurrect a record without a file
       const clip = { ...existing, ...patch };

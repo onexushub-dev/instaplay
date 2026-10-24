@@ -54,3 +54,20 @@ test('a landscape clip gets the frame turned on its side, in both tiers', () => 
   expect(exportOptions('free', undefined, trim, true)).toMatchObject({ width: 1280, height: 720 });
   expect(exportOptions('free', undefined, trim)).toMatchObject({ width: 720, height: 1280 });
 });
+
+describe('Modo Foco', () => {
+  const ready = { path: '/c/1.focus.json', ready: true };
+
+  test('a ready framing follows the clip shape when Modo Foco is on (the default)', () => {
+    expect(exportOptions('pro', undefined, trim, true, ready).focus).toEqual({ path: '/c/1.focus.json', aspect: 'landscape' });
+    expect(exportOptions('pro', { muted: false }, trim, false, ready).focus).toEqual({ path: '/c/1.focus.json', aspect: 'portrait' });
+  });
+
+  test('no framing when off, not ready, turned or zoomed by hand', () => {
+    expect(exportOptions('pro', { muted: false, focus: false }, trim, true, ready).focus).toBeUndefined();
+    expect(exportOptions('pro', undefined, trim, true, { path: '/c/1.focus.json', ready: false }).focus).toBeUndefined();
+    expect(exportOptions('pro', undefined, trim, true).focus).toBeUndefined();
+    expect(exportOptions('pro', { muted: false, rotation: 90 }, trim, true, ready).focus).toBeUndefined();
+    expect(exportOptions('pro', { muted: false, zoom: { scale: 2, cx: 0.5, cy: 0.5 } }, trim, true, ready).focus).toBeUndefined();
+  });
+});

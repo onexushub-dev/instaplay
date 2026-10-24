@@ -20,8 +20,9 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { createThumbnail, exportClip, findContentStart } from '../../../modules/replay-camera';
+import { createThumbnail, exportClip, findContentStart, isFocusSupported } from '../../../modules/replay-camera';
 import { ExportProgress, type ExportJob } from '../../components/ExportProgress';
+import { FocusChip } from '../../components/FocusChip';
 import { clipNumber, seconds, timeOfDay } from '../../components/format';
 import {
   BackIcon,
@@ -36,8 +37,12 @@ import {
 } from '../../components/icons';
 import { Playhead } from '../../components/Playhead';
 import { TrimBar } from '../../components/TrimBar';
+import { useReduceMotion } from '../../components/useReduceMotion';
+import { readFocusFile } from '../../data/focusFile';
 import { removeFile, repo } from '../../data/mmkv';
 import { MAX_CLIP_NAME } from '../../data/schema';
+import { focusQueue } from '../../focus/appFocusQueue';
+import { useFocusFraming } from '../../focus/useFocusFraming';
 import { effectiveSettings } from '../../modes/registry';
 import { captureOverlay } from '../../share/captureOverlay';
 import { contentFloor, nextRotation, outputMs, raiseToFloor, readEdit, SPEEDS, turnedSize } from '../../share/editing';
@@ -57,6 +62,11 @@ const SAVED_VISIBLE_MS = 3500;
 // The share sheet is up long before `shareAsync` returns (it waits for the sheet to close), so the card leaves early.
 const SHARE_HANDOFF_MS = 1200;
 const PREPARE_FAILED = 'Não foi possível preparar o vídeo. Tente de novo.';
+const FOCUS_INTRO = 'Modo Foco: a câmera acompanha o lance';
+const FOCUS_INTRO_MS = 3000;
+/** How long the framing takes to grow out of the whole video: the first time ever, and when it gets ready on screen. */
+const FOCUS_INTRO_EASE_MS = 700;
+const FOCUS_READY_EASE_MS = 400;
 
 type Player = ReturnType<typeof useVideoPlayer>;
 
@@ -173,7 +183,47 @@ function ClipEditor({ id }: { id: string }) {
   const shape = turnedSize(videoSize, edit.rotation);
   // A landscape clip is exported (and previewed) in a landscape frame; a vertical one in a vertical frame.
   const landscape = shape.width > shape.height;
-  const options = clip ? exportOptions(tier, clip.edit, clip.trim, landscape) : undefined;
+
+  // Modo Foco: the framing of the clip's shape, once its analysis is ready and the shape is known.
+  const focusSupported = isFocusSupported();
+  const focusState = clip && clip.focus ? clip.focus : undefined;
+  const focusFile = focusState && focusState.status === 'ready' ? focusState.file : undefined;
+  const focusAspect = landscape ? 'landscape' : 'portrait';
+  const track = useMemo(
+    () => (focusFile && sizeKnown ? readFocusFile(focusFile, focusAspect) : undefined),
+    [focusFile, focusAspect, sizeKnown],
+  );
+  const handZoom = edit.zoom !== undefined && edit.zoom.scale > 1;
+  const focusActive = track !== undefined && edit.focus && edit.rotation === 0 && !handZoom;
+  let focusChip: 'preparing' | 'on' | 'off' | undefined;
+  if (edit.rotation === 0) {
+    if (track) focusChip = focusActive ? 'on' : 'off';
+    else if (focusSupported && (!focusState || focusState.status === 'pending')) focusChip = 'preparing';
+  }
+  useEffect(() => {
+    const current = repo.getClip(id);
+    if (current && focusSupported) focusQueue.ensure(current);
+  }, [id, focusSupported]);
+  // The introduction, once ever: the framing grows out of the whole video with a caption.
+  const reduceMotion = useReduceMotion();
+  const [introDue] = useState(() => !repo.getPrefs().focusIntroSeen);
+  const [introOver, setIntroOver] = useState(false);
+  const showIntro = introDue && !introOver && focusActive;
+  useEffect(() => {
+    if (!showIntro) return;
+    repo.setPrefs({ focusIntroSeen: true });
+    const timer = setTimeout(() => setIntroOver(true), FOCUS_INTRO_MS);
+    return () => clearTimeout(timer);
+  }, [showIntro]);
+  const [readyAtOpen] = useState(() => {
+    const opened = repo.getClip(id);
+    return opened !== undefined && opened.focus !== undefined && opened.focus.status === 'ready';
+  });
+  const focusEnterMs = reduceMotion ? 0 : showIntro ? FOCUS_INTRO_EASE_MS : readyAtOpen ? 0 : FOCUS_READY_EASE_MS;
+
+  const options = clip
+    ? exportOptions(tier, clip.edit, clip.trim, landscape, focusFile && track ? { path: focusFile, ready: true } : undefined)
+    : undefined;
   const frame = landscape
     ? { width: options?.width ?? 1920, height: options?.height ?? 1080 }
     : { width: options?.width ?? 1080, height: options?.height ?? 1920 };
@@ -208,6 +258,7 @@ function ClipEditor({ id }: { id: string }) {
     p.currentTime = trim.startMs / 1000;
     p.play();
   });
+  const follow = useFocusFraming(player, track, focusActive);
 
   // The first time a clip opens, find where its picture starts: a black start is not part of the video.
   const hasFloor = clip?.contentStartMs !== undefined;
@@ -278,12 +329,21 @@ function ClipEditor({ id }: { id: string }) {
         muted: next.muted,
         ...(next.zoom ? { zoom: next.zoom } : {}),
         ...(next.rotation ? { rotation: next.rotation } : {}),
+        ...(next.focus === false ? { focus: false } : {}),
       },
     });
   }
 
   function commitZoom(z: { scale: number; cx: number; cy: number }) {
-    setEdit({ zoom: z.scale > 1 ? z : undefined });
+    // A pinch on the followed picture takes over: the hand zoom stays and Modo Foco turns off.
+    if (focusActive) setEdit({ zoom: z.scale > 1 ? z : undefined, focus: false });
+    else setEdit({ zoom: z.scale > 1 ? z : undefined });
+  }
+
+  function toggleFocus() {
+    if (focusActive) return setEdit({ focus: false });
+    setEdit({ focus: true, zoom: undefined });
+    setZoomKey((k) => k + 1);
   }
 
   function openFull(on: boolean) {
@@ -311,6 +371,7 @@ function ClipEditor({ id }: { id: string }) {
     }
     setScrubMs(ms);
     seek(player, ms);
+    if (follow) follow.sync(ms);
   }
 
   function endScrub() {
@@ -324,6 +385,7 @@ function ClipEditor({ id }: { id: string }) {
     setScrubMs(undefined);
     repo.updateClip(id, { trim: next });
     seek(player, next.startMs);
+    if (follow) follow.sync(next.startMs);
     setPlaying(player, wantsPlay.current);
   }
 
@@ -435,6 +497,8 @@ function ClipEditor({ id }: { id: string }) {
           onCommit={commitZoom}
           onTap={togglePlay}
           onSwipe={goBy}
+          follow={follow}
+          enterMs={focusEnterMs}
         />
         {!playing ? (
           <View pointerEvents="none" style={styles.pausedBadge}>
@@ -442,20 +506,21 @@ function ClipEditor({ id }: { id: string }) {
           </View>
         ) : null}
         <SafeAreaView pointerEvents="box-none" style={styles.fullTop}>
-          {zoomed ? (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Voltar zoom para 1x"
-              onPress={() => {
-                setEdit({ zoom: undefined });
-                setZoomKey((k) => k + 1);
-              }}
-              style={styles.zoomBadge}>
-              <Text style={styles.zoomText}>{`${edit.zoom!.scale.toFixed(1)}x  ✕`}</Text>
-            </Pressable>
-          ) : (
-            <View />
-          )}
+          <View style={styles.sideLeft}>
+            {focusChip ? <FocusChip state={focusChip} onToggle={toggleFocus} /> : null}
+            {zoomed ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Voltar zoom para 1x"
+                onPress={() => {
+                  setEdit({ zoom: undefined });
+                  setZoomKey((k) => k + 1);
+                }}
+                style={styles.zoomBadge}>
+                <Text style={styles.zoomText}>{`${edit.zoom!.scale.toFixed(1)}x  ✕`}</Text>
+              </Pressable>
+            ) : null}
+          </View>
           <IconButton label="Sair da tela cheia" onPress={() => openFull(false)}>
             <CloseIcon />
           </IconButton>
@@ -478,10 +543,19 @@ function ClipEditor({ id }: { id: string }) {
             onCommit={commitZoom}
             onTap={togglePlay}
             onSwipe={goBy}
+            follow={follow}
+            enterMs={focusEnterMs}
           />
           <View pointerEvents="none" style={StyleSheet.absoluteFill}>
             <ShareOverlay frame={frame} layout={layout} scale={scale} />
           </View>
+          {showIntro ? (
+            <View pointerEvents="none" style={styles.focusIntroWrap}>
+              <Text accessibilityRole="alert" style={styles.focusIntro}>
+                {FOCUS_INTRO}
+              </Text>
+            </View>
+          ) : null}
           {!playing ? (
             <View pointerEvents="none" style={styles.pausedBadge}>
               <View style={styles.pausedDisc}>
@@ -535,20 +609,21 @@ function ClipEditor({ id }: { id: string }) {
           </IconButton>
         </View>
         <View pointerEvents="box-none" style={styles.sideRow}>
-          {zoomed ? (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Voltar zoom para 1x"
-              onPress={() => {
-                setEdit({ zoom: undefined });
-                setZoomKey((k) => k + 1);
-              }}
-              style={styles.zoomBadge}>
-              <Text style={styles.zoomText}>{`${edit.zoom!.scale.toFixed(1)}x  ✕`}</Text>
-            </Pressable>
-          ) : (
-            <View />
-          )}
+          <View style={styles.sideLeft}>
+            {focusChip ? <FocusChip state={focusChip} onToggle={toggleFocus} /> : null}
+            {zoomed ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Voltar zoom para 1x"
+                onPress={() => {
+                  setEdit({ zoom: undefined });
+                  setZoomKey((k) => k + 1);
+                }}
+                style={styles.zoomBadge}>
+                <Text style={styles.zoomText}>{`${edit.zoom!.scale.toFixed(1)}x  ✕`}</Text>
+              </Pressable>
+            ) : null}
+          </View>
           <View style={styles.sideColumn}>
             <IconButton
               label="Girar vídeo"
@@ -704,6 +779,18 @@ const styles = StyleSheet.create({
   top: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 },
   sideRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginTop: 10 },
   sideColumn: { gap: 8 },
+  sideLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  focusIntroWrap: { position: 'absolute', left: 0, right: 0, bottom: 24, alignItems: 'center' },
+  focusIntro: {
+    fontFamily: fonts.bodyBold,
+    fontSize: 14,
+    color: colors.onAccent,
+    backgroundColor: colors.accent,
+    borderRadius: 999,
+    overflow: 'hidden',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
   icon: {
     width: 42,
     height: 42,
