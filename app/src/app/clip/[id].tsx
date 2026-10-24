@@ -33,6 +33,7 @@ import { clipNumber, seconds, timeOfDay } from '../../components/format';
 import { BackIcon, PauseIcon, PlayIcon } from '../../components/icons';
 import { Playhead } from '../../components/Playhead';
 import { TrimBar } from '../../components/TrimBar';
+import { knownShape, rememberShape } from '../../components/clipShape';
 import { useClipThumbnail } from '../../components/useClipThumbnail';
 import { useReduceMotion } from '../../components/useReduceMotion';
 import { readFocusFile } from '../../data/focusFile';
@@ -57,6 +58,8 @@ const SLIDE_MS = 220;
 const RUBBER = 0.3;
 /** If the first frame is never reported, the still gives way after this long anyway. */
 const POSTER_MAX_MS = 1500;
+/** Neighbours are measured this long after the open clip, so they never hold it up. */
+const NEIGHBOUR_WAIT_MS = 300;
 /** Which side the next clip comes in from; set just before navigating, read by the screen that mounts. */
 let enterFrom: 1 | -1 | 0 = 0;
 
@@ -156,13 +159,14 @@ function ClipEditor({ id }: { id: string }) {
   const wantsPlay = useRef(true);
   const [scrubMs, setScrubMs] = useState<number>();
 
-  const [videoSize, setVideoSize] = useState({ width: 1920, height: 1080 });
+  // Known already when this clip was next door to the one just swiped from: it opens at its own shape.
+  const [videoSize, setVideoSize] = useState(() => (clip ? knownShape(clip.path) : undefined) || { width: 1920, height: 1080 });
   // Exports wait for the real shape: a portrait clip exported with the landscape default gets wrong bands.
-  const [sizeKnown, setSizeKnown] = useState(false);
+  const [sizeKnown, setSizeKnown] = useState(() => clip !== undefined && knownShape(clip.path) !== undefined);
   const [busy, setBusy] = useState(false);
   // What is being made right now, so the screen can say what for and for how long.
   const [job, setJob] = useState<ExportJob>();
-  // Like the Photos app: the clip leaves to one side while the next one comes in from the other.
+  // Like the Photos app: the video leaves to one side while the next one comes in from the other; the controls stay.
   const [slide] = useState(() => new Animated.Value(enterFrom * window.width));
   useEffect(() => {
     if (enterFrom === 0) return;
@@ -174,8 +178,9 @@ function ClipEditor({ id }: { id: string }) {
       useNativeDriver: true,
     }).start();
   }, [slide]);
-  // This clip's still over the video until the first frame is drawn (the neighbour's still just slid in).
-  const [poster, setPoster] = useState<string>();
+  // This clip's still over the video until the first frame is drawn: the same still that just slid in as the neighbour.
+  const [posterAt] = useState(() => (clip ? clip.trim.startMs : 0));
+  const poster = useClipThumbnail(clip ? clip.path : '', posterAt);
   const [framed, setFramed] = useState(false);
   useEffect(() => {
     const timer = setTimeout(() => setFramed(true), POSTER_MAX_MS);
@@ -250,11 +255,11 @@ function ClipEditor({ id }: { id: string }) {
   useEffect(() => {
     if (!clipPath) return;
     createThumbnail(clipPath, startMs)
-      .then((path) => {
-        setPoster(`file://${path}`);
-        return Image.getSize(`file://${path}`);
+      .then((path) => Image.getSize(`file://${path}`))
+      .then(({ width, height }) => {
+        rememberShape(clipPath, { width, height });
+        setVideoSize({ width, height });
       })
-      .then(({ width, height }) => setVideoSize({ width, height }))
       .catch(() => {}) // keep the default shape
       .finally(() => setSizeKnown(true));
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the shape does not change with the cut
@@ -604,7 +609,18 @@ function ClipEditor({ id }: { id: string }) {
       height: layout.video.height * scale,
     };
     return (
-      <View style={styles.stage}>
+      <Animated.View testID="clip-stage" style={[styles.stage, { transform: [{ translateX: slide }] }]}>
+        {/* What a drag uncovers on each side: the neighbouring clips' stills, or the way back on the first clip. */}
+        {!editing ? (
+          <>
+            <View pointerEvents="none" style={[styles.neighbour, { left: -area.width, width: area.width }]}>
+              {previous ? <NeighbourStill clip={previous} /> : at === 0 ? <Text style={styles.backHint}>{t('clip.backToRecording')}</Text> : null}
+            </View>
+            <View pointerEvents="none" style={[styles.neighbour, { left: area.width, width: area.width }]}>
+              {next ? <NeighbourStill clip={next} /> : null}
+            </View>
+          </>
+        ) : null}
         <View style={[styles.preview, { width: frame.width * scale, height: previewHeight }]}>
           <ZoomableVideo
             key={zoomKey}
@@ -636,23 +652,12 @@ function ClipEditor({ id }: { id: string }) {
             </View>
           ) : null}
         </View>
-      </View>
+      </Animated.View>
     );
   }
 
   return (
-    <Animated.View style={[styles.root, { transform: [{ translateX: slide }] }]}>
-      {/* What a drag uncovers on each side: the neighbouring clips' stills, or the way back on the first clip. */}
-      {!editing ? (
-        <>
-          <View pointerEvents="none" style={[styles.neighbour, { left: -window.width, width: window.width }]}>
-            {previous ? <NeighbourStill clip={previous} /> : at === 0 ? <Text style={styles.backHint}>{t('clip.backToRecording')}</Text> : null}
-          </View>
-          <View pointerEvents="none" style={[styles.neighbour, { left: window.width, width: window.width }]}>
-            {next ? <NeighbourStill clip={next} /> : null}
-          </View>
-        </>
-      ) : null}
+    <View style={styles.root}>
       {editing ? (
         <ClipEdit
           renderStage={renderStage}
@@ -747,13 +752,25 @@ function ClipEditor({ id }: { id: string }) {
         </Pressable>
       ) : null}
       {job ? <ExportProgress job={job} /> : null}
-    </Animated.View>
+    </View>
   );
 }
 
 /** A neighbouring clip's still, the same one its screen shows until its video starts. */
 function NeighbourStill({ clip }: { clip: { path?: string; trim?: { startMs: number } } }) {
-  const uri = useClipThumbnail(clip.path || '', clip.trim ? clip.trim.startMs : 0);
+  const path = clip.path || '';
+  const uri = useClipThumbnail(path, clip.trim ? clip.trim.startMs : 0);
+  // Its shape too, so that if the swipe lands there the screen opens laid out, with Salvar/Enviar ready.
+  useEffect(() => {
+    if (!uri || !path || knownShape(path)) return;
+    // After the open clip has had its turn: this one only matters if the finger goes there.
+    const timer = setTimeout(() => {
+      Image.getSize(uri)
+        .then(({ width, height }) => rememberShape(path, { width, height }))
+        .catch(() => {});
+    }, NEIGHBOUR_WAIT_MS);
+    return () => clearTimeout(timer);
+  }, [uri, path]);
   return uri ? <ExpoImage source={{ uri }} contentFit="contain" style={StyleSheet.absoluteFill} /> : null;
 }
 

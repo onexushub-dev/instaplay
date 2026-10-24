@@ -1,6 +1,7 @@
-import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react-native';
 import { Alert, Image } from 'react-native';
 
+import { forgetShapes } from '../../components/clipShape';
 import ClipEditor from '../clip/[id]';
 
 jest.mock('expo-router', () => ({ router: { push: jest.fn(), back: jest.fn(), setParams: jest.fn() }, useLocalSearchParams: () => ({ id: 'c1' }) }));
@@ -105,6 +106,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   __setClip({ ...base });
   jest.requireMock('../../data/mmkv').__setFirst(false);
+  forgetShapes();
   // The intro is covered by its own tests; elsewhere it was already seen.
   jest.requireMock('../../data/mmkv').__setPrefs({ ...jest.requireActual('../../data/schema').DEFAULT_PREFS, focusIntroSeen: true });
   // jest-expo's ImageLoader mock predates RN 0.88's promise-based getSize.
@@ -778,6 +780,35 @@ describe('swiping between clips follows the finger', () => {
     await settle();
     expect(router.setParams).not.toHaveBeenCalled();
     expect(router.back).not.toHaveBeenCalled();
+  });
+
+  const shiftOf = (node: any): number => {
+    let shift = 0;
+    for (let n = node; n; n = n.parent) {
+      const style = [n.props.style].flat(Infinity).filter(Boolean);
+      style.forEach((st: any) => (st.transform || []).forEach((t: any) => (shift += t.translateX || 0)));
+    }
+    return shift;
+  };
+
+  test('only the video follows the finger: the name and buttons stay where they are', async () => {
+    await open();
+    await act(async () => video.last.onDrag(150));
+    expect(shiftOf(screen.getByTestId('clip-stage'))).toBe(150);
+    expect(shiftOf(screen.getByRole('button', { name: 'Editar' }))).toBe(0);
+    expect(shiftOf(screen.getByLabelText('Nome do clipe'))).toBe(0);
+  });
+
+  test('the clip next door has its shape worked out, so it opens ready, with nothing jumping in late', async () => {
+    await open();
+    await settle();
+    await act(async () => cleanup());
+    // Now open that neighbour, as a swipe would: its shape must not be waited for again.
+    __setClip({ ...base, id: 'c0', path: '/c0.mp4', trim: { startMs: 1000, endMs: 9000 } });
+    (Image.getSize as jest.Mock).mockReturnValue(new Promise(() => {}));
+    await render(<ClipEditor />);
+    expect(screen.getByRole('button', { name: 'Salvar na galeria' })).toBeEnabled();
+    expect(video.last.poster).toBe('file:///c1.jpg');
   });
 
   test('editing does not follow sideways drags', async () => {
