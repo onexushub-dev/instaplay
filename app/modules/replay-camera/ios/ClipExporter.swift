@@ -14,6 +14,8 @@ enum ClipExporter {
     let rotation: Int
     /// The visible part of the video, 0..1 of its (rotated) size; nil = all of it.
     let crop: CGRect?
+    /// Modo Foco: the framing file and which track to follow (ignored when `crop` is set).
+    var focus: (path: String, aspect: String)? = nil
     let width: Int
     let height: Int
     let overlayPngPath: String?
@@ -57,17 +59,31 @@ enum ClipExporter {
     let natural = try await source.load(.naturalSize)
     let rotated = CGRect(origin: .zero, size: natural).applying(transform)
     let target = FitRect.fit(rotated.size, into: render)
-    let visible = o.crop.map {
-      CGRect(x: $0.minX * rotated.width, y: $0.minY * rotated.height, width: $0.width * rotated.width, height: $0.height * rotated.height)
-    } ?? CGRect(origin: .zero, size: rotated.size)
-    let scale = target.width / visible.width
-    let placement = transform
-      .concatenating(CGAffineTransform(translationX: -rotated.minX - visible.minX, y: -rotated.minY - visible.minY))
-      .concatenating(CGAffineTransform(scaleX: scale, y: scale))
-      .concatenating(CGAffineTransform(translationX: target.minX, y: target.minY))
+    func placement(_ crop: CGRect?) -> CGAffineTransform {
+      let visible = crop.map {
+        CGRect(x: $0.minX * rotated.width, y: $0.minY * rotated.height, width: $0.width * rotated.width, height: $0.height * rotated.height)
+      } ?? CGRect(origin: .zero, size: rotated.size)
+      let scale = target.width / visible.width
+      return transform
+        .concatenating(CGAffineTransform(translationX: -rotated.minX - visible.minX, y: -rotated.minY - visible.minY))
+        .concatenating(CGAffineTransform(scaleX: scale, y: scale))
+        .concatenating(CGAffineTransform(translationX: target.minX, y: target.minY))
+    }
 
     let layer = AVMutableVideoCompositionLayerInstruction(assetTrack: video)
-    layer.setTransform(placement, at: .zero)
+    // Modo Foco: the framing moves along the path, one linear ramp per 100 ms. The overlay below is untouched, so the
+    // mark stays in the corner of the video image in every frame.
+    let segments = o.crop == nil ? o.focus.map { FocusFile.segments(path: $0.path, aspect: $0.aspect, cutStartMs: o.startMs,
+                                                                    cutEndMs: o.endMs, speed: o.speed) } ?? [] : []
+    if segments.isEmpty {
+      layer.setTransform(placement(o.crop), at: .zero)
+    } else {
+      for s in segments {
+        let from = CMTime(seconds: s.fromSec, preferredTimescale: 6000), to = CMTime(seconds: s.toSec, preferredTimescale: 6000)
+        layer.setTransformRamp(fromStart: placement(cgRect(s.from)), toEnd: placement(cgRect(s.to)),
+                               timeRange: CMTimeRange(start: from, end: to))
+      }
+    }
     let instruction = AVMutableVideoCompositionInstruction()
     instruction.timeRange = CMTimeRange(start: .zero, duration: composition.duration)
     instruction.backgroundColor = o.background.cgColor
@@ -106,6 +122,30 @@ enum ClipExporter {
       throw Failure.export(session.error)
     }
     return (out.path, Int(composition.duration.seconds * 1000))
+  }
+}
+
+private func cgRect(_ r: FocusRect) -> CGRect { CGRect(x: r.x, y: r.y, width: r.width, height: r.height) }
+
+/// Reads a Modo Foco file (`FocusAnalyzer`). Anything unreadable, another version or an empty track gives no segments,
+/// and the export shows the whole video.
+enum FocusFile {
+  static func segments(path: String, aspect: String, cutStartMs: Double, cutEndMs: Double, speed: Double) -> [FocusSegment] {
+    guard let data = FileManager.default.contents(atPath: path),
+          let file = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+          (file["v"] as? NSNumber)?.intValue == 1,
+          let stepMs = (file["stepMs"] as? NSNumber)?.doubleValue,
+          let startMs = (file["startMs"] as? NSNumber)?.doubleValue,
+          let rows = file[aspect] as? [[NSNumber]]
+    else {
+      NSLog("[Repplay] Modo Foco file unreadable: %@", path)
+      return []
+    }
+    let rects = rows.compactMap { row -> FocusRect? in
+      row.count == 4 ? FocusRect(x: row[0].doubleValue, y: row[1].doubleValue, width: row[2].doubleValue, height: row[3].doubleValue) : nil
+    }
+    return FocusRamp.segments(rects: rects, startMs: startMs, stepMs: stepMs, cutStartMs: cutStartMs, cutEndMs: cutEndMs,
+                              speed: speed)
   }
 }
 

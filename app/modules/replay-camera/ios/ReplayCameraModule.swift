@@ -45,6 +45,11 @@ struct CropRect: Record {
   @Field var height: Double = 1
 }
 
+struct FocusOption: Record {
+  @Field var path: String = ""
+  @Field var aspect: String = "landscape"
+}
+
 struct ExportClipOptions: Record {
   @Field var clipPath: String = ""
   @Field var startMs: Double = 0
@@ -53,10 +58,19 @@ struct ExportClipOptions: Record {
   @Field var muted: Bool = false
   @Field var rotation: Int = 0
   @Field var crop: CropRect?
+  @Field var focus: FocusOption?
   @Field var width: Int = 1080
   @Field var height: Int = 1920
   @Field var overlayPngPath: String?
   @Field var background: String = "#0F100D"
+}
+
+struct AnalyzeFocusOptions: Record {
+  @Field var clipPath: String = ""
+  @Field var startMs: Double = 0
+  @Field var endMs: Double = 0
+  @Field var outPath: String = ""
+  @Field var debug: Bool = false
 }
 
 public class ReplayCameraModule: Module {
@@ -131,11 +145,13 @@ public class ReplayCameraModule: Module {
 
     AsyncFunction("exportClip") { (o: ExportClipOptions) async throws -> [String: Any] in
       do {
-        let result = try await ClipExporter.export(.init(
+        var options = ClipExporter.Options(
           clipPath: o.clipPath, startMs: o.startMs, endMs: o.endMs, speed: o.speed, muted: o.muted,
           rotation: o.rotation,
           crop: o.crop.map { CGRect(x: $0.x, y: $0.y, width: $0.width, height: $0.height) },
-          width: o.width, height: o.height, overlayPngPath: o.overlayPngPath, background: UIColor(hex: o.background)))
+          width: o.width, height: o.height, overlayPngPath: o.overlayPngPath, background: UIColor(hex: o.background))
+        options.focus = o.focus.map { (path: $0.path, aspect: $0.aspect) }
+        let result = try await ClipExporter.export(options)
         return ["path": result.path, "durationMs": result.durationMs]
       } catch {
         throw ReplayException("ENCODER_FAILED", "\(error)")
@@ -153,6 +169,23 @@ public class ReplayCameraModule: Module {
     AsyncFunction("findContentStart") { (clipPath: String) async -> Double in
       await ClipContent.firstPictureMs(clipPath: clipPath)
     }
+
+    AsyncFunction("analyzeFocus") { (o: AnalyzeFocusOptions) async throws -> [String: Any] in
+      do {
+        let r = try await FocusAnalyzer.analyze(clipPath: o.clipPath, startMs: o.startMs, endMs: o.endMs,
+                                                outPath: o.outPath, debug: o.debug)
+        return ["status": r.ready ? "ready" : "none", "frames": r.frames, "framesWithPeople": r.framesWithPeople,
+                "meanPeople": r.meanPeople, "elapsedMs": r.elapsedMs]
+      } catch FocusAnalyzer.Failure.cancelled {
+        throw ReplayException("CANCELLED", "Focus analysis cancelled")
+      } catch FocusAnalyzer.Failure.interrupted {
+        throw ReplayException("FOCUS_INTERRUPTED", "Focus analysis interrupted (app in the background)")
+      } catch {
+        throw ReplayException("FOCUS_FAILED", "\(error)")
+      }
+    }
+
+    Function("cancelFocus") { (clipPath: String) in FocusAnalyzer.cancel(clipPath: clipPath) }
 
     Function("getWatchStatus") { () -> String in WatchBridge.shared.status }
 

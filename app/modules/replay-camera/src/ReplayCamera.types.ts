@@ -11,7 +11,10 @@ export type ReplayErrorCode =
   | 'CAMERA_PERMISSION'
   | 'CAMERA_UNAVAILABLE'
   | 'ENCODER_FAILED'
-  | 'NO_SESSION';
+  | 'NO_SESSION'
+  | 'CANCELLED'
+  | 'FOCUS_FAILED'
+  | 'FOCUS_INTERRUPTED';
 
 /**
  * `bufferSeconds`: the rolling window kept for saves (default 60; gym modes use 120).
@@ -115,6 +118,8 @@ export type ExportClipOptions = {
   muted: boolean;
   /** The visible part of the video (0..1 of its size) after a zoom; omit for the whole video. iOS only for now. */
   crop?: { x: number; y: number; width: number; height: number };
+  /** Modo Foco: follow this framing file's track (ignored when `crop` is set). iOS only. */
+  focus?: { path: string; aspect: 'landscape' | 'portrait' };
   /** Extra clockwise turn (0, 90, 180 or 270) on top of the clip's own. iOS only for now. */
   rotation?: number;
   width: number;
@@ -126,6 +131,25 @@ export type ExportClipOptions = {
 };
 
 export type ExportedClip = { path: string; durationMs: number };
+
+/** Modo Foco analysis of a clip (iOS only). Writes the framing to `outPath` (see `focusPath`). */
+export type AnalyzeFocusOptions = {
+  clipPath: string;
+  startMs: number;
+  endMs: number;
+  outPath: string;
+  /** Also write the people found in each analysed frame (`samples`), for the test screen. */
+  debug?: boolean;
+};
+
+/** `none`: too few people for a framing (the file has empty tracks). */
+export type FocusAnalysis = {
+  status: 'ready' | 'none';
+  frames: number;
+  framesWithPeople: number;
+  meanPeople: number;
+  elapsedMs: number;
+};
 
 export type ReplayCameraViewProps = {
   style?: StyleProp<ViewStyle>;

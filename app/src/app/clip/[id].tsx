@@ -1,48 +1,49 @@
 import { Directory, File, Paths } from 'expo-file-system';
+import { Image as ExpoImage } from 'expo-image';
 import { Asset, requestPermissionsAsync } from 'expo-media-library';
 import { router, useLocalSearchParams } from 'expo-router';
 import { shareAsync } from 'expo-sharing';
 import { useVideoPlayer } from 'expo-video';
-import { type ComponentRef, type ReactNode, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { type ComponentRef, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import {
-  ActivityIndicator,
   Alert,
   Animated,
+  BackHandler,
   Easing,
   Image,
   PixelRatio,
   Pressable,
   StyleSheet,
   Text,
-  TextInput,
   useWindowDimensions,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { createThumbnail, exportClip, findContentStart } from '../../../modules/replay-camera';
+import { createThumbnail, exportClip, findContentStart, isFocusSupported } from '../../../modules/replay-camera';
+import { ClipEdit } from '../../clip/ClipEdit';
+import { ClipWatch } from '../../clip/ClipWatch';
+import { beginEdit, type EditSnapshot, hasChanges, lastTool, rememberTool, restorePatch, type ToolId } from '../../clip/editSession';
+import { IconButton, SCRIM } from '../../clip/IconButton';
+import { ToolBar } from '../../clip/ToolBar';
+import { EDIT_TOOLS, type EditTool, type FocusUi, type ToolContext } from '../../clip/tools';
+import { WatchProgress } from '../../clip/WatchProgress';
 import { ExportProgress, type ExportJob } from '../../components/ExportProgress';
 import { clipNumber, seconds, timeOfDay } from '../../components/format';
-import {
-  BackIcon,
-  CloseIcon,
-  DownloadIcon,
-  ExpandIcon,
-  PauseIcon,
-  PlayIcon,
-  RotateIcon,
-  ShareIcon,
-  TrashIcon,
-} from '../../components/icons';
+import { BackIcon, PauseIcon, PlayIcon } from '../../components/icons';
 import { Playhead } from '../../components/Playhead';
 import { TrimBar } from '../../components/TrimBar';
+import { useClipThumbnail } from '../../components/useClipThumbnail';
+import { useReduceMotion } from '../../components/useReduceMotion';
+import { readFocusFile } from '../../data/focusFile';
 import { removeFile, repo } from '../../data/mmkv';
-import { MAX_CLIP_NAME } from '../../data/schema';
+import { focusQueue } from '../../focus/appFocusQueue';
+import { useFocusFraming } from '../../focus/useFocusFraming';
 import type { MessageKey } from '../../i18n';
 import { useT } from '../../i18n/useT';
 import { effectiveSettings } from '../../modes/registry';
 import { captureOverlay } from '../../share/captureOverlay';
-import { contentFloor, nextRotation, outputMs, raiseToFloor, readEdit, SPEEDS, turnedSize } from '../../share/editing';
+import { contentFloor, nextRotation, outputMs, raiseToFloor, readEdit, turnedSize } from '../../share/editing';
 import { clipWindow } from '../../share/trim';
 import { usePlan } from '../../share/entitlement';
 import { exportOptions } from '../../share/exportOptions';
@@ -52,12 +53,22 @@ import { ZoomableVideo } from '../../share/ZoomableVideo';
 import { colors, fonts } from '../../theme/tokens';
 
 const SLIDE_MS = 220;
+/** Past the last clip the picture only gives a little, like Photos. */
+const RUBBER = 0.3;
+/** If the first frame is never reported, the still gives way after this long anyway. */
+const POSTER_MAX_MS = 1500;
 /** Which side the next clip comes in from; set just before navigating, read by the screen that mounts. */
 let enterFrom: 1 | -1 | 0 = 0;
 
+/** Loop back this much before the end of the cut: the last time update can land just short of it. */
+const LOOP_EARLY_S = 0.15;
 const SAVED_VISIBLE_MS = 3500;
 // The share sheet is up long before `shareAsync` returns (it waits for the sheet to close), so the card leaves early.
 const SHARE_HANDOFF_MS = 1200;
+const FOCUS_INTRO_MS = 3000;
+/** How long the framing takes to grow out of the whole video: the first time ever, and when it gets ready on screen. */
+const FOCUS_INTRO_EASE_MS = 700;
+const FOCUS_READY_EASE_MS = 400;
 
 type Player = ReturnType<typeof useVideoPlayer>;
 
@@ -93,16 +104,16 @@ function clearOldExports() {
   }
 }
 
-export default function ClipRoute() {
+/**
+ * One clip: watch it clean (Salvar, Enviar, hold for 2x) or edit it (tool bar over the cut; Cancelar undoes). The preview
+ * is the exact frame that gets exported (with the app mark).
+ */
+export default function ClipScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  // Keyed by clip: moving to another clip starts the editor from that clip's own state.
+  // Keyed by clip: moving to another clip starts the screen from that clip's own state.
   return <ClipEditor key={id} id={id} />;
 }
 
-/**
- * One screen to edit, preview and send a lance: cut, speed, sound and zoom on the exact frame that gets exported
- * (9:16 with the app mark), then save to Photos or share. Deleting and renaming live in the top bar.
- */
 function ClipEditor({ id }: { id: string }) {
   const { t, locale } = useT();
   const version = useSyncExternalStore(repo.subscribe, repo.version);
@@ -113,27 +124,31 @@ function ClipEditor({ id }: { id: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- version is the change signal
     [clip, id, version],
   );
-  const session = clip ? repo.getSession(clip.sessionId) : undefined;
-  const maxMs = session ? effectiveSettings(session.sport, repo.getPrefs()).bufferSeconds * 1000 : undefined;
-  const plan = usePlan(clip?.sessionId);
   // `number` is the place in the swipe list ("2 de 3"); the clip's own number is the one it was saved with.
   const ownNumber = clip ? clipNumber(clip, number - 1) : 0;
-  // The clips a swipe can move to: every clip of the session.
   const siblings = useMemo(
     () => (clip ? repo.listClips(clip.sessionId) : []),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- version is the change signal
     [clip, version],
   );
+  const session = clip ? repo.getSession(clip.sessionId) : undefined;
+  const maxMs = session ? effectiveSettings(session.sport, repo.getPrefs()).bufferSeconds * 1000 : undefined;
+  const plan = usePlan(clip?.sessionId);
 
-  const [trim, setTrim] = useState(() => clip?.trim ?? { startMs: 0, endMs: 0 });
+  const [trim, setTrim] = useState(() => (clip ? clip.trim : { startMs: 0, endMs: 0 }));
   const edit = readEdit(clip?.edit);
   const floor = clip?.contentStartMs ?? 0;
   // The track covers only what the clip was first saved with, so the cut can be shortened but never reach moments
   // that already belong to the previous clip.
   const win = clip ? clipWindow(clip, floor) : { startMs: 0, endMs: 0 };
-  // Bumped to start the zoomed video over from the saved zoom (reset, or switching to/from full screen).
+  // Bumped to start the zoomed video over from the saved zoom (reset, turn, Modo Foco back on, mode switch).
   const [zoomKey, setZoomKey] = useState(0);
-  const [full, setFull] = useState(false);
+  // Watch (clean, Salvar/Enviar) or edit (tool bar, Cancelar/Concluir); edit keeps what Cancelar puts back.
+  const [mode, setMode] = useState<'watch' | 'edit'>('watch');
+  const snapshot = useRef<EditSnapshot | undefined>(undefined);
+  const [openTool, setOpenTool] = useState<ToolId>(lastTool);
+  // A finger held on the video in watch mode: 2x while it stays down.
+  const [fast, setFast] = useState(false);
   const window = useWindowDimensions();
   const [name, setName] = useState(() => clip?.name ?? '');
   const [playing, setPlayingState] = useState(true);
@@ -159,6 +174,13 @@ function ClipEditor({ id }: { id: string }) {
       useNativeDriver: true,
     }).start();
   }, [slide]);
+  // This clip's still over the video until the first frame is drawn (the neighbour's still just slid in).
+  const [poster, setPoster] = useState<string>();
+  const [framed, setFramed] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(() => setFramed(true), POSTER_MAX_MS);
+    return () => clearTimeout(timer);
+  }, []);
   // A key, not a text: it is shown in whatever language is current.
   const [notice, setNotice] = useState<MessageKey>();
   // The "saved" confirmation stays long enough to be read.
@@ -177,7 +199,47 @@ function ClipEditor({ id }: { id: string }) {
   const shape = turnedSize(videoSize, edit.rotation);
   // A landscape clip is exported (and previewed) in a landscape frame; a vertical one in a vertical frame.
   const landscape = shape.width > shape.height;
-  const options = clip ? exportOptions(plan, clip.edit, clip.trim, landscape) : undefined;
+
+  // Modo Foco: the framing of the clip's shape, once its analysis is ready and the shape is known.
+  const focusSupported = isFocusSupported();
+  const focusState = clip && clip.focus ? clip.focus : undefined;
+  const focusFile = focusState && focusState.status === 'ready' ? focusState.file : undefined;
+  const focusAspect = landscape ? 'landscape' : 'portrait';
+  const track = useMemo(
+    () => (focusFile && sizeKnown ? readFocusFile(focusFile, focusAspect) : undefined),
+    [focusFile, focusAspect, sizeKnown],
+  );
+  const handZoom = edit.zoom !== undefined && edit.zoom.scale > 1;
+  const focusActive = track !== undefined && edit.focus && edit.rotation === 0 && !handZoom;
+  let focusChip: 'preparing' | 'on' | 'off' | undefined;
+  if (edit.rotation === 0) {
+    if (track) focusChip = focusActive ? 'on' : 'off';
+    else if (focusSupported && (!focusState || focusState.status === 'pending')) focusChip = 'preparing';
+  }
+  useEffect(() => {
+    const current = repo.getClip(id);
+    if (current && focusSupported) focusQueue.ensure(current);
+  }, [id, focusSupported]);
+  // The introduction, once ever: the framing grows out of the whole video with a caption.
+  const reduceMotion = useReduceMotion();
+  const [introDue] = useState(() => !repo.getPrefs().focusIntroSeen);
+  const [introOver, setIntroOver] = useState(false);
+  const showIntro = introDue && !introOver && focusActive;
+  useEffect(() => {
+    if (!showIntro) return;
+    repo.setPrefs({ focusIntroSeen: true });
+    const timer = setTimeout(() => setIntroOver(true), FOCUS_INTRO_MS);
+    return () => clearTimeout(timer);
+  }, [showIntro]);
+  const [readyAtOpen] = useState(() => {
+    const opened = repo.getClip(id);
+    return opened !== undefined && opened.focus !== undefined && opened.focus.status === 'ready';
+  });
+  const focusEnterMs = reduceMotion ? 0 : showIntro ? FOCUS_INTRO_EASE_MS : readyAtOpen ? 0 : FOCUS_READY_EASE_MS;
+
+  const options = clip
+    ? exportOptions(plan, clip.edit, clip.trim, landscape, focusFile && track ? { path: focusFile, ready: true } : undefined)
+    : undefined;
   const frame = landscape
     ? { width: options?.width ?? 1920, height: options?.height ?? 1080 }
     : { width: options?.width ?? 1080, height: options?.height ?? 1920 };
@@ -188,7 +250,10 @@ function ClipEditor({ id }: { id: string }) {
   useEffect(() => {
     if (!clipPath) return;
     createThumbnail(clipPath, startMs)
-      .then((path) => Image.getSize(`file://${path}`))
+      .then((path) => {
+        setPoster(`file://${path}`);
+        return Image.getSize(`file://${path}`);
+      })
       .then(({ width, height }) => setVideoSize({ width, height }))
       .catch(() => {}) // keep the default shape
       .finally(() => setSizeKnown(true));
@@ -212,6 +277,7 @@ function ClipEditor({ id }: { id: string }) {
     p.currentTime = trim.startMs / 1000;
     p.play();
   });
+  const follow = useFocusFraming(player, track, focusActive);
 
   // The first time a clip opens, find where its picture starts: a black start is not part of the video.
   const hasFloor = clip?.contentStartMs !== undefined;
@@ -237,15 +303,33 @@ function ClipEditor({ id }: { id: string }) {
     };
   }, [clipPath, hasFloor, id, player]);
 
-  // Loop the cut; follow speed and sound live.
+  // Loop the cut; follow speed and sound live. Time updates come every 0.1 s, so the last one before the end of the file
+  // can miss it: the player then stops at the end by itself, and its own "reached the end" restarts the cut.
   useEffect(() => {
     applyPlayback(player, edit.speed, edit.muted);
     const sub = player.addListener('timeUpdate', ({ currentTime }) => {
       if (scrubbing.current) return;
-      if (currentTime >= trim.endMs / 1000 || currentTime < trim.startMs / 1000 - 0.5) seek(player, trim.startMs);
+      if (currentTime >= trim.endMs / 1000 - LOOP_EARLY_S || currentTime < trim.startMs / 1000 - 0.5) seek(player, trim.startMs);
+    });
+    const end = player.addListener('playToEnd', () => {
+      seek(player, trim.startMs);
+      setPlaying(player, wantsPlay.current);
+    });
+    return () => {
+      sub.remove();
+      end.remove();
+    };
+  }, [player, trim, edit.speed, edit.muted]);
+
+  // Android back while editing works as Cancelar, asking first when something changed (iOS has no back gesture here).
+  useEffect(() => {
+    if (mode !== 'edit') return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      askCancelEdit();
+      return true;
     });
     return () => sub.remove();
-  }, [player, trim, edit.speed, edit.muted]);
+  });
 
   if (!clip || !session || !options) {
     return (
@@ -258,18 +342,36 @@ function ClipEditor({ id }: { id: string }) {
     );
   }
 
-  /** Swipe like the Photos app: left shows the next clip, right the previous one. */
+  const at = siblings.findIndex((c) => c.id === id);
+  const previous = at > 0 ? siblings[at - 1] : undefined;
+  const next = at >= 0 ? siblings[at + 1] : undefined;
+
+  /** Like Photos: the clip follows the finger; with nothing on that side it gives only a little. The first clip's right side is the way back. */
+  function drag(dx: number) {
+    const open = dx > 0 ? previous !== undefined || at === 0 : next !== undefined;
+    slide.setValue(open ? dx : dx * RUBBER);
+  }
+
+  function settleBack() {
+    Animated.spring(slide, { toValue: 0, useNativeDriver: true, bounciness: 0, speed: 20 }).start();
+  }
+
+  /** The swipe was far or fast enough: left shows the next clip, right the previous one (or, on the first, the recording). */
   function goBy(step: 1 | -1) {
-    const at = siblings.findIndex((c) => c.id === id);
-    const target = siblings[at + step];
-    if (!target) return;
+    const target = step === 1 ? next : previous;
+    if (!target) {
+      if (step === -1 && at === 0) router.back();
+      else settleBack();
+      return;
+    }
     Animated.timing(slide, {
       toValue: -step * window.width,
       duration: SLIDE_MS,
-      easing: Easing.in(Easing.cubic),
+      easing: Easing.out(Easing.cubic),
       useNativeDriver: true,
     }).start(() => {
-      enterFrom = step;
+      // The neighbour's still is already in place: the new clip opens right there, without a second slide.
+      enterFrom = 0;
       router.setParams({ id: target.id });
     });
   }
@@ -282,17 +384,61 @@ function ClipEditor({ id }: { id: string }) {
         muted: next.muted,
         ...(next.zoom ? { zoom: next.zoom } : {}),
         ...(next.rotation ? { rotation: next.rotation } : {}),
+        ...(next.focus === false ? { focus: false } : {}),
       },
     });
   }
 
   function commitZoom(z: { scale: number; cx: number; cy: number }) {
-    setEdit({ zoom: z.scale > 1 ? z : undefined });
+    // A pinch on the followed picture takes over: the hand zoom stays and Modo Foco turns off.
+    if (focusActive) setEdit({ zoom: z.scale > 1 ? z : undefined, focus: false });
+    else setEdit({ zoom: z.scale > 1 ? z : undefined });
   }
 
-  function openFull(on: boolean) {
-    setFull(on);
+  function toggleFocus() {
+    if (focusActive) return setEdit({ focus: false });
+    setEdit({ focus: true, zoom: undefined });
     setZoomKey((k) => k + 1);
+  }
+
+  function enterEdit(tool?: ToolId) {
+    const current = repo.getClip(id);
+    if (!current) return;
+    snapshot.current = beginEdit(current);
+    const first = tool ? tool : lastTool();
+    // Where Modo Foco cannot run there is no Foco tool to open.
+    setOpenTool(first === 'focus' && !focusSupported ? 'speed' : first);
+    setMode('edit');
+    setZoomKey((k) => k + 1);
+  }
+
+  function leaveEdit() {
+    snapshot.current = undefined;
+    setMode('watch');
+    setZoomKey((k) => k + 1);
+  }
+
+  /** Cancelar: the clip's cut and choices go back to what they were when edit mode opened. */
+  function cancelEdit() {
+    const before = snapshot.current;
+    if (before) {
+      repo.updateClip(id, restorePatch(before));
+      setTrim(before.trim);
+      seek(player, before.trim.startMs);
+    }
+    leaveEdit();
+  }
+
+  function pickTool(tool: ToolId) {
+    setOpenTool(tool);
+    rememberTool(tool);
+  }
+
+  /** Watch mode, like Reels: 2x (silent) while a finger is held on the video; the clip's own speed after. */
+  function holdFast(down: boolean) {
+    setFast(down);
+    if (down) applyPlayback(player, 2, true);
+    else applyPlayback(player, edit.speed, edit.muted);
   }
 
   function togglePlay() {
@@ -315,6 +461,7 @@ function ClipEditor({ id }: { id: string }) {
     }
     setScrubMs(ms);
     seek(player, ms);
+    if (follow) follow.sync(ms);
   }
 
   function endScrub() {
@@ -328,6 +475,7 @@ function ClipEditor({ id }: { id: string }) {
     setScrubMs(undefined);
     repo.updateClip(id, { trim: next });
     seek(player, next.startMs);
+    if (follow) follow.sync(next.startMs);
     setPlaying(player, wantsPlay.current);
   }
 
@@ -342,13 +490,12 @@ function ClipEditor({ id }: { id: string }) {
         text: t('clip.delete'),
         style: 'destructive',
         onPress: () => {
-          const at = siblings.findIndex((c) => c.id === id);
-          const next = siblings[at + 1] ?? siblings[at - 1];
+          const after = next ?? previous;
           removeFile(clip!.path);
           repo.deleteClip(id);
-          if (next) {
-            enterFrom = siblings[at + 1] ? 1 : -1;
-            router.setParams({ id: next.id });
+          if (after) {
+            enterFrom = next ? 1 : -1;
+            router.setParams({ id: after.id });
           }
           else router.back();
         },
@@ -409,67 +556,54 @@ function ClipEditor({ id }: { id: string }) {
       repo.updateClip(id, { sharedAt: Date.now() });
     });
 
-  // Preview: the export's frame as large as the whole screen allows; the controls sit over it.
-  const previewHeight = Math.min(window.height, (window.width * frame.height) / frame.width);
-  const scale = previewHeight / frame.height;
-  const pr = PixelRatio.get();
-  const zoomed = (edit.zoom?.scale ?? 1) > 1;
-  const videoBox = {
-    left: layout.video.x * scale,
-    top: layout.video.y * scale,
-    width: layout.video.width * scale,
-    height: layout.video.height * scale,
-  };
-  const busyActions = busy || !sizeKnown;
-
-  if (full) {
-    // The whole screen shows the raw video, so a pinch has room; the zoom is the same one the export uses.
-    const fit = Math.min(window.width / shape.width, window.height / shape.height);
-    const w = shape.width * fit;
-    const h = shape.height * fit;
-    return (
-      <Animated.View style={[styles.full, { transform: [{ translateX: slide }] }]}>
-        <ZoomableVideo
-          key={zoomKey}
-          player={player}
-          area={window}
-          box={{ left: (window.width - w) / 2, top: (window.height - h) / 2, width: w, height: h }}
-          zoom={edit.zoom}
-          rotation={edit.rotation}
-          onCommit={commitZoom}
-          onTap={togglePlay}
-          onSwipe={goBy}
-        />
-        {!playing ? (
-          <View pointerEvents="none" style={styles.pausedBadge}>
-            <PlayIcon color={colors.text} size={36} />
-          </View>
-        ) : null}
-        <SafeAreaView pointerEvents="box-none" style={styles.fullTop}>
-          {zoomed ? (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={t('clip.resetZoom')}
-              onPress={() => {
-                setEdit({ zoom: undefined });
-                setZoomKey((k) => k + 1);
-              }}
-              style={styles.zoomBadge}>
-              <Text style={styles.zoomText}>{`${edit.zoom!.scale.toFixed(1)}x  ✕`}</Text>
-            </Pressable>
-          ) : (
-            <View />
-          )}
-          <IconButton label={t('clip.exitFullScreen')} onPress={() => openFull(false)}>
-            <CloseIcon />
-          </IconButton>
-        </SafeAreaView>
-      </Animated.View>
-    );
+  /** Back while editing: nothing changed leaves at once; changes ask before they are thrown away. */
+  function askCancelEdit() {
+    const current = repo.getClip(id);
+    const before = snapshot.current;
+    if (!current || !before || !hasChanges(before, current)) return cancelEdit();
+    Alert.alert(t('clip.discardTitle'), undefined, [
+      { text: t('clip.keepEditing'), style: 'cancel' },
+      { text: t('clip.discard'), style: 'destructive', onPress: cancelEdit },
+    ]);
   }
 
-  return (
-    <Animated.View style={[styles.root, { transform: [{ translateX: slide }] }]}>
+  const pr = PixelRatio.get();
+  const busyActions = busy || !sizeKnown;
+  const editing = mode === 'edit';
+
+  let focusUi: FocusUi = 'unavailable';
+  if (focusChip === 'on' || focusChip === 'off' || focusChip === 'preparing') focusUi = focusChip;
+  // A ready framing is read once the video's shape is known: until then it is still on its way, not impossible.
+  else if (focusFile && !sizeKnown && edit.rotation === 0) focusUi = 'preparing';
+  const tools = focusSupported ? EDIT_TOOLS : EDIT_TOOLS.filter((t) => t.id !== 'focus');
+  const ctx: ToolContext = {
+    edit,
+    setEdit,
+    focus: focusUi,
+    toggleFocus,
+    resetZoom: () => {
+      setEdit({ zoom: undefined });
+      setZoomKey((k) => k + 1);
+    },
+    turn: () => {
+      // A zoom window means something else after a turn, so start from the whole picture again.
+      setEdit({ rotation: nextRotation(edit.rotation), zoom: undefined });
+      setZoomKey((k) => k + 1);
+    },
+  };
+  const tool = (tools.find((t) => t.id === openTool) as EditTool | undefined) || tools[0];
+
+  /** The export's frame as large as `area` allows, the video in it, the app mark over it. */
+  function renderStage(area: { width: number; height: number }) {
+    const previewHeight = Math.min(area.height, (area.width * frame.height) / frame.width);
+    const scale = previewHeight / frame.height;
+    const videoBox = {
+      left: layout.video.x * scale,
+      top: layout.video.y * scale,
+      width: layout.video.width * scale,
+      height: layout.video.height * scale,
+    };
+    return (
       <View style={styles.stage}>
         <View style={[styles.preview, { width: frame.width * scale, height: previewHeight }]}>
           <ZoomableVideo
@@ -479,12 +613,20 @@ function ClipEditor({ id }: { id: string }) {
             box={videoBox}
             zoom={edit.zoom}
             rotation={edit.rotation}
-            onCommit={commitZoom}
+            onCommit={editing ? commitZoom : () => {}}
             onTap={togglePlay}
-            onSwipe={goBy}
+            onSwipe={editing ? undefined : goBy}
+            onDrag={editing ? undefined : drag}
+            onDragCancel={editing ? undefined : settleBack}
+            poster={framed ? undefined : poster}
+            onFirstFrame={() => setFramed(true)}
+            follow={follow}
+            enterMs={focusEnterMs}
+            pinch={editing}
+            onHold={editing ? undefined : holdFast}
           />
           <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-            <ShareOverlay frame={frame} layout={layout} scale={scale} watermark={options.watermark} />
+            <ShareOverlay frame={frame} layout={layout} scale={scale} />
           </View>
           {!playing ? (
             <View pointerEvents="none" style={styles.pausedBadge}>
@@ -495,80 +637,103 @@ function ClipEditor({ id }: { id: string }) {
           ) : null}
         </View>
       </View>
+    );
+  }
+
+  return (
+    <Animated.View style={[styles.root, { transform: [{ translateX: slide }] }]}>
+      {/* What a drag uncovers on each side: the neighbouring clips' stills, or the way back on the first clip. */}
+      {!editing ? (
+        <>
+          <View pointerEvents="none" style={[styles.neighbour, { left: -window.width, width: window.width }]}>
+            {previous ? <NeighbourStill clip={previous} /> : at === 0 ? <Text style={styles.backHint}>{t('clip.backToRecording')}</Text> : null}
+          </View>
+          <View pointerEvents="none" style={[styles.neighbour, { left: window.width, width: window.width }]}>
+            {next ? <NeighbourStill clip={next} /> : null}
+          </View>
+        </>
+      ) : null}
+      {editing ? (
+        <ClipEdit
+          renderStage={renderStage}
+          onCancel={cancelEdit}
+          onDone={leaveEdit}
+          panel={<tool.Panel ctx={ctx} />}
+          cut={
+            <>
+              <View style={styles.trimLabels}>
+                <Text style={styles.small}>{`-${seconds(win.endMs - win.startMs)}`}</Text>
+                <Text style={styles.cut}>{`Corte: ${seconds(outputMs(trim, edit.speed))}`}</Text>
+                <Text style={styles.small}>gatilho</Text>
+              </View>
+              <View style={styles.trimRow}>
+                <IconButton label={playing ? 'Pausar' : 'Reproduzir'} onPress={togglePlay}>
+                  {playing ? <PauseIcon /> : <PlayIcon />}
+                </IconButton>
+                <View style={styles.trimBar}>
+                  <TrimBar
+                    durationMs={win.endMs}
+                    floorMs={win.startMs}
+                    trim={trim}
+                    maxMs={maxMs}
+                    onChange={scrub}
+                    onCommit={commitTrim}>
+                    <Playhead
+                      player={player}
+                      durationMs={win.endMs}
+                      floorMs={win.startMs}
+                      trim={trim}
+                      speed={edit.speed}
+                      scrubMs={scrubMs}
+                      onScrub={scrubTo}
+                      onScrubEnd={endScrub}
+                    />
+                  </TrimBar>
+                </View>
+              </View>
+            </>
+          }
+          toolBar={<ToolBar open={tool.id} focusOn={focusUi === 'on'} onOpen={pickTool} tools={tools} />}
+        />
+      ) : (
+        <ClipWatch
+          renderStage={renderStage}
+          name={name}
+          placeholder={t('clip.namePlaceholder', { number: ownNumber, time: timeOfDay(clip.createdAt, locale) })}
+          onChangeName={setName}
+          onSaveName={saveName}
+          onBack={() => router.back()}
+          onDelete={confirmDelete}
+          focusTag={focusChip === 'on' ? 'on' : focusChip === 'preparing' ? 'preparing' : undefined}
+          onFocusTag={() => enterEdit('focus')}
+          notice={busy || !notice ? undefined : t(notice)}
+          position={siblings.length > 1 ? t('clip.ofTotal', { number, total: siblings.length }) : undefined}
+          progress={
+            <WatchProgress
+              player={player}
+              trim={trim}
+              speed={edit.speed}
+              playing={playing}
+              onTogglePlay={togglePlay}
+              onSeek={scrubTo}
+              onSeekEnd={endScrub}
+            />
+          }
+          onEdit={() => enterEdit()}
+          onSave={() => void save()}
+          onShare={() => void share()}
+          actionsDisabled={busyActions}
+          saving={job !== undefined && job.kind === 'save'}
+          sharing={job !== undefined && job.kind === 'share'}
+          fast={fast}
+          caption={showIntro ? t('clip.focusIntro') : undefined}
+        />
+      )}
 
       {/* Off-screen copy at exactly the export's pixel size, captured to PNG for the video overlay. */}
       <View pointerEvents="none" style={styles.offscreen}>
-        <ShareOverlay ref={captureRefView} frame={frame} layout={layout} scale={1 / pr} watermark={options.watermark} />
+        <ShareOverlay ref={captureRefView} frame={frame} layout={layout} scale={1 / pr} />
       </View>
-
-      {/* Everything below floats over the video, on dark translucent backgrounds so it reads in the sun. */}
-      <SafeAreaView edges={['top']} pointerEvents="box-none" style={styles.overTop}>
-        <View style={styles.top}>
-          <IconButton label={t('common.back')} onPress={() => router.back()}>
-            <BackIcon />
-          </IconButton>
-          <TextInput
-            accessibilityLabel={t('clip.name')}
-            value={name}
-            onChangeText={setName}
-            onSubmitEditing={saveName}
-            onBlur={saveName}
-            placeholder={t('clip.namePlaceholder', { number: ownNumber, time: timeOfDay(clip.createdAt, locale) })}
-            placeholderTextColor={colors.soft}
-            maxLength={MAX_CLIP_NAME}
-            returnKeyType="done"
-            selectTextOnFocus
-            style={styles.nameInput}
-          />
-          <IconButton label={t('clip.deleteClip')} onPress={confirmDelete}>
-            <TrashIcon />
-          </IconButton>
-          <IconButton
-            label={t('clip.saveToPhotos')}
-            disabled={busyActions}
-            loading={job !== undefined && job.kind === 'save'}
-            onPress={() => void save()}>
-            <DownloadIcon />
-          </IconButton>
-          <IconButton
-            label={t('clip.share')}
-            disabled={busyActions}
-            loading={job !== undefined && job.kind === 'share'}
-            onPress={() => void share()}>
-            <ShareIcon />
-          </IconButton>
-        </View>
-        <View pointerEvents="box-none" style={styles.sideRow}>
-          {zoomed ? (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={t('clip.resetZoom')}
-              onPress={() => {
-                setEdit({ zoom: undefined });
-                setZoomKey((k) => k + 1);
-              }}
-              style={styles.zoomBadge}>
-              <Text style={styles.zoomText}>{`${edit.zoom!.scale.toFixed(1)}x  ✕`}</Text>
-            </Pressable>
-          ) : (
-            <View />
-          )}
-          <View style={styles.sideColumn}>
-            <IconButton
-              label={t('clip.rotate')}
-              onPress={() => {
-                // A zoom window means something else after a turn, so start from the whole picture again.
-                setEdit({ rotation: nextRotation(edit.rotation), zoom: undefined });
-                setZoomKey((k) => k + 1);
-              }}>
-              <RotateIcon />
-            </IconButton>
-            <IconButton label={t('clip.fullScreen')} onPress={() => openFull(true)}>
-              <ExpandIcon />
-            </IconButton>
-          </View>
-        </View>
-      </SafeAreaView>
 
       {saved && !job ? (
         <Pressable accessibilityRole="alert" onPress={() => setSaved(false)} style={styles.savedWrap}>
@@ -582,178 +747,23 @@ function ClipEditor({ id }: { id: string }) {
         </Pressable>
       ) : null}
       {job ? <ExportProgress job={job} /> : null}
-
-      <SafeAreaView edges={['bottom']} pointerEvents="box-none" style={styles.overBottom}>
-        <View style={styles.panel}>
-          {busy ? null : notice ? (
-            <Text style={styles.notice}>{t(notice)}</Text>
-          ) : null}
-          {siblings.length > 1 ? (
-            <Text style={styles.position}>{t('clip.ofTotal', {
-                number: siblings.findIndex((c) => c.id === id) + 1,
-                total: siblings.length,
-              })}</Text>
-          ) : null}
-          <View style={styles.trimLabels}>
-            <Text style={styles.small}>{`-${seconds(win.endMs - win.startMs)}`}</Text>
-            <Text style={styles.cut}>{t('clip.cut', { time: seconds(outputMs(trim, edit.speed)) })}</Text>
-            <Text style={styles.small}>{t('clip.trigger')}</Text>
-          </View>
-          <View style={styles.trimRow}>
-            <IconButton label={playing ? t('clip.pause') : t('clip.play')} onPress={togglePlay}>
-              {playing ? <PauseIcon /> : <PlayIcon />}
-            </IconButton>
-            <View style={styles.trimBar}>
-              <TrimBar
-                durationMs={win.endMs}
-                floorMs={win.startMs}
-                trim={trim}
-                maxMs={maxMs}
-                onChange={scrub}
-                onCommit={commitTrim}>
-                <Playhead
-                  player={player}
-                  durationMs={win.endMs}
-                  floorMs={win.startMs}
-                  trim={trim}
-                  speed={edit.speed}
-                  scrubMs={scrubMs}
-                  onScrub={scrubTo}
-                  onScrubEnd={endScrub}
-                />
-              </TrimBar>
-            </View>
-          </View>
-          <View style={styles.tools}>
-            {SPEEDS.map((speed) => (
-              <Tool
-                key={speed}
-                label={`${speed}x`}
-                a11y={t('clip.speed', { speed })}
-                active={edit.speed === speed}
-                onPress={() => setEdit({ speed })}
-              />
-            ))}
-            <Tool
-              label={edit.muted || edit.speed !== 1 ? t('clip.muted') : t('clip.sound')}
-              a11y={t('clip.sound')}
-              active={!edit.muted && edit.speed === 1}
-              onPress={edit.speed !== 1 ? undefined : () => setEdit({ muted: !edit.muted })}
-            />
-          </View>
-        </View>
-      </SafeAreaView>
     </Animated.View>
   );
 }
 
-function IconButton({
-  label,
-  onPress,
-  disabled,
-  loading,
-  children,
-}: {
-  label: string;
-  onPress: () => void;
-  disabled?: boolean;
-  /** Shows a spinner in place of the icon: this is the button whose job is running. */
-  loading?: boolean;
-  children: ReactNode;
-}) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      disabled={disabled}
-      onPress={onPress}
-      accessibilityState={{ disabled: !!disabled, busy: !!loading }}
-      style={[styles.icon, disabled && !loading && styles.iconOff]}>
-      {loading ? <ActivityIndicator color={colors.text} /> : children}
-    </Pressable>
-  );
+/** A neighbouring clip's still, the same one its screen shows until its video starts. */
+function NeighbourStill({ clip }: { clip: { path?: string; trim?: { startMs: number } } }) {
+  const uri = useClipThumbnail(clip.path || '', clip.trim ? clip.trim.startMs : 0);
+  return uri ? <ExpoImage source={{ uri }} contentFit="contain" style={StyleSheet.absoluteFill} /> : null;
 }
-
-function Tool({
-  label,
-  a11y,
-  active,
-  onPress,
-}: {
-  label: string;
-  a11y?: string;
-  active: boolean;
-  onPress?: () => void;
-}) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={a11y ?? label}
-      accessibilityState={{ selected: active }}
-      disabled={!onPress}
-      onPress={onPress}
-      style={[styles.tool, active && styles.toolOn]}>
-      <Text style={styles.toolText}>{label}</Text>
-    </Pressable>
-  );
-}
-
-const SCRIM = 'rgba(15,16,13,0.74)';
-const EDGE = 'rgba(243,239,228,0.22)';
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.ground },
+  neighbour: { position: 'absolute', top: 0, bottom: 0, backgroundColor: colors.ground, alignItems: 'center', justifyContent: 'center' },
+  backHint: { color: colors.muted, fontFamily: fonts.bodySemi, fontSize: 15 },
   missingRoot: { flex: 1, backgroundColor: colors.ground, paddingHorizontal: 16, gap: 12 },
-  stage: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center' },
+  stage: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   preview: { overflow: 'hidden', backgroundColor: colors.ground },
-  overTop: { position: 'absolute', left: 0, right: 0, top: 0, paddingHorizontal: 12 },
-  overBottom: { position: 'absolute', left: 0, right: 0, bottom: 0 },
-  top: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 },
-  sideRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginTop: 10 },
-  sideColumn: { gap: 8 },
-  icon: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: SCRIM,
-    borderWidth: 1,
-    borderColor: EDGE,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  iconOff: { opacity: 0.4 },
-  nameInput: {
-    flex: 1,
-    minHeight: 42,
-    borderRadius: 21,
-    backgroundColor: SCRIM,
-    borderWidth: 1,
-    borderColor: EDGE,
-    paddingHorizontal: 14,
-    fontFamily: fonts.bodySemi,
-    fontSize: 14,
-    color: colors.text,
-  },
-  panel: {
-    marginHorizontal: 8,
-    marginBottom: 8,
-    padding: 12,
-    gap: 10,
-    borderRadius: 22,
-    backgroundColor: SCRIM,
-    borderWidth: 1,
-    borderColor: EDGE,
-  },
-  full: { flex: 1, backgroundColor: '#000' },
-  fullTop: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: 0,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    padding: 16,
-  },
   pausedBadge: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center' },
   pausedDisc: {
     width: 76,
@@ -764,15 +774,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingLeft: 4,
   },
-  zoomBadge: {
-    backgroundColor: colors.accent,
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  zoomText: { fontFamily: fonts.bodyBold, fontSize: 13, color: colors.onAccent },
   offscreen: { position: 'absolute', left: -10000, top: 0 },
-  position: { fontFamily: fonts.body, fontSize: 12, color: colors.text, opacity: 0.8, textAlign: 'center' },
   savedWrap: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center' },
   savedCard: {
     alignItems: 'center',
@@ -793,24 +795,10 @@ const styles = StyleSheet.create({
   savedCheckMark: { fontFamily: fonts.bodyBold, fontSize: 24, color: colors.ground },
   savedText: { fontFamily: fonts.bodyBold, fontSize: 17, color: colors.text },
   savedHint: { fontFamily: fonts.body, fontSize: 13, color: colors.text, opacity: 0.8 },
-  notice: { fontFamily: fonts.bodySemi, fontSize: 13, color: colors.text, textAlign: 'center' },
   trimLabels: { flexDirection: 'row', justifyContent: 'space-between' },
   trimRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   trimBar: { flex: 1 },
   small: { fontFamily: fonts.body, fontSize: 12, color: colors.text, opacity: 0.8 },
   cut: { fontFamily: fonts.bodyBold, fontSize: 13, color: colors.text },
-  tools: { flexDirection: 'row', gap: 6 },
-  tool: {
-    flex: 1,
-    minHeight: 46,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: EDGE,
-    backgroundColor: 'rgba(243,239,228,0.08)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  toolOn: { borderWidth: 2, borderColor: colors.accent },
-  toolText: { fontFamily: fonts.bodyBold, fontSize: 13, color: colors.text },
   missing: { fontFamily: fonts.body, fontSize: 15, color: colors.soft, textAlign: 'center', marginTop: 40 },
 });

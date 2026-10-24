@@ -1,5 +1,5 @@
 import * as Haptics from 'expo-haptics';
-import { createContext, type ReactNode, useContext } from 'react';
+import { createContext, type ReactNode, useContext, useEffect } from 'react';
 
 import * as camera from '../../modules/replay-camera';
 import { removeFile, repo } from '../data/mmkv';
@@ -7,6 +7,7 @@ import { currentLocale } from '../i18n';
 import { payments } from '../payments';
 import { triggerAllowed } from '../payments/limits';
 import { usePlan } from '../share/entitlement';
+import { focusQueue } from '../focus/appFocusQueue';
 import { useVolumeRemote } from '../triggers/useVolumeRemote';
 import { type ReplaySession, type SessionDeps, useReplaySession } from './useReplaySession';
 import { useWatchTriggerGate } from './useWatchTriggerGate';
@@ -20,6 +21,7 @@ const appDeps: SessionDeps = {
   locale: currentLocale,
   startDecision: payments.startDecision,
   useRemote: useVolumeRemote,
+  onClipSaved: (clipId) => focusQueue.enqueue(clipId),
 };
 
 const SessionContext = createContext<ReplaySession | null>(null);
@@ -32,6 +34,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const recording = session.state.phase === 'recording';
   const plan = usePlan(recording ? session.state.sessionId : undefined);
   useWatchTriggerGate(recording, triggerAllowed('watch', plan), camera.watchSetSaveAllowed);
+
+  // The camera comes first: no new Modo Foco analysis while recording with the phone hot (spec §4.1).
+  const { phase, thermal } = session.state;
+  const hot = phase === 'recording' && (thermal.level === 'serious' || thermal.level === 'critical');
+  useEffect(() => focusQueue.setPaused(hot), [hot]);
   return <SessionContext.Provider value={session}>{children}</SessionContext.Provider>;
 }
 

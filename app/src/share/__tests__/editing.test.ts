@@ -1,7 +1,7 @@
 import { clampZoom, contentFloor, cropRect, MAX_ZOOM, nextRotation, outputMs, panZoom, pinchZoom, raiseToFloor, readEdit, turnedSize } from '../editing';
 
 test('a clip with no edit plays at normal speed, with sound and no zoom', () => {
-  expect(readEdit(undefined)).toEqual({ speed: 1, muted: false, zoom: undefined, rotation: 0 });
+  expect(readEdit(undefined)).toEqual({ speed: 1, muted: false, zoom: undefined, rotation: 0, focus: true });
 });
 
 test('clips saved with the old slow motion switch read as 0.5x', () => {
@@ -100,4 +100,10 @@ describe('the useful start of a clip', () => {
   test('a cut ending inside the black grows to the shortest cut after the floor', () => {
     expect(raiseToFloor({ startMs: 0, endMs: 8_000 }, 10_750, 57_000)).toEqual({ startMs: 10_750, endMs: 13_750 });
   });
+});
+
+test('Modo Foco is on unless the player turned it off for the clip', () => {
+  expect(readEdit({ muted: false }).focus).toBe(true);
+  expect(readEdit({ muted: false, focus: false }).focus).toBe(false);
+  expect(readEdit({ muted: false, focus: true }).focus).toBe(true);
 });

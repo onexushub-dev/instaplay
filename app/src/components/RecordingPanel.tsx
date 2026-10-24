@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { addReplayListener } from '../../modules/replay-camera';
 import { VOICE_WORDS } from '../i18n';
 import { useT } from '../i18n/useT';
+import { removeFile, repo } from '../data/mmkv';
 import { useSession } from '../session/SessionContext';
 import { colors, fonts } from '../theme/tokens';
 import { Button } from './Button';
@@ -34,7 +35,7 @@ type Props = {
 };
 
 export function RecordingPanel({ clipSeconds = 30, gesture = true, voice = false }: Props) {
-  const { state, trigger, undoLast, stop } = useSession();
+  const { state, trigger, undoLast, stop, reset } = useSession();
   const { t, locale } = useT();
   const [now, setNow] = useState(() => Date.now());
   const [dismissed, setDismissed] = useState<string>();
@@ -51,9 +52,17 @@ export function RecordingPanel({ clipSeconds = 30, gesture = true, voice = false
     return () => clearTimeout(hide);
   }, [last]);
 
+  /** After a game: its summary, or — with no clip to show — straight to Minhas gravações, the empty game removed. */
+  function leaveEnded(id: string) {
+    if (repo.listClips(id).length > 0) return router.replace(`/session/${id}`);
+    repo.deleteSession(id).forEach((path) => removeFile(path));
+    reset();
+    router.push('/games'); // the setup screen stays under it
+  }
+
   async function end() {
     const id = await stop();
-    if (id) router.replace(`/session/${id}`);
+    if (id) leaveEnded(id);
   }
 
   // The remote phone's "Segure para encerrar a gravação" ends the game the same way the one on this screen does.
@@ -81,7 +90,12 @@ export function RecordingPanel({ clipSeconds = 30, gesture = true, voice = false
     return (
       <SafeAreaView style={styles.stopped}>
         <Text style={styles.stoppedText}>{t('recording.stopped', { reason })}</Text>
-        <Button label={t('recording.seeClips')} onPress={() => router.replace(`/session/${state.sessionId}`)} />
+        <Button
+          label={state.sessionId && repo.listClips(state.sessionId).length > 0 ? t('recording.seeClips') : t('recording.myRecordings')}
+          onPress={() => {
+            if (state.sessionId) leaveEnded(state.sessionId);
+          }}
+        />
       </SafeAreaView>
     );
   }

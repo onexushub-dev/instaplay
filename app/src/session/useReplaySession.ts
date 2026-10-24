@@ -54,6 +54,8 @@ export type SessionDeps = {
   startDecision: () => Promise<StartDecision>;
   /** Bluetooth remote: calls onPress per press while enabled (useVolumeRemote in the app). */
   useRemote(enabled: boolean, onPress: () => void): void;
+  /** A clip was saved and recorded (the app queues its Modo Foco analysis). */
+  onClipSaved?(clipId: string): void;
 };
 
 export type StartResult = 'started' | 'blocked' | 'failed' | 'busy';
@@ -112,6 +114,7 @@ export function useReplaySession(deps: SessionDeps) {
           path: saved.clipPath,
           durationMs: saved.durationMs,
         }, cutMs);
+        if (deps.onClipSaved) deps.onClipSaved(clip.id);
         // A save that finished after its game ended must not move the floor of the next game.
         if (stateRef.current.sessionId === sessionId) cutFloors.current = [...cutFloors.current, at];
         deps.haptic();

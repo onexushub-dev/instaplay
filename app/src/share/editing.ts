@@ -12,7 +12,8 @@ export const NO_ZOOM: Zoom = { scale: 1, cx: 0.5, cy: 0.5 };
 /** Clockwise degrees the player turned the video, for a clip recorded with the phone's position misread. */
 export type Rotation = 0 | 90 | 180 | 270;
 
-export type Edit = { speed: Speed; muted: boolean; zoom: Zoom | undefined; rotation: Rotation };
+/** `focus`: Modo Foco on (the default) or turned off for this clip. */
+export type Edit = { speed: Speed; muted: boolean; zoom: Zoom | undefined; rotation: Rotation; focus: boolean };
 
 /** What the editor works with. Clips saved before speeds existed only have the slow motion switch. */
 export function readEdit(edit: Clip['edit']): Edit {
@@ -21,6 +22,7 @@ export function readEdit(edit: Clip['edit']): Edit {
     muted: edit?.muted ?? false,
     zoom: edit?.zoom,
     rotation: edit?.rotation ?? 0,
+    focus: edit !== undefined && edit.focus === false ? false : true,
   };
 }
 

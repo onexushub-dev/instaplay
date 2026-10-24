@@ -188,3 +188,50 @@ export function CameraIcon({ color = colors.text, size = 22 }: IconProps) {
     </Svg>
   );
 }
+
+/** Four frame corners around a dot: the camera keeping the play in frame (Modo Foco). */
+export function FocusIcon({ color = colors.text, size = 22 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" accessibilityElementsHidden>
+      <Path d="M4 8V4h4M20 8V4h-4M4 16v4h4M20 16v4h-4" {...stroke(color)} />
+      <Circle cx={12} cy={12} r={3} {...stroke(color)} />
+    </Svg>
+  );
+}
+
+/** A speedometer: the playback speed. */
+export function SpeedIcon({ color = colors.text, size = 22 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" accessibilityElementsHidden>
+      <Path d="M4 16a8 8 0 1 1 16 0M12 16l4-5" {...stroke(color)} />
+    </Svg>
+  );
+}
+
+/** A speaker with one wave: the clip's sound. */
+export function SoundIcon({ color = colors.text, size = 22 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" accessibilityElementsHidden>
+      <Path d="M4 10v4h4l5 4V6L8 10zM16.5 9a4 4 0 0 1 0 6" {...stroke(color)} />
+    </Svg>
+  );
+}
+
+/** A magnifier with a plus: zoom by hand. */
+export function ZoomIcon({ color = colors.text, size = 22 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" accessibilityElementsHidden>
+      <Circle cx={11} cy={11} r={6} {...stroke(color)} />
+      <Path d="M20 20l-4.5-4.5M11 8v6M8 11h6" {...stroke(color)} />
+    </Svg>
+  );
+}
+
+/** A pencil: edit the clip. */
+export function EditIcon({ color = colors.text, size = 20 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" accessibilityElementsHidden>
+      <Path d="M4 20h4L19 9l-4-4L4 16zM13 7l4 4" {...stroke(color)} />
+    </Svg>
+  );
+}

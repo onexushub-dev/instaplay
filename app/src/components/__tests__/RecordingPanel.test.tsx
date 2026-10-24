@@ -2,12 +2,17 @@ import { act, fireEvent, render, screen } from '@testing-library/react-native';
 
 import { RecordingPanel as Recording } from '../RecordingPanel';
 
-jest.mock('expo-router', () => ({ router: { replace: jest.fn() } }));
+jest.mock('expo-router', () => ({ router: { replace: jest.fn(), push: jest.fn() } }));
+jest.mock('../../data/mmkv', () => ({
+  repo: { listClips: jest.fn(() => [{ id: 'c1' }]), deleteSession: jest.fn(() => []) },
+  removeFile: jest.fn(),
+}));
 jest.mock('../../../modules/replay-camera', () => ({ addReplayListener: jest.fn(() => ({ remove: jest.fn() })) }));
 jest.mock('../../session/SessionContext', () => ({ useSession: jest.fn() }));
 
 const { useSession } = jest.requireMock('../../session/SessionContext');
 const { router } = jest.requireMock('expo-router');
+const { repo } = jest.requireMock('../../data/mmkv');
 
 function session(state: object) {
   const value = {
@@ -24,6 +29,7 @@ function session(state: object) {
     trigger: jest.fn(),
     undoLast: jest.fn(),
     stop: jest.fn(async () => 's1'),
+    reset: jest.fn(),
   };
   useSession.mockReturnValue(value);
   return value;
@@ -144,4 +150,33 @@ test('after saving, no payments note shows', async () => {
   await render(<Recording />);
   expect(screen.queryByText(/Último clipe grátis/)).toBeNull();
   expect(screen.queryByText(/Guardado. Libere/)).toBeNull();
+});
+
+describe('a recording without any clip', () => {
+  test('ending it removes it and opens Minhas gravações', async () => {
+    repo.listClips.mockReturnValue([]);
+    const s = session({});
+    await render(<Recording />);
+    jest.useFakeTimers();
+    await fireEvent(screen.getByRole('button', { name: 'Segure para encerrar a gravação' }), 'pressIn');
+    await act(async () => jest.advanceTimersByTime(1000));
+    jest.useRealTimers();
+    await act(async () => {});
+    expect(repo.deleteSession).toHaveBeenCalledWith('s1');
+    expect(s.reset).toHaveBeenCalled();
+    expect(router.push).toHaveBeenCalledWith('/games');
+    expect(router.replace).not.toHaveBeenCalled();
+    repo.listClips.mockReturnValue([{ id: 'c1' }]);
+  });
+
+  test('stopped by an error, it offers Minhas gravações instead of an empty summary', async () => {
+    repo.listClips.mockReturnValue([]);
+    const s = session({ phase: 'ended', error: 'ENCODER_FAILED', clipCount: 0 });
+    await render(<Recording />);
+    await fireEvent.press(screen.getByRole('button', { name: 'Minhas gravações' }));
+    expect(repo.deleteSession).toHaveBeenCalledWith('s1');
+    expect(s.reset).toHaveBeenCalled();
+    expect(router.push).toHaveBeenCalledWith('/games');
+    repo.listClips.mockReturnValue([{ id: 'c1' }]);
+  });
 });

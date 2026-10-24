@@ -20,8 +20,10 @@ jest.mock('../../../modules/replay-camera', () => ({
   exportClip: jest.fn(async () => ({ path: '/e.mp4', durationMs: 30000 })),
   createThumbnail: jest.fn(async () => '/t.jpg'),
   findContentStart: jest.fn(async () => 0),
+  isFocusSupported: () => false,
 }));
 jest.mock('../../components/TrimBar', () => ({ TrimBar: () => null }));
+jest.mock('../../focus/appFocusQueue', () => ({ focusQueue: { ensure: jest.fn() } }));
 jest.mock('../../session/SessionContext', () => ({ useSession: () => ({ reset: jest.fn(), state: {} }) }));
 jest.mock('../../data/mmkv', () => {
   const { createRepo } = jest.requireActual('../../data/repo');

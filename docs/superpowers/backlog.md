@@ -64,3 +64,29 @@ Itens adiados nas revisões finais. Nada aqui bloqueia o uso, mas vale resolver 
 ## Editor unificado (zoom e velocidades)
 - Android: a exportação ignora `crop` (zoom da prévia não vai para o arquivo). Fazer com `Crop` do Media3 na etapa do Android.
 - Android: a exportação também ignora `rotation` (botão Girar do editor). Usar `ScaleAndRotateTransformation` do Media3.
+
+## Modo Foco (2026-10-23)
+- Medir no iPhone XR: tempo de análise e de exportação (meta: clipe de 30 s analisado em até ~30 s).
+- Exportar um clipe horizontal com Modo Foco e conferir a marca d'água no canto em todos os quadros.
+- Checklist de campo da spec (§8): contra-ataque, jogada parada, público perto da quadra, jogo inteiro com calor e bateria.
+- Story a partir de clipe horizontal com o enquadramento vertical (decisão própria: muda o "nunca cortar a quadra").
+- Bola por esporte (Create ML ou modelo Apache 2.0; nunca Ultralytics/AGPL no app).
+- Modo Foco pago: entra no `entitlement` antes da loja.
+- (revisão) Espelhar o zoom manual nos valores animados em `onChange`, não em `useEffect` (1 quadro de atraso na pinça e possível piscada do quadro inteiro ao assumir o enquadramento).
+- (revisão) `focusQueue.ensure` deve pôr o clipe aberto na frente da fila (hoje espera atrás do acúmulo de um jogo quente).
+- (revisão) Testar o filtro de pessoas paradas diretamente (o teste da arquibancada distingue 0,46 de 0,50 só).
+- (revisão) Segurar para ver o original: limpar o timer ao desmontar e soltar o `peek` se o acompanhamento mudar durante o toque.
+- (revisão) Vídeo quadrado: analisador usa largura >= altura, editor usa largura > altura.
+- (revisão) Teste do layout do overlay (retrato e paisagem) prometido na spec §4.5.
+
+## Tela do clipe: assistir + editar (revisão de 2026-10-23)
+- Cancelar sem mudança não deveria regravar nem voltar o vídeo ao início do corte; também sincronizar o Modo Foco com o corte restaurado quando pausado.
+- Se o início útil do clipe (`findContentStart`) chegar depois de abrir o modo edição, o Cancelar regrava o corte antigo: ajustar o instantâneo ao novo início.
+- Tocar no selo do Modo Foco deveria contar como "última ferramenta usada".
+- Altura fixa para o painel das ferramentas (hoje o vídeo muda de tamanho ao trocar de ferramenta).
+- Trocar de modo remonta o vídeo: a entrada suave do Modo Foco se repete e pode piscar no Android. Conferir no aparelho.
+- Barra de progresso: a bolinha deveria seguir o dedo enquanto arrasta, e falta acessibilidade (ajustável no VoiceOver/TalkBack).
+- Alvos de toque abaixo de 44 pt: play da barra (40), selo do Modo Foco (36), botões redondos (42).
+- Acessibilidade: selo "preparando" sem estado ocupado; barra de ferramentas sem papel de lista de abas; título EDITAR sem papel de cabeçalho.
+- Segurar para 2x com o vídeo pausado mostra o selo 2x mas não toca (o Reels toca enquanto segura).
+- Se o clipe sumir no modo edição, o primeiro "voltar" do Android é engolido.
