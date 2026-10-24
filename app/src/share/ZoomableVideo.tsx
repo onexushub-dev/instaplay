@@ -1,3 +1,4 @@
+import { Image } from 'expo-image';
 import { VideoView } from 'expo-video';
 import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
@@ -30,10 +31,17 @@ type Props = {
   pinch?: boolean;
   /** The screen's own hold (watch mode: 2x while held); replaces the "whole video" peek. */
   onHold?: (down: boolean) => void;
+  /** A sideways drag that may change the clip, as it happens (watch mode). */
+  onDrag?: (dx: number) => void;
+  /** That drag let go without changing the clip. */
+  onDragCancel?: () => void;
+  /** A still of the clip shown over the video until its first frame is drawn, so a new clip never opens black. */
+  poster?: string;
+  onFirstFrame?: () => void;
 };
 
 /** The video with pinch zoom (around the fingers), drag to move it, and tap. Remount it to start again from `zoom`. */
-export function ZoomableVideo({ player, area, box, zoom, rotation, onCommit, onTap, onSwipe, follow, enterMs = 0, pinch, onHold }: Props) {
+export function ZoomableVideo({ player, area, box, zoom, rotation, onCommit, onTap, onSwipe, follow, enterMs = 0, pinch, onHold, onDrag, onDragCancel, poster, onFirstFrame }: Props) {
   const [live, setLive] = useState<Zoom>(zoom ?? NO_ZOOM);
   // A gesture on a followed picture takes over from where the framing is, and the picture stops following.
   // Which framing a gesture took over from: a new framing (Modo Foco turned on again) is followed afresh.
@@ -61,6 +69,8 @@ export function ZoomableVideo({ player, area, box, zoom, rotation, onCommit, onT
     },
     onTap,
     onSwipe,
+    onDrag,
+    onDragCancel,
     onHold: onHold ? onHold : following ? setPeek : undefined,
     pinch,
   });
@@ -107,7 +117,14 @@ export function ZoomableVideo({ player, area, box, zoom, rotation, onCommit, onT
     <View {...panHandlers} accessibilityLabel="Vídeo" style={[styles.area, area]}>
       <View pointerEvents="none" style={[styles.box, box]}>
         <Animated.View style={[StyleSheet.absoluteFill, picture]}>
-          <VideoView player={player} contentFit="contain" nativeControls={false} style={turned(box, rotation)} />
+          <VideoView
+            player={player}
+            contentFit="contain"
+            nativeControls={false}
+            style={turned(box, rotation)}
+            onFirstFrameRender={onFirstFrame}
+          />
+          {poster ? <Image source={{ uri: poster }} contentFit="contain" style={turned(box, rotation)} /> : null}
         </Animated.View>
       </View>
     </View>

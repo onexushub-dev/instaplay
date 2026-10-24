@@ -1,4 +1,5 @@
 import { Directory, File, Paths } from 'expo-file-system';
+import { Image as ExpoImage } from 'expo-image';
 import { Asset, requestPermissionsAsync } from 'expo-media-library';
 import { router, useLocalSearchParams } from 'expo-router';
 import { shareAsync } from 'expo-sharing';
@@ -32,6 +33,7 @@ import { clipNumber, seconds, timeOfDay } from '../../components/format';
 import { BackIcon, PauseIcon, PlayIcon } from '../../components/icons';
 import { Playhead } from '../../components/Playhead';
 import { TrimBar } from '../../components/TrimBar';
+import { useClipThumbnail } from '../../components/useClipThumbnail';
 import { useReduceMotion } from '../../components/useReduceMotion';
 import { readFocusFile } from '../../data/focusFile';
 import { removeFile, repo } from '../../data/mmkv';
@@ -49,9 +51,15 @@ import { ZoomableVideo } from '../../share/ZoomableVideo';
 import { colors, fonts } from '../../theme/tokens';
 
 const SLIDE_MS = 220;
+/** Past the last clip the picture only gives a little, like Photos. */
+const RUBBER = 0.3;
+/** If the first frame is never reported, the still gives way after this long anyway. */
+const POSTER_MAX_MS = 1500;
 /** Which side the next clip comes in from; set just before navigating, read by the screen that mounts. */
 let enterFrom: 1 | -1 | 0 = 0;
 
+/** Loop back this much before the end of the cut: the last time update can land just short of it. */
+const LOOP_EARLY_S = 0.15;
 const SAVED_VISIBLE_MS = 3500;
 // The share sheet is up long before `shareAsync` returns (it waits for the sheet to close), so the card leaves early.
 const SHARE_HANDOFF_MS = 1200;
@@ -166,6 +174,13 @@ function ClipEditor({ id }: { id: string }) {
       useNativeDriver: true,
     }).start();
   }, [slide]);
+  // This clip's still over the video until the first frame is drawn (the neighbour's still just slid in).
+  const [poster, setPoster] = useState<string>();
+  const [framed, setFramed] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(() => setFramed(true), POSTER_MAX_MS);
+    return () => clearTimeout(timer);
+  }, []);
   const [notice, setNotice] = useState<string>();
   // The "saved" confirmation stays long enough to be read.
   const [saved, setSaved] = useState(false);
@@ -234,7 +249,10 @@ function ClipEditor({ id }: { id: string }) {
   useEffect(() => {
     if (!clipPath) return;
     createThumbnail(clipPath, startMs)
-      .then((path) => Image.getSize(`file://${path}`))
+      .then((path) => {
+        setPoster(`file://${path}`);
+        return Image.getSize(`file://${path}`);
+      })
       .then(({ width, height }) => setVideoSize({ width, height }))
       .catch(() => {}) // keep the default shape
       .finally(() => setSizeKnown(true));
@@ -284,14 +302,22 @@ function ClipEditor({ id }: { id: string }) {
     };
   }, [clipPath, hasFloor, id, player]);
 
-  // Loop the cut; follow speed and sound live.
+  // Loop the cut; follow speed and sound live. Time updates come every 0.1 s, so the last one before the end of the file
+  // can miss it: the player then stops at the end by itself, and its own "reached the end" restarts the cut.
   useEffect(() => {
     applyPlayback(player, edit.speed, edit.muted);
     const sub = player.addListener('timeUpdate', ({ currentTime }) => {
       if (scrubbing.current) return;
-      if (currentTime >= trim.endMs / 1000 || currentTime < trim.startMs / 1000 - 0.5) seek(player, trim.startMs);
+      if (currentTime >= trim.endMs / 1000 - LOOP_EARLY_S || currentTime < trim.startMs / 1000 - 0.5) seek(player, trim.startMs);
     });
-    return () => sub.remove();
+    const end = player.addListener('playToEnd', () => {
+      seek(player, trim.startMs);
+      setPlaying(player, wantsPlay.current);
+    });
+    return () => {
+      sub.remove();
+      end.remove();
+    };
   }, [player, trim, edit.speed, edit.muted]);
 
   // Android back while editing works as Cancelar, asking first when something changed (iOS has no back gesture here).
@@ -315,18 +341,36 @@ function ClipEditor({ id }: { id: string }) {
     );
   }
 
-  /** Swipe like the Photos app: left shows the next clip, right the previous one. */
+  const at = siblings.findIndex((c) => c.id === id);
+  const previous = at > 0 ? siblings[at - 1] : undefined;
+  const next = at >= 0 ? siblings[at + 1] : undefined;
+
+  /** Like Photos: the clip follows the finger; with nothing on that side it gives only a little. The first clip's right side is the way back. */
+  function drag(dx: number) {
+    const open = dx > 0 ? previous !== undefined || at === 0 : next !== undefined;
+    slide.setValue(open ? dx : dx * RUBBER);
+  }
+
+  function settleBack() {
+    Animated.spring(slide, { toValue: 0, useNativeDriver: true, bounciness: 0, speed: 20 }).start();
+  }
+
+  /** The swipe was far or fast enough: left shows the next clip, right the previous one (or, on the first, the recording). */
   function goBy(step: 1 | -1) {
-    const at = siblings.findIndex((c) => c.id === id);
-    const target = siblings[at + step];
-    if (!target) return;
+    const target = step === 1 ? next : previous;
+    if (!target) {
+      if (step === -1 && at === 0) router.back();
+      else settleBack();
+      return;
+    }
     Animated.timing(slide, {
       toValue: -step * window.width,
       duration: SLIDE_MS,
-      easing: Easing.in(Easing.cubic),
+      easing: Easing.out(Easing.cubic),
       useNativeDriver: true,
     }).start(() => {
-      enterFrom = step;
+      // The neighbour's still is already in place: the new clip opens right there, without a second slide.
+      enterFrom = 0;
       router.setParams({ id: target.id });
     });
   }
@@ -445,13 +489,12 @@ function ClipEditor({ id }: { id: string }) {
         text: 'Apagar',
         style: 'destructive',
         onPress: () => {
-          const at = siblings.findIndex((c) => c.id === id);
-          const next = siblings[at + 1] ?? siblings[at - 1];
+          const after = next ?? previous;
           removeFile(clip!.path);
           repo.deleteClip(id);
-          if (next) {
-            enterFrom = siblings[at + 1] ? 1 : -1;
-            router.setParams({ id: next.id });
+          if (after) {
+            enterFrom = next ? 1 : -1;
+            router.setParams({ id: after.id });
           }
           else router.back();
         },
@@ -572,6 +615,10 @@ function ClipEditor({ id }: { id: string }) {
             onCommit={editing ? commitZoom : () => {}}
             onTap={togglePlay}
             onSwipe={editing ? undefined : goBy}
+            onDrag={editing ? undefined : drag}
+            onDragCancel={editing ? undefined : settleBack}
+            poster={framed ? undefined : poster}
+            onFirstFrame={() => setFramed(true)}
             follow={follow}
             enterMs={focusEnterMs}
             pinch={editing}
@@ -594,6 +641,17 @@ function ClipEditor({ id }: { id: string }) {
 
   return (
     <Animated.View style={[styles.root, { transform: [{ translateX: slide }] }]}>
+      {/* What a drag uncovers on each side: the neighbouring clips' stills, or the way back on the first clip. */}
+      {!editing ? (
+        <>
+          <View pointerEvents="none" style={[styles.neighbour, { left: -window.width, width: window.width }]}>
+            {previous ? <NeighbourStill clip={previous} /> : at === 0 ? <Text style={styles.backHint}>Voltar para a gravação</Text> : null}
+          </View>
+          <View pointerEvents="none" style={[styles.neighbour, { left: window.width, width: window.width }]}>
+            {next ? <NeighbourStill clip={next} /> : null}
+          </View>
+        </>
+      ) : null}
       {editing ? (
         <ClipEdit
           renderStage={renderStage}
@@ -692,8 +750,16 @@ function ClipEditor({ id }: { id: string }) {
   );
 }
 
+/** A neighbouring clip's still, the same one its screen shows until its video starts. */
+function NeighbourStill({ clip }: { clip: { path?: string; trim?: { startMs: number } } }) {
+  const uri = useClipThumbnail(clip.path || '', clip.trim ? clip.trim.startMs : 0);
+  return uri ? <ExpoImage source={{ uri }} contentFit="contain" style={StyleSheet.absoluteFill} /> : null;
+}
+
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.ground },
+  neighbour: { position: 'absolute', top: 0, bottom: 0, backgroundColor: colors.ground, alignItems: 'center', justifyContent: 'center' },
+  backHint: { color: colors.muted, fontFamily: fonts.bodySemi, fontSize: 15 },
   missingRoot: { flex: 1, backgroundColor: colors.ground, paddingHorizontal: 16, gap: 12 },
   stage: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   preview: { overflow: 'hidden', backgroundColor: colors.ground },

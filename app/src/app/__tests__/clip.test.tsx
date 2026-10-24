@@ -5,10 +5,27 @@ import ClipEditor from '../clip/[id]';
 
 jest.mock('expo-router', () => ({ router: { push: jest.fn(), back: jest.fn(), setParams: jest.fn() }, useLocalSearchParams: () => ({ id: 'c1' }) }));
 jest.mock('expo-video', () => {
-  const mockPlayer = { addListener: () => ({ remove() {} }), play: jest.fn(), pause: jest.fn(), currentTime: 0, playbackRate: 1, muted: false };
+  const listeners = new Map<string, Set<(e: any) => void>>();
+  const mockPlayer = {
+    addListener: (event: string, fn: (e: any) => void) => {
+      if (!listeners.has(event)) listeners.set(event, new Set());
+      listeners.get(event)!.add(fn);
+      return { remove: () => void listeners.get(event)!.delete(fn) };
+    },
+    emit: (event: string, e: any = {}) => (listeners.get(event) || new Set()).forEach((fn) => fn(e)),
+    play: jest.fn(),
+    pause: jest.fn(),
+    currentTime: 0,
+    playbackRate: 1,
+    muted: false,
+  };
   return { __player: mockPlayer, useVideoPlayer: () => mockPlayer, VideoView: () => null };
 });
 jest.mock('expo-file-system', () => ({ File: class { delete() {} }, Directory: class { list() { return []; } }, Paths: { cache: '' } }));
+jest.mock('expo-image', () => {
+  const shown: string[] = [];
+  return { __shown: shown, Image: (p: any) => (shown.push(p.source.uri), null) };
+});
 jest.mock('expo-sharing', () => ({ shareAsync: jest.fn(async () => {}) }));
 jest.mock('expo-media-library', () => ({
   requestPermissionsAsync: jest.fn(async () => ({ granted: true })),
@@ -34,16 +51,23 @@ jest.mock('../../components/TrimBar', () => {
 });
 jest.mock('../../data/mmkv', () => {
   let clip: any;
+  // Where the open clip sits in its recording: last of two (default) or first of two.
+  let first = false;
   let version = 0;
   const listeners = new Set<() => void>();
   let prefs: any = jest.requireActual('../../data/schema').DEFAULT_PREFS;
   return {
     __setClip: (c: any) => (clip = c),
     __setPrefs: (p: any) => (prefs = p),
+    __setFirst: (f: boolean) => (first = f),
     removeFile: jest.fn(),
     repo: {
       getClip: () => clip,
-      listClips: () => (clip ? [{ id: 'c0' }, clip] : []),
+      listClips: () => {
+        if (!clip) return [];
+        const other = { id: first ? 'c2' : 'c0', path: first ? '/c2.mp4' : '/c0.mp4', trim: { startMs: 1000, endMs: 9000 } };
+        return first ? [clip, other] : [other, clip];
+      },
       getPrefs: () => prefs,
       setPrefs: jest.fn((p: object) => (prefs = { ...prefs, ...p })),
       getSession: () => ({ id: 's1', sport: clip?.durationMs > 60000 ? 'musculacao' : 'beachTennis', startedAt: 0 }),
@@ -80,6 +104,7 @@ const base = {
 beforeEach(() => {
   jest.clearAllMocks();
   __setClip({ ...base });
+  jest.requireMock('../../data/mmkv').__setFirst(false);
   // The intro is covered by its own tests; elsewhere it was already seen.
   jest.requireMock('../../data/mmkv').__setPrefs({ ...jest.requireActual('../../data/schema').DEFAULT_PREFS, focusIntroSeen: true });
   // jest-expo's ImageLoader mock predates RN 0.88's promise-based getSize.
@@ -671,5 +696,93 @@ describe('Modo Foco', () => {
     __setClip({ ...base, focus: ready });
     await open();
     expect(screen.queryByText('Modo Foco: a câmera acompanha o lance')).toBeNull();
+  });
+});
+
+describe('the cut loops', () => {
+  test('when the player reaches the end of the file it starts the cut again and keeps playing', async () => {
+    await open();
+    player.play.mockClear();
+    player.currentTime = 60;
+    await act(async () => player.emit('playToEnd'));
+    expect(player.currentTime).toBe(30);
+    expect(player.play).toHaveBeenCalled();
+  });
+
+  test('a time a hair before the end of the cut already loops', async () => {
+    await open();
+    await act(async () => player.emit('timeUpdate', { currentTime: 59.9 }));
+    expect(player.currentTime).toBe(30);
+  });
+
+  test('a paused clip that reaches the end goes back to the start but stays paused', async () => {
+    await open();
+    await pressAction('Pausar');
+    player.play.mockClear();
+    await act(async () => player.emit('playToEnd'));
+    expect(player.currentTime).toBe(30);
+    expect(player.play).not.toHaveBeenCalled();
+  });
+});
+
+describe('swiping between clips follows the finger', () => {
+  const video = jest.requireMock('../../share/ZoomableVideo').__props;
+  const { __setFirst } = jest.requireMock('../../data/mmkv');
+  const settle = () => act(async () => new Promise((resolve) => setTimeout(resolve, 400)));
+
+  test('the clip next to this one is ready beside it before the finger moves', async () => {
+    jest.requireMock('expo-image').__shown.length = 0;
+    await open();
+    await act(async () => {});
+    // The video itself is mocked away, so the only picture on screen is the neighbour's still.
+    expect(jest.requireMock('expo-image').__shown).toContain('file:///c1.jpg');
+  });
+
+  test('the video shows its own picture until the first frame plays', async () => {
+    await open();
+    await act(async () => {});
+    expect(video.last.poster).toBe('file:///c1.jpg');
+  });
+
+  test('a swipe past the edge changes the clip', async () => {
+    await open();
+    await act(async () => video.last.onDrag(150));
+    await act(async () => video.last.onSwipe(-1));
+    await settle();
+    expect(router.setParams).toHaveBeenCalledWith({ id: 'c0' });
+  });
+
+  test('a short drag puts the clip back', async () => {
+    await open();
+    await act(async () => video.last.onDrag(40));
+    await act(async () => video.last.onDragCancel());
+    await settle();
+    expect(router.setParams).not.toHaveBeenCalled();
+    expect(router.back).not.toHaveBeenCalled();
+  });
+
+  test('on the first clip, swiping right goes back to the recording', async () => {
+    __setFirst(true);
+    await open();
+    await act(async () => video.last.onDrag(150));
+    await act(async () => video.last.onSwipe(-1));
+    await settle();
+    expect(router.back).toHaveBeenCalled();
+    expect(router.setParams).not.toHaveBeenCalled();
+  });
+
+  test('on the last clip, swiping left stays put', async () => {
+    await open();
+    await act(async () => video.last.onDrag(-150));
+    await act(async () => video.last.onSwipe(1));
+    await settle();
+    expect(router.setParams).not.toHaveBeenCalled();
+    expect(router.back).not.toHaveBeenCalled();
+  });
+
+  test('editing does not follow sideways drags', async () => {
+    await open();
+    await pressAction('Editar');
+    expect(video.last.onDrag).toBeUndefined();
   });
 });

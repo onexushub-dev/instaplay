@@ -16,6 +16,10 @@ type Props = {
   onCommit: (zoom: Zoom) => void;
   onTap: () => void;
   onSwipe?: (step: 1 | -1) => void;
+  /** A one-finger sideways drag that may become a swipe, as it happens: how far it went (Photos-like paging). */
+  onDrag?: (dx: number) => void;
+  /** The drag let go without changing the clip: put the picture back. */
+  onDragCancel?: () => void;
   /** A still finger held past HOLD_MS: true when it starts, false when the finger lifts (no tap, no commit then). */
   onHold?: (down: boolean) => void;
 };
@@ -23,6 +27,9 @@ type Props = {
 const TAP_SLOP = 10;
 const TAP_MS = 350;
 const SWIPE_MIN = 60;
+/** A drag this share of the picture's width changes the clip, like Photos; a quick flick needs less. */
+const SWIPE_SHARE = 0.25;
+const FLICK_VX = 0.5;
 /** Longer than a tap, so a slow tap never turns into a hold. */
 const HOLD_MS = 400;
 
@@ -48,6 +55,7 @@ export function useZoomGesture(props: Props) {
     let following = false;
     let holdTimer: ReturnType<typeof setTimeout> | undefined;
     let holding = false;
+    let dragged = false;
     const stopHoldTimer = () => {
       if (holdTimer !== undefined) clearTimeout(holdTimer);
       holdTimer = undefined;
@@ -74,6 +82,7 @@ export function useZoomGesture(props: Props) {
       onStartShouldSetPanResponder: () => true,
       onPanResponderGrant: (e) => {
         following = latest.current.baseZoom !== undefined;
+        dragged = false;
         current = latest.current.baseZoom ? latest.current.baseZoom() : latest.current.zoom;
         previous = read(e.nativeEvent.touches);
         startedAt = Date.now();
@@ -111,6 +120,11 @@ export function useZoomGesture(props: Props) {
           travelled += Math.hypot(dx, dy);
           totalX += dx;
           totalY += dy;
+          const onDrag = latest.current.onDrag;
+          if (onDrag && !multi && (following || latest.current.pinch === false)) {
+            dragged = true;
+            onDrag(totalX);
+          }
           if ((following && !multi) || latest.current.pinch === false) {
             previous = next;
             return;
@@ -128,19 +142,27 @@ export function useZoomGesture(props: Props) {
         }
         previous = next;
       },
-      onPanResponderRelease: () => {
+      onPanResponderRelease: (_, g) => {
         if (endHold()) return;
         const tap = !multi && travelled < TAP_SLOP && Date.now() - startedAt < TAP_MS;
+        const width = latest.current.box.width;
+        const far = Math.abs(totalX) > Math.max(SWIPE_MIN, width * SWIPE_SHARE);
+        const flick = Math.abs(g.vx) > FLICK_VX && Math.abs(totalX) > SWIPE_MIN / 3;
         const swipe =
           !multi &&
           (following || latest.current.pinch === false || latest.current.zoom.scale <= 1.01) &&
-          Math.abs(totalX) > SWIPE_MIN && Math.abs(totalX) > 2 * Math.abs(totalY);
+          (far || flick) &&
+          Math.abs(totalX) > 2 * Math.abs(totalY);
+        if (swipe && latest.current.onSwipe) return latest.current.onSwipe(totalX < 0 ? 1 : -1);
+        const onDragCancel = latest.current.onDragCancel;
+        if (dragged && onDragCancel) onDragCancel();
         if (tap) latest.current.onTap();
-        else if (swipe && latest.current.onSwipe) latest.current.onSwipe(totalX < 0 ? 1 : -1);
         else if (latest.current.pinch !== false) latest.current.onCommit(current);
       },
       onPanResponderTerminate: () => {
         if (endHold()) return;
+        const onDragCancel = latest.current.onDragCancel;
+        if (dragged && onDragCancel) onDragCancel();
         if (latest.current.pinch !== false) latest.current.onCommit(current);
       },
     });

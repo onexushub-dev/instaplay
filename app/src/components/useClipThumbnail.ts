@@ -13,7 +13,7 @@ export function useClipThumbnail(path: string, atMs: number): string | undefined
   const [uri, setUri] = useState(() => cache.get(key));
 
   useEffect(() => {
-    if (cache.has(key)) return;
+    if (!path || cache.has(key)) return;
     let alive = true;
     createThumbnail(path, atMs)
       .then((thumbPath) => {

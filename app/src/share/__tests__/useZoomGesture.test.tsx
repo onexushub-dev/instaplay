@@ -128,3 +128,35 @@ test('without pinch (watch mode) two fingers change nothing, and a flick still c
   expect(calls.swipe).toEqual([1]);
   expect(calls.change).toBe(0);
 });
+
+test('a horizontal drag is followed as it happens, and a short one is let go', async () => {
+  const calls = { drag: [] as number[], cancel: 0, swipe: [] as number[] };
+  const view = await renderHook(() =>
+    useZoomGesture({
+      zoom: NO_ZOOM,
+      pinch: false,
+      box: { left: 0, top: 0, width: 300, height: 200 },
+      onChange: () => {},
+      onCommit: () => {},
+      onTap: () => {},
+      onSwipe: (step) => void calls.swipe.push(step),
+      onDrag: (dx) => void calls.drag.push(dx),
+      onDragCancel: () => void calls.cancel++,
+    }),
+  );
+  const handlers = view.result.current as any;
+  const at = (x: number) => ({ pageX: x, pageY: 100, locationX: x, locationY: 100 });
+  await act(async () => void handlers.onResponderGrant(event([at(200)])));
+  for (const x of [190, 175, 160]) await act(async () => void handlers.onResponderMove(event([at(x)])));
+  expect(calls.drag).toEqual([-10, -25, -40]);
+  await act(async () => void handlers.onResponderRelease(event([])));
+  expect(calls.swipe).toEqual([]);
+  expect(calls.cancel).toBe(1);
+  // A quarter of the width or more changes the clip.
+  calls.drag = [];
+  await act(async () => void handlers.onResponderGrant(event([at(200)])));
+  for (const x of [170, 140, 120]) await act(async () => void handlers.onResponderMove(event([at(x)])));
+  await act(async () => void handlers.onResponderRelease(event([])));
+  expect(calls.swipe).toEqual([1]);
+  expect(calls.cancel).toBe(1);
+});

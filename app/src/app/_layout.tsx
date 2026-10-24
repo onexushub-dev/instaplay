@@ -48,8 +48,9 @@ export default function RootLayout() {
     <SessionProvider>
       <StatusBar style="light" />
       <RemoteStartListener />
-      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.ground } }}>
-        {/* Dragging the trim handles to the right would otherwise count as the swipe back. */}
+      {/* Back by swiping right from anywhere on the screen, not only the edge (iOS). */}
+      <Stack screenOptions={{ headerShown: false, fullScreenGestureEnabled: true, contentStyle: { backgroundColor: colors.ground } }}>
+        {/* The clip screen does its own swipe (between clips; on the first clip, back) and its trim handles drag sideways. */}
         <Stack.Screen name="clip/[id]" options={{ gestureEnabled: false }} />
         {/* Dispositivos: a sheet over the setup screen, closed by swiping down. */}
         <Stack.Screen name="devices" options={{ presentation: 'modal' }} />
