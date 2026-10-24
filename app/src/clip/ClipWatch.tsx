@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BackIcon, DownloadIcon, EditIcon, ShareIcon, TrashIcon } from '../components/icons';
 import { MAX_CLIP_NAME } from '../data/schema';
+import { useT } from '../i18n/useT';
 import { colors, fonts } from '../theme/tokens';
 import { EDGE, IconButton, SCRIM } from './IconButton';
 
@@ -35,6 +36,7 @@ type Props = {
 
 /** Watch mode: the clip as large as the screen allows, and only what you do after editing — Salvar, Enviar. */
 export function ClipWatch(p: Props) {
+  const { t } = useT();
   const window = useWindowDimensions();
   const [bottom, setBottom] = useState(0);
   return (
@@ -55,11 +57,11 @@ export function ClipWatch(p: Props) {
 
       <SafeAreaView edges={['top']} pointerEvents="box-none" style={styles.top}>
         <View style={styles.topRow}>
-          <IconButton label="Voltar" onPress={p.onBack}>
+          <IconButton label={t('common.back')} onPress={p.onBack}>
             <BackIcon />
           </IconButton>
           <TextInput
-            accessibilityLabel="Nome do clipe"
+            accessibilityLabel={t('clip.name')}
             value={p.name}
             onChangeText={p.onChangeName}
             onSubmitEditing={p.onSaveName}
@@ -71,19 +73,19 @@ export function ClipWatch(p: Props) {
             selectTextOnFocus
             style={styles.name}
           />
-          <IconButton label="Apagar clipe" onPress={p.onDelete}>
+          <IconButton label={t('clip.deleteClip')} onPress={p.onDelete}>
             <TrashIcon />
           </IconButton>
         </View>
         {p.focusTag ? (
           <View pointerEvents="box-none" style={styles.tagRow}>
-            <Pressable accessibilityRole="button" accessibilityLabel="Modo Foco" onPress={p.onFocusTag} style={styles.tag}>
+            <Pressable accessibilityRole="button" accessibilityLabel={t('clip.focusMode')} onPress={p.onFocusTag} style={styles.tag}>
               {p.focusTag === 'preparing' ? (
                 <ActivityIndicator size="small" color={colors.accent} />
               ) : (
                 <View style={styles.dot} />
               )}
-              <Text style={styles.tagText}>{p.focusTag === 'preparing' ? 'Modo Foco · preparando' : 'Modo Foco'}</Text>
+              <Text style={styles.tagText}>{p.focusTag === 'preparing' ? t('clip.focusPreparingTag') : t('clip.focusMode')}</Text>
             </Pressable>
           </View>
         ) : null}
@@ -99,18 +101,18 @@ export function ClipWatch(p: Props) {
           {p.position ? <Text style={styles.position}>{p.position}</Text> : null}
           {p.progress}
           <View style={styles.actions}>
-            <Action label="Editar" a11y="Editar" icon={<EditIcon />} onPress={p.onEdit} />
+            <Action label={t('clip.edit')} a11y={t('clip.edit')} icon={<EditIcon />} onPress={p.onEdit} />
             <Action
-              label="Salvar"
-              a11y="Salvar na galeria"
+              label={t('clip.save')}
+              a11y={t('clip.saveToPhotos')}
               icon={<DownloadIcon size={20} />}
               onPress={p.onSave}
               disabled={p.actionsDisabled}
               loading={p.saving}
             />
             <Action
-              label="Enviar"
-              a11y="Compartilhar"
+              label={t('clip.send')}
+              a11y={t('clip.share')}
               icon={<ShareIcon size={20} color={colors.onAccent} />}
               onPress={p.onShare}
               disabled={p.actionsDisabled}

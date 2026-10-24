@@ -4,6 +4,7 @@ import { PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { PauseIcon, PlayIcon } from '../components/icons';
 import { seconds } from '../components/format';
+import { useT } from '../i18n/useT';
 import { colors, fonts } from '../theme/tokens';
 
 type Props = {
@@ -19,6 +20,7 @@ type Props = {
 
 /** Watch mode's thin bar over the cut: play/pause, where the video is, drag to move through it. */
 export function WatchProgress({ player, trim, speed, playing, onTogglePlay, onSeek, onSeekEnd }: Props) {
+  const { t } = useT();
   const [atMs, setAtMs] = useState(trim.startMs);
   useEffect(() => {
     const sub = player.addListener('timeUpdate', ({ currentTime }) => setAtMs(currentTime * 1000));
@@ -58,14 +60,14 @@ export function WatchProgress({ player, trim, speed, playing, onTogglePlay, onSe
     <View style={styles.row}>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={playing ? 'Pausar' : 'Reproduzir'}
+        accessibilityLabel={playing ? t('clip.pause') : t('clip.play')}
         onPress={onTogglePlay}
         style={styles.play}>
         {playing ? <PauseIcon size={18} /> : <PlayIcon size={18} />}
       </Pressable>
       <View
         {...pan.panHandlers}
-        accessibilityLabel="Posição no clipe"
+        accessibilityLabel={t('clip.positionInClip')}
         onLayout={(e) => setWidth(e.nativeEvent.layout.width)}
         style={styles.hit}>
         <View pointerEvents="none" style={styles.track}>

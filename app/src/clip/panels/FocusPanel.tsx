@@ -1,16 +1,16 @@
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { useT } from '../../i18n/useT';
 import { colors, fonts } from '../../theme/tokens';
 import type { ToolContext } from '../tools';
 import { PanelHead } from './PanelParts';
 
-const HINT = 'A câmera acompanha o lance, com zoom quando a jogada se concentra.';
-
 export function FocusPanel({ ctx }: { ctx: ToolContext }) {
+  const { t } = useT();
   if (ctx.focus === 'unavailable') {
     return (
       <View style={{ gap: 10 }}>
-        <PanelHead title="Modo Foco" hint="Modo Foco indisponível para esse clipe." />
+        <PanelHead title={t('clip.focusMode')} hint={t('clip.focusUnavailable')} />
       </View>
     );
   }
@@ -19,12 +19,12 @@ export function FocusPanel({ ctx }: { ctx: ToolContext }) {
   return (
     <View style={{ gap: 10 }}>
       <PanelHead
-        title="Modo Foco"
-        hint={HINT}
+        title={t('clip.focusMode')}
+        hint={t('clip.focusHint')}
         right={
           <Pressable
             accessibilityRole="switch"
-            accessibilityLabel="Modo Foco"
+            accessibilityLabel={t('clip.focusMode')}
             accessibilityState={{ checked: on, disabled: preparing }}
             disabled={preparing}
             onPress={ctx.toggleFocus}
@@ -37,11 +37,11 @@ export function FocusPanel({ ctx }: { ctx: ToolContext }) {
       {preparing ? (
         <View style={styles.note}>
           <ActivityIndicator size="small" color={colors.soft} />
-          <Text style={styles.noteText}>Preparando o enquadramento…</Text>
+          <Text style={styles.noteText}>{t('clip.focusPreparingNote')}</Text>
         </View>
       ) : (
         <View style={styles.note}>
-          <Text style={styles.noteText}>Mantenha o dedo pressionado no vídeo para ver o clipe original</Text>
+          <Text style={styles.noteText}>{t('clip.focusHold')}</Text>
         </View>
       )}
     </View>

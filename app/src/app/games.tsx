@@ -6,17 +6,24 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button } from '../components/Button';
 import { GameCard } from '../components/GameCard';
 import { BackIcon } from '../components/icons';
-import { removeFile, repo } from '../data/mmkv';
 import { sessionLabel } from '../components/format';
+import { removeFile, repo } from '../data/mmkv';
+import { useT } from '../i18n/useT';
+import { restorePurchases } from '../payments/feedback';
 import { useSession } from '../session/SessionContext';
 import { colors, fonts } from '../theme/tokens';
 
 /** Past games with at least one lance, newest first. */
 export default function Games() {
+  const { t, locale } = useT();
   const { reset, state } = useSession();
   const version = useSyncExternalStore(repo.subscribe, repo.version);
   const games = useMemo(
-    () => repo.listSessions().map((g) => ({ ...g, recordedMs: repo.sessionStats(g.session.id).recordedMs })),
+    () =>
+      repo.listSessions().map((g) => ({
+        ...g,
+        recordedMs: repo.sessionStats(g.session.id).recordedMs,
+      })),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- version is the change signal
     [version],
   );
@@ -24,12 +31,12 @@ export default function Games() {
   // A game still being recorded has no end yet: it is never offered for deleting.
   const confirmDelete = (id: string, label: string, clips: number) => {
     Alert.alert(
-      `Apagar “${label}”?`,
-      `${clips === 1 ? 'O clipe dessa gravação será apagado' : `Os ${clips} clipes dessa gravação serão apagados`} do celular. Não dá para desfazer.`,
+      t('games.deleteTitle', { name: label }),
+      t('games.deleteBody', { count: clips }),
       [
-        { text: 'Cancelar', style: 'cancel' },
+        { text: t('common.cancel'), style: 'cancel' },
         {
-          text: 'Apagar',
+          text: t('common.delete'),
           style: 'destructive',
           onPress: () => repo.deleteSession(id).forEach((path) => removeFile(path)),
         },
@@ -48,24 +55,24 @@ export default function Games() {
       <View style={styles.top}>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Voltar"
+          accessibilityLabel={t('common.back')}
           onPress={() => router.back()}
           style={styles.back}>
           <BackIcon />
         </Pressable>
       </View>
       <Text style={styles.title} accessibilityRole="header">
-        MINHAS GRAVAÇÕES
+        {t('games.title')}
       </Text>
       <FlatList
         data={games}
         keyExtractor={(g) => g.session.id}
         contentContainerStyle={styles.list}
-        ListEmptyComponent={<Text style={styles.empty}>Nenhuma gravação com clipes ainda.</Text>}
+        ListEmptyComponent={<Text style={styles.empty}>{t('games.empty')}</Text>}
         renderItem={({ item }) => {
           const ended = item.session.endedAt !== undefined;
-          const ask = () => confirmDelete(item.session.id, sessionLabel(item.session), item.clips);
-          const card = (
+          const ask = () => confirmDelete(item.session.id, sessionLabel(item.session, undefined, locale), item.clips);
+          return (
             <GameCard
               session={item.session}
               clips={item.clips}
@@ -76,11 +83,11 @@ export default function Games() {
               onDelete={ended ? ask : undefined}
             />
           );
-          return card;
         }}
       />
       <View style={styles.footer}>
-        <Button label="Nova gravação" onPress={newGame} />
+        <Button label={t('summary.newRecording')} onPress={newGame} />
+        <Button label={t('games.restore')} variant="secondary" onPress={() => void restorePurchases(t)} />
       </View>
     </SafeAreaView>
   );
@@ -99,6 +106,6 @@ const styles = StyleSheet.create({
   },
   title: { fontFamily: fonts.displayBold, fontSize: 44, color: colors.text },
   list: { gap: 10, paddingBottom: 24 },
-  footer: { paddingBottom: 12 },
+  footer: { paddingBottom: 12, gap: 10 },
   empty: { fontFamily: fonts.body, fontSize: 15, color: colors.soft, textAlign: 'center', marginTop: 40 },
 });

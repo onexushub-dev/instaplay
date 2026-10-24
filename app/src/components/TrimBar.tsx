@@ -2,6 +2,7 @@ import { type ReactNode, useLayoutEffect, useRef, useState } from 'react';
 import { PanResponder, StyleSheet, View } from 'react-native';
 
 import { clampTrim } from '../share/trim';
+import { useT } from '../i18n/useT';
 import { colors } from '../theme/tokens';
 
 type Cut = { startMs: number; endMs: number };
@@ -24,6 +25,7 @@ const HANDLE = 44; // touch target
 
 /** The whole clip as a track, the cut as an accent window with a draggable handle on each edge. */
 export function TrimBar({ durationMs, trim, maxMs, floorMs = 0, onChange, onCommit, children }: Props) {
+  const { t } = useT();
   const [width, setWidth] = useState(0);
   // Pan callbacks read the latest props through this ref (updated after each commit).
   const latest = useRef({ trim, width, durationMs, maxMs, floorMs, onChange, onCommit });
@@ -71,14 +73,14 @@ export function TrimBar({ durationMs, trim, maxMs, floorMs = 0, onChange, onComm
       <View
         {...startPan.panHandlers}
         accessibilityRole="adjustable"
-        accessibilityLabel="Início do corte"
+        accessibilityLabel={t('clip.trimStart')}
         style={[styles.handle, { left: left - HANDLE / 2 }]}>
         <View style={styles.grip} />
       </View>
       <View
         {...endPan.panHandlers}
         accessibilityRole="adjustable"
-        accessibilityLabel="Fim do corte"
+        accessibilityLabel={t('clip.trimEnd')}
         style={[styles.handle, { left: right - HANDLE / 2 }]}>
         <View style={styles.grip} />
       </View>

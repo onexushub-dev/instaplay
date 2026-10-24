@@ -1,10 +1,14 @@
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 
+import { setLocale } from '../../i18n';
 import Games from '../games';
 
 jest.mock('expo-router', () => ({ router: { push: jest.fn(), back: jest.fn(), dismissTo: jest.fn() } }));
 jest.mock('../../session/SessionContext', () => ({ useSession: jest.fn() }));
 jest.mock('../../components/useClipThumbnail', () => ({ useClipThumbnail: () => undefined }));
+jest.mock('../../payments', () => ({
+  payments: { subscribe: () => () => {}, version: () => 0, restore: jest.fn() },
+}));
 jest.mock('../../data/mmkv', () => ({
   repo: {
     listSessions: jest.fn(),
@@ -17,6 +21,7 @@ jest.mock('../../data/mmkv', () => ({
 }));
 
 const { repo } = jest.requireMock('../../data/mmkv');
+const { payments } = jest.requireMock('../../payments');
 const { router } = jest.requireMock('expo-router');
 const { useSession } = jest.requireMock('../../session/SessionContext');
 
@@ -49,6 +54,44 @@ test('empty state', async () => {
   repo.listSessions.mockReturnValue([]);
   await render(<Games />);
   expect(screen.getByText('Nenhuma gravação com clipes ainda.')).toBeTruthy();
+});
+
+test('an English phone sees the list in English', async () => {
+  setLocale('en');
+  try {
+    repo.listSessions.mockReturnValue([
+      { session: { id: 's1', sport: 'futevolei', startedAt: new Date(2026, 9, 17, 18, 40).getTime() }, clips: 1, firstClip: clip },
+    ]);
+    repo.sessionStats.mockReturnValue({ clips: 1, bytes: 1, recordedMs: 74 * 60_000 });
+    await render(<Games />);
+    expect(screen.getByText('MY RECORDINGS')).toBeTruthy();
+    expect(screen.getByText('1 clip · 1h 14m')).toBeTruthy();
+    expect(screen.getByText(/^Footvolley · 10\/17, 6:40\sPM$/)).toBeTruthy();
+  } finally {
+    setLocale('pt-BR');
+  }
+});
+
+const oneGame = (plan: object = {}) => {
+  repo.listSessions.mockReturnValue([{ session: { id: 's1', sport: 'outro', startedAt: 0, ...plan }, clips: 7, firstClip: clip }]);
+  repo.sessionStats.mockReturnValue({ clips: 7, bytes: 1, recordedMs: 60_000 });
+};
+
+test.each([
+  ['free', { paid: false }],
+  ['paid', { paid: true }],
+  ['older Pass', { passTransactionId: 'tx-1' }],
+])('no game shows bloqueado on the %s plan', async (_name, plan) => {
+  oneGame(plan);
+  await render(<Games />);
+  expect(screen.queryByText(/bloqueado/)).toBeNull();
+});
+
+test('Restaurar compras restores purchases', async () => {
+  repo.listSessions.mockReturnValue([]);
+  await render(<Games />);
+  await fireEvent.press(screen.getByRole('button', { name: 'Restaurar compras' }));
+  expect(payments.restore).toHaveBeenCalled();
 });
 
 test('holding a finished game offers to delete it, and deleting removes its files', async () => {

@@ -1,5 +1,8 @@
 import SwiftUI
 
+// Every text is an English key looked up in Localizable.xcstrings (English and Brazilian Portuguese); the watch
+// shows the watch's own language.
+
 private let ground = Color(red: 0.059, green: 0.063, blue: 0.051) // #0F100D
 private let accent = Color(red: 0.812, green: 0.918, blue: 0.475) // #CFEA79
 
@@ -43,7 +46,7 @@ struct ContentView: View {
     }
   }
 
-  /// Nothing is recording: one big Começar gravação button. Without the Repplay app open on the phone it cannot work, so
+  /// Nothing is recording: one big Start recording button. Without the Repplay app open on the phone it cannot work, so
   /// the screen says to open it instead: nothing to tap that would go nowhere.
   @ViewBuilder private var idleView: some View {
     if !link.reachable || link.startFailed {
@@ -52,21 +55,30 @@ struct ContentView: View {
       VStack(spacing: 3) {
         Header {}
         BigButton(
-          title: link.starting ? "Começando…" : "Começar gravação", style: .title2, enabled: !link.starting,
+          title: link.starting ? Text("Starting…") : Text("Start recording"), style: .title2, enabled: !link.starting,
           action: link.sendStart)
       }
     }
   }
 
-  /// Dimmed screen: just the count and Salvar, nothing else to mis-tap.
+  /// Dimmed screen: just the count and Save, nothing else to mis-tap.
   private func dimmedView(clipCount: Int) -> some View {
     VStack(spacing: 3) {
-      Header { Text(WatchModel.countLabel(clipCount)).foregroundStyle(accent) }
-      BigButton(title: "Salvar", enabled: true, action: link.sendSave)
+      Header { Text("\(clipCount) clips").foregroundStyle(accent) }
+      saveButton
     }
   }
 
-  /// Top to bottom: time and count, the two small controls, then Salvar filling everything that is left.
+  /// Save, or (watch trigger locked: it is paid) a short note in its place; the timer and count keep working.
+  @ViewBuilder private var saveButton: some View {
+    if link.saveAllowed {
+      BigButton(title: Text("Save"), enabled: true, action: link.sendSave)
+    } else {
+      ProOnlyNote()
+    }
+  }
+
+  /// Top to bottom: time and count, the two small controls, then Save filling everything that is left.
   private func recordingView(clipCount: Int, startedAt: Date?) -> some View {
     VStack(spacing: 4) {
       Header {
@@ -75,19 +87,19 @@ struct ContentView: View {
             Text(WatchModel.elapsed(since: startedAt, now: context.date)).monospacedDigit()
           }
         }
-        Text(WatchModel.countLabel(clipCount)).foregroundStyle(accent)
+        Text("\(clipCount) clips").foregroundStyle(accent)
       }
       HStack(spacing: 6) {
         CameraToggle(isOn: false) { link.setPreview(true) }
         StopButton(action: link.sendStop)
       }
-      // Room between the small controls and Salvar, so a thumb aiming at one does not land on the other.
-      BigButton(title: "Salvar", enabled: true, action: link.sendSave)
+      // Room between the small controls and Save, so a thumb aiming at one does not land on the other.
+      saveButton
         .padding(.top, 8)
     }
   }
 
-  /// The camera fills the screen and there is no Salvar button: a tap anywhere saves. Only the corner
+  /// The camera fills the screen and there is no Save button: a tap anywhere saves. Only the corner
   /// buttons (close the camera) and the count sit over the picture.
   private func cameraView(clipCount: Int) -> some View {
     ZStack {
@@ -101,7 +113,7 @@ struct ContentView: View {
         HStack(alignment: .top) {
           CameraToggle(isOn: true) { link.setPreview(false) }
           Spacer(minLength: 0)
-          Text(WatchModel.countLabel(clipCount))
+          Text("\(clipCount) clips")
             .font(.system(.footnote, design: .rounded).weight(.bold))
             .foregroundStyle(accent)
             .padding(.horizontal, 8).padding(.vertical, 4)
@@ -112,9 +124,9 @@ struct ContentView: View {
       .padding(4)
     }
     .contentShape(Rectangle())
-    .onTapGesture { link.sendSave() }
-    .accessibilityAddTraits(.isButton)
-    .accessibilityLabel("Salvar")
+    .onTapGesture { if link.saveAllowed { link.sendSave() } }
+    .accessibilityAddTraits(link.saveAllowed ? .isButton : [])
+    .accessibilityLabel(link.saveAllowed ? Text("Save") : Text("Available with Pro"))
     .ignoresSafeArea(edges: .bottom)
   }
 }
@@ -127,7 +139,7 @@ private struct Confirmation: View {
       (saved ? accent : Color.red).opacity(0.92)
       VStack(spacing: 4) {
         Image(systemName: saved ? "checkmark.circle.fill" : "xmark.circle.fill").font(.system(size: 44))
-        Text(saved ? "Salvo" : "Não salvou").font(.system(.title3, design: .rounded).weight(.heavy))
+        (saved ? Text("Saved") : Text("Not saved")).font(.system(.title3, design: .rounded).weight(.heavy))
       }
       .foregroundStyle(saved ? ground : .white)
     }
@@ -151,7 +163,7 @@ private struct CameraToggle: View {
         .foregroundStyle(.white)
     }
     .buttonStyle(.plain)
-    .accessibilityLabel(isOn ? "Fechar câmera" : "Ver câmera")
+    .accessibilityLabel(isOn ? Text("Close camera") : Text("View camera"))
   }
 }
 
@@ -162,14 +174,16 @@ private struct PhoneClosedView: View {
   let lostRecording: Bool
   var body: some View {
     VStack(spacing: 3) {
-      Header { if lostRecording { Text("Sem conexão").foregroundStyle(.red) } }
+      Header { if lostRecording { Text("No connection").foregroundStyle(.red) } }
       VStack(spacing: 8) {
         Image(systemName: "iphone.gen3").font(.system(size: 42, weight: .semibold)).foregroundStyle(accent)
-        Text("Abra o Repplay no iPhone")
+        Text("Open Repplay on your iPhone")
           .font(.system(.title3, design: .rounded).weight(.heavy))
           .multilineTextAlignment(.center)
           .foregroundStyle(.white)
-        Text(lostRecording ? "A gravação perdeu a conexão com o relógio." : "Sem o app aberto não dá para gravar nem salvar clipes.")
+        (lostRecording
+          ? Text("The recording lost its connection to the watch.")
+          : Text("Without the app open, you can't record or save clips."))
           .font(.system(.footnote, design: .rounded))
           .multilineTextAlignment(.center)
           .minimumScaleFactor(0.8)
@@ -182,6 +196,23 @@ private struct PhoneClosedView: View {
   }
 }
 
+/// In place of Save when the watch trigger is locked (free tier): nothing to tap, just where it comes from.
+private struct ProOnlyNote: View {
+  var body: some View {
+    VStack(spacing: 6) {
+      Image(systemName: "lock.fill").font(.system(size: 22, weight: .semibold)).foregroundStyle(accent)
+      Text("Available with Pro")
+        .font(.system(.title3, design: .rounded).weight(.heavy))
+        .multilineTextAlignment(.center)
+        .minimumScaleFactor(0.7)
+        .foregroundStyle(.white)
+    }
+    .padding(.horizontal, 8)
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+    .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+  }
+}
+
 /// Just opened and the phone has not spoken yet: a short, neutral wait before deciding anything.
 private struct ConnectingView: View {
   var body: some View {
@@ -189,7 +220,7 @@ private struct ConnectingView: View {
       Header {}
       VStack(spacing: 10) {
         ProgressView().tint(accent)
-        Text("Conectando ao iPhone…")
+        Text("Connecting to your iPhone…")
           .font(.system(.title3, design: .rounded).weight(.heavy))
           .multilineTextAlignment(.center)
           .foregroundStyle(.white)
@@ -220,13 +251,14 @@ private struct Header<Content: View>: View {
 /// Fills all the width and all the height left, edge to edge: easy to hit without looking, mid-play.
 /// Drawn by hand: the system prominent style adds its own margin and shrinks the target.
 private struct BigButton: View {
-  let title: String
+  /// A Text built from a catalog key, so it is shown in the watch's language.
+  let title: Text
   var style: Font.TextStyle = .title
   let enabled: Bool
   let action: () -> Void
   var body: some View {
     Button(action: action) {
-      Text(title)
+      title
         .font(.system(style, design: .rounded).weight(.heavy))
         .multilineTextAlignment(.center)
         .minimumScaleFactor(0.7)
@@ -254,7 +286,7 @@ private struct StopButton: View {
   @State private var pressing = false
   @State private var hint = false
   var body: some View {
-    Text(hint ? "Segure" : "Parar")
+    (hint ? Text("Hold") : Text("Stop"))
       .font(.system(.footnote, design: .rounded).weight(.bold))
       .frame(maxWidth: .infinity, minHeight: 44)
       .background(pressing ? Color.red : Color.red.opacity(0.35), in: Capsule())
@@ -266,39 +298,39 @@ private struct StopButton: View {
         hint = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { hint = false }
       }
-      .accessibilityLabel("Parar a gravação")
-      .accessibilityHint("Segure para parar")
+      .accessibilityLabel(Text("Stop recording"))
+      .accessibilityHint(Text("Hold to stop"))
   }
 }
 
-#Preview("Gravando") {
+#Preview("Recording") {
   VStack(spacing: 3) {
     Header {
-      Text("12:34").monospacedDigit()
-      Text("3 clipes").foregroundStyle(accent)
+      Text(verbatim: "12:34").monospacedDigit()
+      Text("\(3) clips").foregroundStyle(accent)
     }
     HStack(spacing: 3) {
       CameraToggle(isOn: false) {}
       StopButton {}
     }
-    BigButton(title: "Salvar", enabled: true, action: {})
+    BigButton(title: Text("Save"), enabled: true, action: {})
   }
   .padding(3)
   .background(ground)
 }
 
-#Preview("iPhone fechado") {
+#Preview("Phone closed") {
   PhoneClosedView(lostRecording: false).padding(3).background(ground)
 }
 
-#Preview("Conectando") {
+#Preview("Connecting") {
   ConnectingView().padding(3).background(ground)
 }
 
-#Preview("Parado") {
+#Preview("Idle") {
   VStack(spacing: 3) {
     Header {}
-    BigButton(title: "Começar gravação", style: .title2, enabled: true, action: {})
+    BigButton(title: Text("Start recording"), style: .title2, enabled: true, action: {})
   }
   .padding(3)
   .background(ground)

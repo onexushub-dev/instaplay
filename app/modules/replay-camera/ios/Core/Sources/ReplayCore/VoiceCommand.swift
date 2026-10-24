@@ -1,16 +1,38 @@
 import Foundation
 
-/// Finds the spoken save command in a speech transcript: "salvar" or "gravar", as whole words
-/// (so "salvou", "gravando" and court talk don't fire it).
+/// The language the voice command listens in; the raw value is the tag JavaScript sends (`setVoiceEnabled`).
+public enum VoiceLocale: String, CaseIterable {
+  case ptBR = "pt-BR"
+  case enUS = "en-US"
+
+  /// The speech recognizer's locale.
+  public var locale: Locale { Locale(identifier: rawValue) }
+}
+
+/// Finds the spoken save command in a speech transcript, as whole words, ignoring case and accents
+/// (so "salvou", "gravando", "saved", "recording" and court talk don't fire it).
 public enum VoiceCommand {
-  public static let words = ["salvar", "gravar"]
+  /// The command words per language. Kept small on purpose: "save" is also common court talk ("great save!"),
+  /// so if field tests show false triggers, change the English list here (and the app's VOICE_WORDS and the
+  /// speech permission text in app/locales).
+  public static func words(for locale: VoiceLocale) -> [String] {
+    switch locale {
+    case .ptBR: return ["salvar", "gravar"]
+    case .enUS: return ["save", "record"]
+    }
+  }
 
-  private static let pattern = try! NSRegularExpression(pattern: #"\b(salvar|gravar)\b"#)
+  private static let patterns: [VoiceLocale: NSRegularExpression] = Dictionary(
+    uniqueKeysWithValues: VoiceLocale.allCases.map { locale in
+      let alternatives = words(for: locale).map(NSRegularExpression.escapedPattern(for:)).joined(separator: "|")
+      return (locale, try! NSRegularExpression(pattern: #"\b("# + alternatives + #")\b"#))
+    }
+  )
 
-  public static func matches(_ transcript: String) -> Bool {
+  public static func matches(_ transcript: String, locale: VoiceLocale) -> Bool {
     let text = transcript
-      .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "pt_BR"))
+      .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: locale.locale)
       .lowercased()
-    return pattern.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) != nil
+    return patterns[locale]!.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) != nil
   }
 }

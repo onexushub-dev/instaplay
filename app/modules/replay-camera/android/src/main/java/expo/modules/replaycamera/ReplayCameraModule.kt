@@ -82,16 +82,17 @@ class ReplayCameraModule : Module() {
     AsyncFunction("createThumbnail") { clipPath: String, atMs: Double -> ClipThumbnail.make(clipPath, atMs) }
 
     // Voice is iOS-only for now: Android's microphone is already taken by the recorder.
-    Function("setVoiceEnabled") { _: Boolean -> }
+    Function("setVoiceEnabled") { _: Boolean, _: String -> }
 
     // Wear OS arrives with the Android device stage; until then there is never a watch on Android.
     Function("getWatchStatus") { "unsupported" }
 
     Function("watchSync") { _: Boolean, _: Int, _: Double? -> }
+    Function("watchSetSaveAllowed") { _: Boolean -> }
 
     Function("watchSignal") { _: Boolean -> }
 
-    Function("isVoiceSupported") { false }
+    Function("isVoiceSupported") { _: String -> false }
 
     Function("getSpeechPermission") { "denied" }
 

@@ -2,10 +2,11 @@ import { Image } from 'expo-image';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import type { Clip } from '../data/schema';
+import { useT } from '../i18n/useT';
 import { colors, fonts } from '../theme/tokens';
 import { seconds, timeOfDay } from './format';
 import { CheckIcon } from './icons';
-import { SOURCE_LABEL } from './sourceLabel';
+import { sourceLabel } from './sourceLabel';
 import { useClipThumbnail } from './useClipThumbnail';
 
 type Props = {
@@ -19,12 +20,21 @@ type Props = {
 };
 
 export function ClipCard({ clip, number, onPress, onLongPress, selecting = false, selected = false }: Props) {
+  const { t, locale } = useT();
   const thumb = useClipThumbnail(clip.path, clip.trim.startMs);
   const duration = seconds(clip.trim.endMs - clip.trim.startMs);
+  const base = t('summary.clipA11y', {
+    number,
+    name: clip.name ? ` · ${clip.name}` : '',
+    duration,
+    source: sourceLabel(clip.source, locale),
+  });
+  const sent = clip.savedAt ? t('summary.savedA11y', { label: base }) : clip.sharedAt ? t('summary.sharedA11y', { label: base }) : base;
+  const label = selecting ? t(selected ? 'summary.selectedA11y' : 'summary.notSelectedA11y', { label: sent }) : sent;
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`Clipe ${number}${clip.name ? ` · ${clip.name}` : ''}, ${duration}, ${SOURCE_LABEL[clip.source]}${clip.savedAt ? ', salvo na galeria' : clip.sharedAt ? ', compartilhado' : ''}${selecting ? (selected ? ', selecionado' : ', não selecionado') : ''}`}
+      accessibilityLabel={label}
       accessibilityState={selecting ? { checked: selected } : undefined}
       onPress={onPress}
       onLongPress={onLongPress}
@@ -40,7 +50,7 @@ export function ClipCard({ clip, number, onPress, onLongPress, selecting = false
         {clip.savedAt || clip.sharedAt ? (
           <View style={[styles.tag, styles.done, { left: 8, bottom: 8 }]}>
             <CheckIcon color={colors.accent} size={12} />
-            <Text style={styles.tagText}>{clip.savedAt ? 'Na galeria' : 'Compartilhado'}</Text>
+            <Text style={styles.tagText}>{clip.savedAt ? t('summary.savedTag') : t('summary.sharedTag')}</Text>
           </View>
         ) : null}
         {selecting ? (
@@ -53,8 +63,8 @@ export function ClipCard({ clip, number, onPress, onLongPress, selecting = false
         </Text>
       ) : null}
       <View style={styles.meta}>
-        <Text style={styles.metaText}>{timeOfDay(clip.createdAt)}</Text>
-        <Text style={styles.metaText}>{SOURCE_LABEL[clip.source]}</Text>
+        <Text style={styles.metaText}>{timeOfDay(clip.createdAt, locale)}</Text>
+        <Text style={styles.metaText}>{sourceLabel(clip.source, locale)}</Text>
       </View>
     </Pressable>
   );

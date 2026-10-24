@@ -40,6 +40,4 @@ public struct WatchSharedState: Equatable {
       self.init(recording: false, clipCount: 0, startedAtMs: nil)
     }
   }
-
-  public static func clipLabel(_ count: Int) -> String { count == 1 ? "1 clipe" : "\(count) clipes" }
 }

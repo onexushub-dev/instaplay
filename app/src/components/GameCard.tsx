@@ -2,6 +2,7 @@ import { Image } from 'expo-image';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import type { Clip, Session } from '../data/schema';
+import { useT } from '../i18n/useT';
 import { colors, fonts } from '../theme/tokens';
 import { TrashIcon } from './icons';
 import { recordedLabel, sessionLabel } from './format';
@@ -17,11 +18,12 @@ type Props = {
   onDelete?: () => void;
 };
 
-/** One past game in "Minhas gravações": first lance's frame, name (or sport + date), lances and time. */
+/** One past game in "My recordings": first lance's frame, name (or sport + date), lances and time. */
 export function GameCard({ session, clips, firstClip, recordedMs, onPress, onLongPress, onDelete }: Props) {
   const thumb = useClipThumbnail(firstClip?.path ?? '', firstClip?.trim.startMs ?? 0);
-  const label = sessionLabel(session);
-  const detail = `${clips} ${clips === 1 ? 'clipe' : 'clipes'} · ${recordedLabel(recordedMs)}`;
+  const { t, locale } = useT();
+  const label = sessionLabel(session, undefined, locale);
+  const detail = t('games.detail', { clips: t('summary.clips', { count: clips }), time: recordedLabel(recordedMs, locale) });
   return (
     <View style={styles.card}>
       <Pressable
@@ -29,7 +31,7 @@ export function GameCard({ session, clips, firstClip, recordedMs, onPress, onLon
         accessibilityLabel={`${label}, ${detail}`}
         onPress={onPress}
         onLongPress={onLongPress}
-        accessibilityActions={onLongPress ? [{ name: 'longpress', label: 'Apagar gravação' }] : undefined}
+        accessibilityActions={onLongPress ? [{ name: 'longpress', label: t('games.deleteRecording') }] : undefined}
         onAccessibilityAction={onLongPress ? () => onLongPress() : undefined}
         style={styles.main}>
         <View style={styles.thumb}>
@@ -45,7 +47,7 @@ export function GameCard({ session, clips, firstClip, recordedMs, onPress, onLon
       {onDelete ? (
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={`Apagar gravação ${label}`}
+          accessibilityLabel={t('games.deleteRecordingNamed', { name: label })}
           hitSlop={6}
           onPress={onDelete}
           style={styles.trash}>

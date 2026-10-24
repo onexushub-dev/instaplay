@@ -20,6 +20,7 @@ export function RemoteStartListener() {
       if (phase === 'starting' || camera === 'starting') return;
       if (phase !== 'idle' && !(phase === 'ended' && error === undefined)) return;
       router.navigate('/setup');
+      // A blocked remote start does nothing: the paywall only opens from the setup button.
       void session.start(offeredMode(repo.getPrefs().sport));
     });
     return () => sub.remove();

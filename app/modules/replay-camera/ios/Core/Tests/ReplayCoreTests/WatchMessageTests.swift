@@ -4,8 +4,9 @@ import XCTest
 final class WatchMessageTests: XCTestCase {
   func testKeysAreFixed() {
     XCTAssertEqual(WatchMessage.save.payload["cmd"] as? String, "save")
-    let state = WatchMessage.state(recording: true, clipCount: 3, startedAt: 1_700_000_000_000).payload
-    XCTAssertEqual(Set(state.keys), ["recording", "clipCount", "startedAt"])
+    let state = WatchMessage.state(recording: true, clipCount: 3, startedAt: 1_700_000_000_000, saveAllowed: false).payload
+    XCTAssertEqual(Set(state.keys), ["recording", "clipCount", "startedAt", "saveAllowed"])
+    XCTAssertEqual(state["saveAllowed"] as? Bool, false)
     XCTAssertEqual(WatchMessage.start.payload["cmd"] as? String, "start")
     XCTAssertEqual(WatchMessage.stop.payload["cmd"] as? String, "stop")
     XCTAssertEqual(WatchMessage.preview(on: true).payload["preview"] as? Bool, true)
@@ -18,8 +19,10 @@ final class WatchMessageTests: XCTestCase {
       .save,
       .start,
       .stop,
-      .state(recording: true, clipCount: 3, startedAt: 1_700_000_000_000),
-      .state(recording: false, clipCount: 0, startedAt: nil),
+      .state(recording: true, clipCount: 3, startedAt: 1_700_000_000_000, saveAllowed: true),
+      .state(recording: true, clipCount: 3, startedAt: 1_700_000_000_000, saveAllowed: false),
+      .state(recording: false, clipCount: 0, startedAt: nil, saveAllowed: true),
+      .state(recording: false, clipCount: 0, startedAt: nil, saveAllowed: false),
       .result(saved: true),
       .result(saved: false),
       .preview(on: true),
@@ -29,8 +32,18 @@ final class WatchMessageTests: XCTestCase {
   }
 
   func testIdleStateOmitsStartedAt() {
-    let payload = WatchMessage.state(recording: false, clipCount: 0, startedAt: nil).payload
+    let payload = WatchMessage.state(recording: false, clipCount: 0, startedAt: nil, saveAllowed: true).payload
     XCTAssertNil(payload["startedAt"])
+  }
+
+  func testAStateWithoutSaveAllowedKeepsSave() {
+    // A phone build from before the watch trigger was paid never says: the watch keeps its Save button.
+    XCTAssertEqual(
+      WatchMessage.decode(["recording": true, "clipCount": 1, "startedAt": 5.0]),
+      .state(recording: true, clipCount: 1, startedAt: 5.0, saveAllowed: true))
+    XCTAssertEqual(
+      WatchMessage.decode(["recording": true, "clipCount": 1, "saveAllowed": "no"]),
+      .state(recording: true, clipCount: 1, startedAt: nil, saveAllowed: true))
   }
 
   func testDecodeRejectsAnythingMalformed() {
@@ -44,7 +57,10 @@ final class WatchMessageTests: XCTestCase {
 
   func testNumbersFromWatchConnectivityDecode() {
     // WatchConnectivity hands numbers back as NSNumber.
-    let payload: [String: Any] = ["recording": NSNumber(value: true), "clipCount": NSNumber(value: 2), "startedAt": NSNumber(value: 5.0)]
-    XCTAssertEqual(WatchMessage.decode(payload), .state(recording: true, clipCount: 2, startedAt: 5.0))
+    let payload: [String: Any] = [
+      "recording": NSNumber(value: true), "clipCount": NSNumber(value: 2), "startedAt": NSNumber(value: 5.0),
+      "saveAllowed": NSNumber(value: false),
+    ]
+    XCTAssertEqual(WatchMessage.decode(payload), .state(recording: true, clipCount: 2, startedAt: 5.0, saveAllowed: false))
   }
 }

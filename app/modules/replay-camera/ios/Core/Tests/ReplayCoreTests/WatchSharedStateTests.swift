@@ -27,10 +27,4 @@ final class WatchSharedStateTests: XCTestCase {
     let state = WatchSharedState(dictionary: ["recording": true, "clipCount": 2])
     XCTAssertFalse(state.recording)
   }
-
-  func testClipLabel() {
-    XCTAssertEqual(WatchSharedState.clipLabel(0), "0 clipes")
-    XCTAssertEqual(WatchSharedState.clipLabel(1), "1 clipe")
-    XCTAssertEqual(WatchSharedState.clipLabel(5), "5 clipes")
-  }
 }

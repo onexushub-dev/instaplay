@@ -28,12 +28,6 @@ final class WatchModelTests: XCTestCase {
     XCTAssertEqual(WatchModel.elapsed(since: start, now: Date(timeIntervalSince1970: -5)), "00:00")
   }
 
-  func testCountLabel() {
-    XCTAssertEqual(WatchModel.countLabel(0), "0 clipes")
-    XCTAssertEqual(WatchModel.countLabel(1), "1 clipe")
-    XCTAssertEqual(WatchModel.countLabel(12), "12 clipes")
-  }
-
   func testPreviewIsWantedOnlyWhenOnReachableAndRecording() {
     XCTAssertTrue(WatchModel.previewWanted(viewOn: true, reachable: true, recording: true))
     XCTAssertFalse(WatchModel.previewWanted(viewOn: false, reachable: true, recording: true))
@@ -61,6 +55,13 @@ final class WatchModelTests: XCTestCase {
     XCTAssertTrue(WatchModel.canSave(now: 100, lastSave: nil))
     XCTAssertFalse(WatchModel.canSave(now: 101, lastSave: 100))
     XCTAssertTrue(WatchModel.canSave(now: 103.1, lastSave: 100))
+  }
+
+  func testNoSaveWhenThePhoneSaysTheWatchTriggerIsLocked() {
+    // Free tier: the phone says the watch may not save; the button is gone and a stray tap sends nothing.
+    XCTAssertFalse(WatchModel.canSave(now: 100, lastSave: nil, allowed: false))
+    XCTAssertTrue(WatchModel.canSave(now: 100, lastSave: nil, allowed: true))
+    XCTAssertFalse(WatchModel.canSave(now: 101, lastSave: 100, allowed: true))
   }
 
   func testShortDropoutKeepsRecording() {

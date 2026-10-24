@@ -7,16 +7,19 @@ import { requestPermissions } from '../../modules/replay-camera';
 import { Button } from '../components/Button';
 import { PhoneIcon, ShareIcon, ShieldIcon, ArmsUpIcon } from '../components/icons';
 import { repo } from '../data/mmkv';
+import type { MessageKey } from '../i18n';
+import { useT } from '../i18n/useT';
 import { BRAND_LOGO, logoAspect } from '../share/brandLogo';
 import { colors, fonts } from '../theme/tokens';
 
-const STEPS = [
-  { Icon: PhoneIcon, text: 'Prenda o celular na grade ou na areia, atrás da linha de fundo.' },
-  { Icon: ArmsUpIcon, text: 'Mandou bem? Acene com os dois braços no alto, toque no relógio ou no controle.' },
-  { Icon: ShareIcon, text: 'Salve na galeria ou compartilhe com um toque.' },
+const STEPS: { Icon: typeof PhoneIcon; text: MessageKey }[] = [
+  { Icon: PhoneIcon, text: 'onboarding.step1' },
+  { Icon: ArmsUpIcon, text: 'onboarding.step2' },
+  { Icon: ShareIcon, text: 'onboarding.step3' },
 ];
 
 export default function Onboarding() {
+  const { t } = useT();
   const [denied, setDenied] = useState(false);
 
   async function allow() {
@@ -33,35 +36,34 @@ export default function Onboarding() {
       <Image source={BRAND_LOGO} style={styles.logo} resizeMode="contain" accessibilityLabel="Repplay" />
 
       <Text style={styles.title} accessibilityRole="header">
-        GRAVE TUDO.{'\n'}
-        <Text style={{ color: colors.accent }}>GUARDE SÓ O MELHOR.</Text>
+        {t('onboarding.titleTop')}
+        {'\n'}
+        <Text style={{ color: colors.accent }}>{t('onboarding.titleAccent')}</Text>
       </Text>
 
       <View style={styles.steps}>
         {STEPS.map(({ Icon, text }) => (
           <View key={text} style={styles.step}>
             <Icon />
-            <Text style={styles.stepText}>{text}</Text>
+            <Text style={styles.stepText}>{t(text)}</Text>
           </View>
         ))}
       </View>
 
       <View style={styles.note}>
         <ShieldIcon />
-        <Text style={styles.noteText}>
-          Só os clipes que você salvar ficam no seu celular. O resto é apagado automaticamente.
-        </Text>
+        <Text style={styles.noteText}>{t('onboarding.privacy')}</Text>
       </View>
 
       <View style={styles.footer}>
         {denied ? (
           <>
-            <Text style={styles.denied}>Sem câmera não dá para gravar os clipes. Libere em Ajustes.</Text>
-            <Button label="Abrir Ajustes" variant="secondary" onPress={() => Linking.openSettings()} />
+            <Text style={styles.denied}>{t('common.cameraDenied')}</Text>
+            <Button label={t('common.openSettings')} variant="secondary" onPress={() => Linking.openSettings()} />
           </>
         ) : null}
-        <Button label="Permitir câmera e começar" onPress={allow} />
-        <Text style={styles.caption}>Sem cadastro. Grátis para começar.</Text>
+        <Button label={t('onboarding.allow')} onPress={allow} />
+        <Text style={styles.caption}>{t('onboarding.caption')}</Text>
       </View>
     </SafeAreaView>
   );

@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 
 import { FocusIcon, RotateIcon, SoundIcon, SpeedIcon, ZoomIcon } from '../components/icons';
+import type { MessageKey } from '../i18n';
 import type { Edit } from '../share/editing';
 import type { ToolId } from './editSession';
 import { FocusPanel } from './panels/FocusPanel';
@@ -24,16 +25,17 @@ export type ToolContext = {
 
 export type EditTool = {
   id: ToolId;
-  label: string;
+  /** The catalog key of the tool's name. */
+  label: MessageKey;
   icon: (color: string) => ReactNode;
   Panel: (props: { ctx: ToolContext }) => ReactNode;
 };
 
 /** The edit mode's tool bar, in order. A new edit is one more entry here and its panel. */
 export const EDIT_TOOLS: EditTool[] = [
-  { id: 'focus', label: 'Foco', icon: (color) => <FocusIcon color={color} />, Panel: FocusPanel },
-  { id: 'speed', label: 'Velocidade', icon: (color) => <SpeedIcon color={color} />, Panel: SpeedPanel },
-  { id: 'sound', label: 'Som', icon: (color) => <SoundIcon color={color} />, Panel: SoundPanel },
-  { id: 'zoom', label: 'Zoom', icon: (color) => <ZoomIcon color={color} />, Panel: ZoomPanel },
-  { id: 'rotate', label: 'Girar', icon: (color) => <RotateIcon color={color} size={22} />, Panel: RotatePanel },
+  { id: 'focus', label: 'clip.toolFocus', icon: (color) => <FocusIcon color={color} />, Panel: FocusPanel },
+  { id: 'speed', label: 'clip.toolSpeed', icon: (color) => <SpeedIcon color={color} />, Panel: SpeedPanel },
+  { id: 'sound', label: 'clip.sound', icon: (color) => <SoundIcon color={color} />, Panel: SoundPanel },
+  { id: 'zoom', label: 'clip.toolZoom', icon: (color) => <ZoomIcon color={color} />, Panel: ZoomPanel },
+  { id: 'rotate', label: 'clip.toolRotate', icon: (color) => <RotateIcon color={color} size={22} />, Panel: RotatePanel },
 ];

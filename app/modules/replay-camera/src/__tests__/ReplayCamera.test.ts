@@ -10,6 +10,8 @@ jest.mock('expo', () => {
     getWatchStatus: jest.fn(),
     watchSync: jest.fn(),
     watchSignal: jest.fn(),
+    setVoiceEnabled: jest.fn(),
+    isVoiceSupported: jest.fn(() => true),
   };
   return { requireNativeModule: () => mockNative, NativeModule: class {} };
 });
@@ -18,6 +20,7 @@ import {
   getWatchStatus,
   getDeviceUpright,
   getZoomRange,
+  isVoiceSupported,
   setZoom,
   isRemoteSupported,
   remoteControllerHost,
@@ -30,7 +33,9 @@ import {
   remoteSync,
   requestPermissions,
   saveClip,
+  setVoiceEnabled,
   startSession,
+  watchSetSaveAllowed,
   watchSignal,
   watchSync,
 } from '../ReplayCamera';
@@ -75,6 +80,16 @@ test('the watch calls pass plain values to native, with a missing start as null'
   expect(mockNative.watchSync).toHaveBeenLastCalledWith(false, 0, null);
   watchSignal(false);
   expect(mockNative.watchSignal).toHaveBeenCalledWith(false);
+});
+
+test('the watch is told whether its Save button works; an older native build without it ignores the call', () => {
+  expect(() => watchSetSaveAllowed(false)).not.toThrow();
+  mockNative.watchSetSaveAllowed = jest.fn();
+  watchSetSaveAllowed(false);
+  expect(mockNative.watchSetSaveAllowed).toHaveBeenLastCalledWith(false);
+  watchSetSaveAllowed(true);
+  expect(mockNative.watchSetSaveAllowed).toHaveBeenLastCalledWith(true);
+  delete mockNative.watchSetSaveAllowed;
 });
 
 test('without the remote functions on native, the remote calls do nothing and nothing throws', () => {
@@ -124,6 +139,18 @@ test('with the remote functions on native, the calls pass plain values through',
   } finally {
     Object.keys(remote).forEach((key) => delete mockNative[key]);
   }
+});
+
+test('setVoiceEnabled passes the language the recognizer listens in', () => {
+  setVoiceEnabled(true, 'en-US');
+  expect(mockNative.setVoiceEnabled).toHaveBeenCalledWith(true, 'en-US');
+  setVoiceEnabled(false, 'pt-BR');
+  expect(mockNative.setVoiceEnabled).toHaveBeenLastCalledWith(false, 'pt-BR');
+});
+
+test('isVoiceSupported asks about the language in use', () => {
+  expect(isVoiceSupported('en-US')).toBe(true);
+  expect(mockNative.isVoiceSupported).toHaveBeenCalledWith('en-US');
 });
 
 test('without native zoom (Android, older builds) the range is the two fixed lenses and setZoom does nothing', () => {

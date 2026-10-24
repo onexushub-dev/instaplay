@@ -3,6 +3,7 @@ import { Image, Modal, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { addReplayListener, remoteControllerPreview } from '../../modules/replay-camera';
+import { useT } from '../i18n/useT';
 import { colors, fonts } from '../theme/tokens';
 import { Button } from './Button';
 import { PulseRing } from './PulseRing';
@@ -29,6 +30,7 @@ export function RemotePreview({ visible, onClose }: Props) {
 
 // Mounted only while open, so every opening starts without the last picture of the previous one.
 function PreviewBody({ onClose }: { onClose: () => void }) {
+  const { t } = useT();
   const [frame, setFrame] = useState<string | null>(null);
   const [lastAt, setLastAt] = useState<number | null>(null);
   const [now, setNow] = useState(() => Date.now());
@@ -57,7 +59,7 @@ function PreviewBody({ onClose }: { onClose: () => void }) {
       <View style={styles.picture}>
         {frame !== null ? (
           <Image
-            accessibilityLabel="O que a câmera está vendo"
+            accessibilityLabel={t('remote.previewLabel')}
             resizeMode="contain"
             source={{ uri: `data:image/jpeg;base64,${frame}` }}
             style={[StyleSheet.absoluteFill, stale && styles.stale]}
@@ -67,16 +69,16 @@ function PreviewBody({ onClose }: { onClose: () => void }) {
           <View style={styles.center}>
             <PulseRing color={colors.warning} size={64} />
             <Text style={styles.status}>
-              {frame === null ? 'Abrindo a imagem da câmera…' : 'Imagem parada. Reconectando…'}
+              {frame === null ? t('remote.previewOpening') : t('remote.previewStale')}
             </Text>
             {frame === null ? (
-              <Text style={styles.hint}>O Repplay precisa estar aberto e com a câmera ligada no outro celular.</Text>
+              <Text style={styles.hint}>{t('remote.previewHint')}</Text>
             ) : null}
           </View>
         ) : null}
       </View>
       <View style={styles.bottom}>
-        <Button label="Voltar" onPress={onClose} />
+        <Button label={t('common.back')} onPress={onClose} />
       </View>
     </SafeAreaView>
   );

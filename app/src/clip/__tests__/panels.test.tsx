@@ -1,3 +1,4 @@
+import { translate } from '../../i18n';
 import { fireEvent, render, screen } from '@testing-library/react-native';
 
 import { readEdit } from '../../share/editing';
@@ -18,7 +19,7 @@ function ctx(over: Partial<ToolContext> = {}): ToolContext {
 const panel = (id: string) => EDIT_TOOLS.find((t) => t.id === id)!.Panel;
 
 test('the tools, in order, with their names', () => {
-  expect(EDIT_TOOLS.map((t) => [t.id, t.label])).toEqual([
+  expect(EDIT_TOOLS.map((tool) => [tool.id, translate('pt-BR', tool.label)])).toEqual([
     ['focus', 'Foco'],
     ['speed', 'Velocidade'],
     ['sound', 'Som'],

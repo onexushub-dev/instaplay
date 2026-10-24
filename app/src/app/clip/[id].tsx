@@ -39,11 +39,13 @@ import { readFocusFile } from '../../data/focusFile';
 import { removeFile, repo } from '../../data/mmkv';
 import { focusQueue } from '../../focus/appFocusQueue';
 import { useFocusFraming } from '../../focus/useFocusFraming';
+import type { MessageKey } from '../../i18n';
+import { useT } from '../../i18n/useT';
 import { effectiveSettings } from '../../modes/registry';
 import { captureOverlay } from '../../share/captureOverlay';
 import { contentFloor, nextRotation, outputMs, raiseToFloor, readEdit, turnedSize } from '../../share/editing';
 import { clipWindow } from '../../share/trim';
-import { useEntitlement } from '../../share/entitlement';
+import { usePlan } from '../../share/entitlement';
 import { exportOptions } from '../../share/exportOptions';
 import { frameLayout } from '../../share/layout';
 import { ShareOverlay } from '../../share/ShareOverlay';
@@ -63,9 +65,6 @@ const LOOP_EARLY_S = 0.15;
 const SAVED_VISIBLE_MS = 3500;
 // The share sheet is up long before `shareAsync` returns (it waits for the sheet to close), so the card leaves early.
 const SHARE_HANDOFF_MS = 1200;
-const PREPARE_FAILED = 'Não foi possível preparar o vídeo. Tente de novo.';
-const FOCUS_INTRO = 'Modo Foco: a câmera acompanha o lance';
-const DISCARD_TITLE = 'Descartar alterações?';
 const FOCUS_INTRO_MS = 3000;
 /** How long the framing takes to grow out of the whole video: the first time ever, and when it gets ready on screen. */
 const FOCUS_INTRO_EASE_MS = 700;
@@ -116,6 +115,7 @@ export default function ClipScreen() {
 }
 
 function ClipEditor({ id }: { id: string }) {
+  const { t, locale } = useT();
   const version = useSyncExternalStore(repo.subscribe, repo.version);
   // eslint-disable-next-line react-hooks/exhaustive-deps -- version is the change signal
   const clip = useMemo(() => repo.getClip(id), [id, version]);
@@ -133,7 +133,7 @@ function ClipEditor({ id }: { id: string }) {
   );
   const session = clip ? repo.getSession(clip.sessionId) : undefined;
   const maxMs = session ? effectiveSettings(session.sport, repo.getPrefs()).bufferSeconds * 1000 : undefined;
-  const { tier } = useEntitlement();
+  const plan = usePlan(clip?.sessionId);
 
   const [trim, setTrim] = useState(() => (clip ? clip.trim : { startMs: 0, endMs: 0 }));
   const edit = readEdit(clip?.edit);
@@ -181,7 +181,8 @@ function ClipEditor({ id }: { id: string }) {
     const timer = setTimeout(() => setFramed(true), POSTER_MAX_MS);
     return () => clearTimeout(timer);
   }, []);
-  const [notice, setNotice] = useState<string>();
+  // A key, not a text: it is shown in whatever language is current.
+  const [notice, setNotice] = useState<MessageKey>();
   // The "saved" confirmation stays long enough to be read.
   const [saved, setSaved] = useState(false);
   useEffect(() => {
@@ -237,7 +238,7 @@ function ClipEditor({ id }: { id: string }) {
   const focusEnterMs = reduceMotion ? 0 : showIntro ? FOCUS_INTRO_EASE_MS : readyAtOpen ? 0 : FOCUS_READY_EASE_MS;
 
   const options = clip
-    ? exportOptions(tier, clip.edit, clip.trim, landscape, focusFile && track ? { path: focusFile, ready: true } : undefined)
+    ? exportOptions(plan, clip.edit, clip.trim, landscape, focusFile && track ? { path: focusFile, ready: true } : undefined)
     : undefined;
   const frame = landscape
     ? { width: options?.width ?? 1920, height: options?.height ?? 1080 }
@@ -333,10 +334,10 @@ function ClipEditor({ id }: { id: string }) {
   if (!clip || !session || !options) {
     return (
       <SafeAreaView style={styles.missingRoot}>
-        <IconButton label="Voltar" onPress={() => router.back()}>
+        <IconButton label={t('common.back')} onPress={() => router.back()}>
           <BackIcon />
         </IconButton>
-        <Text style={styles.missing}>Este clipe não está mais no celular.</Text>
+        <Text style={styles.missing}>{t('clip.missing')}</Text>
       </SafeAreaView>
     );
   }
@@ -483,10 +484,10 @@ function ClipEditor({ id }: { id: string }) {
   };
 
   function confirmDelete() {
-    Alert.alert('Apagar este clipe?', undefined, [
-      { text: 'Cancelar', style: 'cancel' },
+    Alert.alert(t('clip.deleteConfirm'), undefined, [
+      { text: t('common.cancel'), style: 'cancel' },
       {
-        text: 'Apagar',
+        text: t('clip.delete'),
         style: 'destructive',
         onPress: () => {
           const after = next ?? previous;
@@ -533,7 +534,7 @@ function ClipEditor({ id }: { id: string }) {
       }
       await action(path);
     } catch {
-      setNotice(PREPARE_FAILED);
+      setNotice('clip.prepareFailed');
     } finally {
       exporting.current = false;
       setBusy(false);
@@ -544,7 +545,7 @@ function ClipEditor({ id }: { id: string }) {
   const save = () =>
     run('save', async (path) => {
       const { granted } = await requestPermissionsAsync(true, ['video']);
-      if (!granted) return setNotice('Sem acesso às fotos. Libere em Ajustes.');
+      if (!granted) return setNotice('clip.noPhotos');
       await Asset.create(`file://${path}`);
       repo.updateClip(id, { savedAt: Date.now() });
       setSaved(true);
@@ -560,9 +561,9 @@ function ClipEditor({ id }: { id: string }) {
     const current = repo.getClip(id);
     const before = snapshot.current;
     if (!current || !before || !hasChanges(before, current)) return cancelEdit();
-    Alert.alert(DISCARD_TITLE, undefined, [
-      { text: 'Continuar editando', style: 'cancel' },
-      { text: 'Descartar', style: 'destructive', onPress: cancelEdit },
+    Alert.alert(t('clip.discardTitle'), undefined, [
+      { text: t('clip.keepEditing'), style: 'cancel' },
+      { text: t('clip.discard'), style: 'destructive', onPress: cancelEdit },
     ]);
   }
 
@@ -645,7 +646,7 @@ function ClipEditor({ id }: { id: string }) {
       {!editing ? (
         <>
           <View pointerEvents="none" style={[styles.neighbour, { left: -window.width, width: window.width }]}>
-            {previous ? <NeighbourStill clip={previous} /> : at === 0 ? <Text style={styles.backHint}>Voltar para a gravação</Text> : null}
+            {previous ? <NeighbourStill clip={previous} /> : at === 0 ? <Text style={styles.backHint}>{t('clip.backToRecording')}</Text> : null}
           </View>
           <View pointerEvents="none" style={[styles.neighbour, { left: window.width, width: window.width }]}>
             {next ? <NeighbourStill clip={next} /> : null}
@@ -698,15 +699,15 @@ function ClipEditor({ id }: { id: string }) {
         <ClipWatch
           renderStage={renderStage}
           name={name}
-          placeholder={`Clipe #${ownNumber} · ${timeOfDay(clip.createdAt)}`}
+          placeholder={t('clip.namePlaceholder', { number: ownNumber, time: timeOfDay(clip.createdAt, locale) })}
           onChangeName={setName}
           onSaveName={saveName}
           onBack={() => router.back()}
           onDelete={confirmDelete}
           focusTag={focusChip === 'on' ? 'on' : focusChip === 'preparing' ? 'preparing' : undefined}
           onFocusTag={() => enterEdit('focus')}
-          notice={busy ? undefined : notice}
-          position={siblings.length > 1 ? `${number} de ${siblings.length} · deslize para trocar` : undefined}
+          notice={busy || !notice ? undefined : t(notice)}
+          position={siblings.length > 1 ? t('clip.ofTotal', { number, total: siblings.length }) : undefined}
           progress={
             <WatchProgress
               player={player}
@@ -725,7 +726,7 @@ function ClipEditor({ id }: { id: string }) {
           saving={job !== undefined && job.kind === 'save'}
           sharing={job !== undefined && job.kind === 'share'}
           fast={fast}
-          caption={showIntro ? FOCUS_INTRO : undefined}
+          caption={showIntro ? t('clip.focusIntro') : undefined}
         />
       )}
 
@@ -740,8 +741,8 @@ function ClipEditor({ id }: { id: string }) {
             <View style={styles.savedCheck}>
               <Text style={styles.savedCheckMark}>✓</Text>
             </View>
-            <Text style={styles.savedText}>Salvo na galeria.</Text>
-            <Text style={styles.savedHint}>Está no app Fotos.</Text>
+            <Text style={styles.savedText}>{t('clip.savedToPhotos')}</Text>
+            <Text style={styles.savedHint}>{t('clip.savedHint')}</Text>
           </View>
         </Pressable>
       ) : null}

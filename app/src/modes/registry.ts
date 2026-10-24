@@ -1,21 +1,26 @@
 import { BUFFER_SECONDS, DEFAULT_CLIP_SECONDS, type ModeId, type ModeSettings, type Prefs } from '../data/schema';
 import { zoomFromLens } from './zoom';
 
+export type ModeGroup = 'quadra' | 'academia';
+
 export type Guide = 'court' | 'person' | 'none';
 
+/** A mode's name and placement tip are translated: modeLabel(id) and modeTip(group) in components/format. */
 export type Mode = {
   id: ModeId;
-  label: string;
+  group: ModeGroup;
   guide: Guide;
-  tip: string;
+  /** Whether the setup screen shows the group's placement tip (modeTip). The free court mode has none. */
+  tip: boolean;
   defaults: ModeSettings;
 };
 
 // One set of defaults for everything: the app no longer tells a court from a gym. The buffer is fixed and
 // the player picks the clip length on the setup screen.
-const DEFAULTS: Omit<Mode, 'id' | 'label'> = {
+const DEFAULTS: Omit<Mode, 'id'> = {
+  group: 'quadra',
   guide: 'court',
-  tip: '',
+  tip: false,
   defaults: {
     zoom: 0.5,
     gestureEnabled: true,
@@ -23,6 +28,7 @@ const DEFAULTS: Omit<Mode, 'id' | 'label'> = {
     bufferSeconds: BUFFER_SECONDS,
     cutSeconds: DEFAULT_CLIP_SECONDS,
     quality: '1080p60',
+    audio: true,
   },
 };
 
@@ -30,19 +36,19 @@ const DEFAULTS: Omit<Mode, 'id' | 'label'> = {
  * The modes the app offers. For now there is one, with no drawing over the camera: the player frames the shot freely.
  * A new mode is a new entry here (plus a guide drawing if it needs one).
  */
-export const MODES: Mode[] = [{ ...DEFAULTS, id: 'quadra', label: 'Livre', guide: 'none' }];
+export const MODES: Mode[] = [{ ...DEFAULTS, id: 'quadra', guide: 'none' }];
 
-/** Modes and sports offered before; games saved with them still need a label and settings. */
+/** Modes and sports offered before; games saved with them still need a label (modeLabel) and settings. */
 const SAVED_SPORTS: Mode[] = [
-  { ...DEFAULTS, id: 'academia', label: 'Academia' },
-  { ...DEFAULTS, id: 'beachTennis', label: 'Beach tennis' },
-  { ...DEFAULTS, id: 'futevolei', label: 'Futevôlei' },
-  { ...DEFAULTS, id: 'voleiPraia', label: 'Vôlei de praia' },
-  { ...DEFAULTS, id: 'outro', label: 'Outro' },
-  { ...DEFAULTS, id: 'musculacao', label: 'Musculação' },
-  { ...DEFAULTS, id: 'crossfit', label: 'Crossfit' },
-  { ...DEFAULTS, id: 'funcional', label: 'Funcional' },
-  { ...DEFAULTS, id: 'outroAcademia', label: 'Outro' },
+  { ...DEFAULTS, id: 'academia' },
+  { ...DEFAULTS, id: 'beachTennis' },
+  { ...DEFAULTS, id: 'futevolei' },
+  { ...DEFAULTS, id: 'voleiPraia' },
+  { ...DEFAULTS, id: 'outro' },
+  { ...DEFAULTS, id: 'musculacao' },
+  { ...DEFAULTS, id: 'crossfit' },
+  { ...DEFAULTS, id: 'funcional' },
+  { ...DEFAULTS, id: 'outroAcademia' },
 ];
 
 export function modeById(id: ModeId): Mode {

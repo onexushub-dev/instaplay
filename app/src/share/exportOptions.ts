@@ -1,5 +1,5 @@
 import type { Clip } from '../data/schema';
-import type { Tier } from './entitlement';
+import type { Plan } from '../payments/types';
 import { cropRect, readEdit } from './editing';
 
 export type ExportOptions = {
@@ -18,10 +18,14 @@ export type ExportOptions = {
   focus?: { path: string; aspect: 'landscape' | 'portrait' };
 };
 
+/** Legacy tier names still accepted until the export takes only a `Plan`. */
+type Tier = Plan | 'pass' | 'pro';
+
 /**
- * Free: 720x1280 (spec 6), pro: 1080x1920. A landscape clip gets the same frame turned on its side, so it fills
- * the screen when the phone is held sideways, like any video in Photos. Every export carries the app mark.
- * Any speed other than 1x plays without sound. Modo Foco applies when on, ready, not turned and not zoomed by hand.
+ * Free: 720x1280 (spec 6), paid (a paid plan, pass, pro): 1080x1920. A landscape clip gets the same frame turned on
+ * its side, so it fills the screen when the phone is held sideways, like any video in Photos. Every export carries the
+ * app mark, in both plans. Any speed other than 1x plays without sound. Modo Foco applies when on, ready, not turned
+ * and not zoomed by hand.
  */
 export function exportOptions(
   tier: Tier,
@@ -30,9 +34,9 @@ export function exportOptions(
   landscape = false,
   focus?: { path: string; ready: boolean },
 ): ExportOptions {
-  const pro = tier === 'pro';
-  const short = pro ? 1080 : 720;
-  const long = pro ? 1920 : 1280;
+  const paid = tier !== 'free';
+  const short = paid ? 1080 : 720;
+  const long = paid ? 1920 : 1280;
   const { speed, muted, zoom, rotation, focus: focusOn } = readEdit(edit);
   const manualZoom = zoom !== undefined && zoom.scale > 1;
   const follow = focus !== undefined && focus.ready && focusOn && rotation === 0 && !manualZoom;

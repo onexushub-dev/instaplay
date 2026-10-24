@@ -1,4 +1,4 @@
-import type { TriggerSource } from '../../modules/replay-camera/src/ReplayCamera.types';
+import type { Quality, TriggerSource } from '../../modules/replay-camera/src/ReplayCamera.types';
 
 export type { TriggerSource };
 
@@ -35,13 +35,14 @@ export type ModeSettings = {
   bufferSeconds: typeof BUFFER_SECONDS;
   /** The clip length the player picked: each save cuts at most this much, never reaching back before the previous clip. */
   cutSeconds: number;
-  quality: '1080p60' | '1080p30';
+  quality: Quality;
+  audio: boolean;
 };
 
 /** What was saved for a mode: before zoom existed it held `lens` (read, never written). */
 export type StoredModeSettings = Partial<ModeSettings> & { lens?: 'ultraWide' | 'wide' };
 
-export type Session = { id: string; sport: Sport; startedAt: number; endedAt?: number; name?: string };
+export type Session = { id: string; sport: Sport; startedAt: number; endedAt?: number; name?: string; /** Fixed at start: true if Pro or a Single Pass unlocked this game; absent on games recorded before the free plan. */ paid?: boolean; /** RevenueCat transaction id of the single pass that unlocked this game; absent = no pass. */ passTransactionId?: string };
 
 export const MAX_GAME_NAME = 40;
 export const MAX_CLIP_NAME = 40;

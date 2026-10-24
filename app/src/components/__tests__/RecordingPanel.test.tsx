@@ -145,6 +145,13 @@ test('a stop asked outside a recording is ignored', async () => {
   expect(s.stop).not.toHaveBeenCalled();
 });
 
+test('after saving, no payments note shows', async () => {
+  session({ clipCount: 10, lastSaved: { clipId: 'c10', number: 10, source: 'screen', at: Date.now() } });
+  await render(<Recording />);
+  expect(screen.queryByText(/Último clipe grátis/)).toBeNull();
+  expect(screen.queryByText(/Guardado. Libere/)).toBeNull();
+});
+
 describe('a recording without any clip', () => {
   test('ending it removes it and opens Minhas gravações', async () => {
     repo.listClips.mockReturnValue([]);

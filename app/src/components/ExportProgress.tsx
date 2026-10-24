@@ -1,23 +1,27 @@
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
+import { type AppLocale, currentLocale, translate } from '../i18n';
+import { useT } from '../i18n/useT';
 import { colors, fonts, radius } from '../theme/tokens';
 
 export type ExportJob = { kind: 'save' | 'share'; stage: 'preparing' | 'delivering' };
 
-export function exportTitle(job: ExportJob): string {
-  if (job.stage === 'preparing') return 'Preparando o vídeo…';
-  return job.kind === 'save' ? 'Salvando na galeria…' : 'Abrindo o compartilhamento…';
+export function exportTitle(job: ExportJob, locale: AppLocale = currentLocale()): string {
+  if (job.stage === 'preparing') return translate(locale, 'clip.exportPreparing');
+  return translate(locale, job.kind === 'save' ? 'clip.exportSaving' : 'clip.exportSharing');
 }
 
 type Props = { job: ExportJob };
 
 /** A card over the clip while its video is made and handed over. */
 export function ExportProgress({ job }: Props) {
+  const { locale } = useT();
+  const title = exportTitle(job, locale);
   return (
     <View pointerEvents="none" style={styles.wrap}>
-      <View accessibilityRole="progressbar" accessibilityLabel={exportTitle(job)} style={styles.card}>
+      <View accessibilityRole="progressbar" accessibilityLabel={title} style={styles.card}>
         <ActivityIndicator size="large" color={colors.accent} />
-        <Text style={styles.title}>{exportTitle(job)}</Text>
+        <Text style={styles.title}>{title}</Text>
       </View>
     </View>
   );

@@ -1,3 +1,5 @@
+import { type AppLocale, currentLocale, translate } from '../i18n';
+
 export type DeviceState = 'setup' | 'offline' | 'connected';
 
 export type RemoteDeviceView = {
@@ -20,18 +22,21 @@ type Input = {
 };
 
 /** What the Bluetooth remote looks like to the player: the tile on the setup screen and the Dispositivos sheet read this. */
-export function remoteDeviceView({ pressed, testedBefore, waitedLong }: Input): RemoteDeviceView {
+export function remoteDeviceView(
+  { pressed, testedBefore, waitedLong }: Input,
+  locale: AppLocale = currentLocale(),
+): RemoteDeviceView {
   if (pressed) {
-    return { state: 'connected', statusText: 'Conectado', showSteps: false, showWaiting: false, showNote: false };
+    return { state: 'connected', statusText: translate(locale, 'devices.statusConnected'), showSteps: false, showWaiting: false, showNote: false };
   }
   if (testedBefore) {
     return {
       state: 'offline',
-      statusText: 'Pareado · aperte um botão',
+      statusText: translate(locale, 'devices.statusPaired'),
       showSteps: false,
       showWaiting: true,
       showNote: true,
     };
   }
-  return { state: 'setup', statusText: 'Toque para conectar', showSteps: true, showWaiting: true, showNote: waitedLong };
+  return { state: 'setup', statusText: translate(locale, 'devices.statusSetup'), showSteps: true, showWaiting: true, showNote: waitedLong };
 }

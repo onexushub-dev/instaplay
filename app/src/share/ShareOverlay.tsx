@@ -23,6 +23,8 @@ type Props = {
   layout: { video: Box; top: Box; bottom: Box };
   /** Screen points per frame pixel: 1/PixelRatio for the capture, smaller for the on-screen preview. */
   scale: number;
+  /** Draw the "made with" mark. Free exports carry it; paid ones (pass, pro) do not. Bands and layout are unchanged. */
+  watermark?: boolean;
 };
 
 /**
@@ -31,7 +33,7 @@ type Props = {
  * preview and, captured to PNG, the export overlay.
  */
 export const ShareOverlay = forwardRef<ComponentRef<typeof View>, Props>(function ShareOverlay(
-  { frame, layout, scale },
+  { frame, layout, scale, watermark = true },
   ref,
 ) {
   const s = (n: number) => n * scale;
@@ -71,24 +73,26 @@ export const ShareOverlay = forwardRef<ComponentRef<typeof View>, Props>(functio
         />
       </Svg>
 
-      <View
-        style={[
-          styles.mark,
-          {
-            bottom: s(frame.height - videoBottom + unit * MARK_MARGIN),
-            right: s(frame.width - videoRight + unit * MARK_MARGIN),
-            paddingHorizontal: s(unit * PAD_X),
-            paddingVertical: s(unit * PAD_Y),
-          },
-        ]}>
-        <Image
-          accessibilityLabel="Repplay"
-          fadeDuration={0}
-          resizeMode="contain"
-          source={BRAND_LOGO}
-          style={{ width: s(unit * LOGO_SHARE), height: s(unit * LOGO_SHARE) / logoAspect() }}
-        />
-      </View>
+      {watermark ? (
+        <View
+          style={[
+            styles.mark,
+            {
+              bottom: s(frame.height - videoBottom + unit * MARK_MARGIN),
+              right: s(frame.width - videoRight + unit * MARK_MARGIN),
+              paddingHorizontal: s(unit * PAD_X),
+              paddingVertical: s(unit * PAD_Y),
+            },
+          ]}>
+          <Image
+            accessibilityLabel="Repplay"
+            fadeDuration={0}
+            resizeMode="contain"
+            source={BRAND_LOGO}
+            style={{ width: s(unit * LOGO_SHARE), height: s(unit * LOGO_SHARE) / logoAspect() }}
+          />
+        </View>
+      ) : null}
     </View>
   );
 });

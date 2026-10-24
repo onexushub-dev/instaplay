@@ -5,15 +5,19 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Button } from '../../components/Button';
 import { ClipCard } from '../../components/ClipCard';
-import { clipNumber, dayAndTime, megabytes, recordedLabel, sessionLabel, SPORT_LABEL } from '../../components/format';
+import { clipNumber, dayAndTime, megabytes, modeLabel, recordedLabel, sessionLabel } from '../../components/format';
 import { removeFile, repo } from '../../data/mmkv';
 import { MAX_GAME_NAME } from '../../data/schema';
+import { openPaywall } from '../../payments/feedback';
+import { usePlan } from '../../share/entitlement';
+import { useT } from '../../i18n/useT';
 import { useSession } from '../../session/SessionContext';
 import { colors, fonts } from '../../theme/tokens';
 
 export default function SessionSummary() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { reset, state } = useSession();
+  const { t, locale } = useT();
   const navigation = useNavigation();
   // Re-read whenever the repo changes (a clip deleted on the clip screen, a late save landing).
   const version = useSyncExternalStore(repo.subscribe, repo.version);
@@ -22,6 +26,8 @@ export default function SessionSummary() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- version is the change signal
     [id, version],
   );
+
+  const plan = usePlan(id);
 
   const [name, setName] = useState(() => session?.name ?? '');
   const saveName = () => {
@@ -41,10 +47,10 @@ export default function SessionSummary() {
 
   function confirmDeleteClips() {
     const count = picked.length;
-    Alert.alert(count === 1 ? 'Apagar 1 clipe?' : `Apagar ${count} clipes?`, 'Não dá para desfazer.', [
-      { text: 'Cancelar', style: 'cancel' },
+    Alert.alert(t('summary.deleteClipsTitle', { count }), t('common.cantUndo'), [
+      { text: t('common.cancel'), style: 'cancel' },
       {
-        text: 'Apagar',
+        text: t('common.delete'),
         style: 'destructive',
         onPress: () => {
           for (const clip of clips) {
@@ -61,14 +67,12 @@ export default function SessionSummary() {
   function confirmDeleteGame() {
     const count = clips.length;
     Alert.alert(
-      'Apagar esta gravação?',
-      count === 0
-        ? 'A gravação será removida da lista.'
-        : `${count === 1 ? 'O clipe' : `Os ${count} clipes`} dela será${count === 1 ? '' : 'o'} apagado${count === 1 ? '' : 's'} do celular. Não dá para desfazer.`,
+      t('summary.deleteGameTitle'),
+      count === 0 ? t('summary.deleteGameEmpty') : t('summary.deleteGameBody', { count }),
       [
-        { text: 'Cancelar', style: 'cancel' },
+        { text: t('common.cancel'), style: 'cancel' },
         {
-          text: 'Apagar',
+          text: t('common.delete'),
           style: 'destructive',
           onPress: () => {
             repo.deleteSession(id).forEach((path) => removeFile(path));
@@ -119,26 +123,26 @@ export default function SessionSummary() {
     <SafeAreaView style={styles.root}>
       <View style={styles.header}>
         {session ? (
-          <Text style={styles.subtitle}>{`${SPORT_LABEL[session.sport]} · ${dayAndTime(session.startedAt)}`}</Text>
+          <Text style={styles.subtitle}>{`${modeLabel(session.sport, locale)} · ${dayAndTime(session.startedAt, undefined, locale)}`}</Text>
         ) : null}
         <Text style={styles.title} accessibilityRole="header" numberOfLines={2}>
-          {session?.name ? sessionLabel(session) : 'GRAVAÇÃO ENCERRADA'}
+          {session?.name ? sessionLabel(session, undefined, locale) : t('summary.ended')}
         </Text>
         {session ? (
           <View style={styles.nameBox}>
             <TextInput
-              accessibilityLabel="Nome da gravação"
+              accessibilityLabel={t('summary.nameLabel')}
               value={name}
               onChangeText={setName}
               onSubmitEditing={saveName}
               onBlur={saveName}
-              placeholder={sessionLabel({ ...session, name: undefined })}
+              placeholder={sessionLabel({ ...session, name: undefined }, undefined, locale)}
               placeholderTextColor={colors.muted}
               maxLength={MAX_GAME_NAME}
               returnKeyType="done"
               style={styles.nameInput}
             />
-            <Text style={styles.nameCaption}>Opcional. Ajuda a achar a gravação depois.</Text>
+            <Text style={styles.nameCaption}>{t('summary.nameCaption')}</Text>
           </View>
         ) : null}
       </View>
@@ -149,42 +153,49 @@ export default function SessionSummary() {
             <>
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="Cancelar seleção"
+                accessibilityLabel={t('summary.cancelSelection')}
                 hitSlop={8}
                 onPress={stopSelecting}>
-                <Text style={styles.pickLink}>Cancelar</Text>
+                <Text style={styles.pickLink}>{t('common.cancel')}</Text>
               </Pressable>
               <Text style={styles.pickCount}>
-                {picked.length === 0
-                  ? 'Toque nos clipes'
-                  : `${picked.length} ${picked.length === 1 ? 'selecionado' : 'selecionados'}`}
+                {picked.length === 0 ? t('summary.tapClips') : t('summary.selected', { count: picked.length })}
               </Text>
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel={picked.length === clips.length ? 'Limpar seleção' : 'Selecionar todos'}
+                accessibilityLabel={picked.length === clips.length ? t('summary.clearSelection') : t('summary.selectAll')}
                 hitSlop={8}
                 onPress={pickAll}>
-                <Text style={styles.pickLink}>{picked.length === clips.length ? 'Limpar' : 'Todos'}</Text>
+                <Text style={styles.pickLink}>{picked.length === clips.length ? t('summary.clear') : t('summary.all')}</Text>
               </Pressable>
             </>
           ) : (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Selecionar clipes"
+              accessibilityLabel={t('summary.selectClips')}
               hitSlop={8}
               onPress={() => setSelecting(true)}>
-              <Text style={styles.pickLink}>Selecionar clipes</Text>
+              <Text style={styles.pickLink}>{t('summary.selectClips')}</Text>
             </Pressable>
           )}
         </View>
       ) : null}
 
       <View style={styles.stats}>
-        <Stat value={recordedLabel(stats.recordedMs)} label="gravadas" />
-        <Stat value={String(stats.clips)} label="clipes" accent />
-        <Stat value={megabytes(stats.bytes)} label="guardados" />
+        <Stat value={recordedLabel(stats.recordedMs, locale)} label={t('summary.recorded')} />
+        <Stat value={String(stats.clips)} label={t('summary.clipsStat', { count: stats.clips })} accent />
+        <Stat value={megabytes(stats.bytes, locale)} label={t('summary.kept')} />
       </View>
-      <Text style={styles.note}>O restante da gravação já foi apagado do celular.</Text>
+      <Text style={styles.note}>{t('summary.note')}</Text>
+
+      {/* The summary only exists after the recording ends, so this card never shows mid-recording. */}
+      {plan === 'free' ? (
+        <View style={styles.freeCard}>
+          <Text style={styles.freeTitle}>{t('summary.freeTitle')}</Text>
+          <Text style={styles.freeNote}>{t('summary.freeNote')}</Text>
+          <Button label={t('summary.upgrade')} variant="secondary" onPress={() => void openPaywall(t)} />
+        </View>
+      ) : null}
 
       <FlatList
         data={clips}
@@ -192,8 +203,8 @@ export default function SessionSummary() {
         numColumns={2}
         columnWrapperStyle={styles.gridRow}
         contentContainerStyle={styles.grid}
-        ListEmptyComponent={<Text style={styles.empty}>Nenhum clipe salvo nesta gravação.</Text>}
-        extraData={[selecting, picked]}
+        ListEmptyComponent={<Text style={styles.empty}>{t('summary.empty')}</Text>}
+        extraData={[selecting, picked, plan]}
         renderItem={({ item, index }) => (
           <ClipCard
             clip={item}
@@ -216,24 +227,22 @@ export default function SessionSummary() {
       <View style={styles.footer}>
         {selecting ? (
           <Button
-            label={
-              picked.length === 0 ? 'Apagar' : `Apagar ${picked.length} ${picked.length === 1 ? 'clipe' : 'clipes'}`
-            }
+            label={picked.length === 0 ? t('common.delete') : t('summary.deleteClips', { count: picked.length })}
             variant="danger"
             disabled={picked.length === 0}
             onPress={confirmDeleteClips}
           />
         ) : (
           <>
-            <Button label="Nova gravação" onPress={newGame} />
+            <Button label={t('summary.newRecording')} onPress={newGame} />
             {session ? (
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="Apagar gravação"
+                accessibilityLabel={t('games.deleteRecording')}
                 hitSlop={8}
                 onPress={confirmDeleteGame}
                 style={styles.deleteGame}>
-                <Text style={styles.deleteGameText}>Apagar gravação</Text>
+                <Text style={styles.deleteGameText}>{t('games.deleteRecording')}</Text>
               </Pressable>
             ) : null}
           </>
@@ -275,6 +284,9 @@ const styles = StyleSheet.create({
   statValue: { fontFamily: fonts.displayBold, fontSize: 28, color: colors.text },
   statLabel: { fontFamily: fonts.body, fontSize: 12, color: colors.muted },
   note: { fontFamily: fonts.body, fontSize: 12, color: colors.muted, marginTop: -8 },
+  freeCard: { backgroundColor: colors.surface, borderRadius: 14, padding: 12, gap: 8 },
+  freeTitle: { fontFamily: fonts.bodyBold, fontSize: 16, color: colors.text },
+  freeNote: { fontFamily: fonts.body, fontSize: 12, color: colors.muted },
   grid: { gap: 10, paddingBottom: 12 },
   gridRow: { gap: 10 },
   empty: { fontFamily: fonts.body, fontSize: 15, color: colors.soft, textAlign: 'center', marginTop: 40 },

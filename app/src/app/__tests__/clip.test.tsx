@@ -70,7 +70,7 @@ jest.mock('../../data/mmkv', () => {
       },
       getPrefs: () => prefs,
       setPrefs: jest.fn((p: object) => (prefs = { ...prefs, ...p })),
-      getSession: () => ({ id: 's1', sport: clip?.durationMs > 60000 ? 'musculacao' : 'beachTennis', startedAt: 0 }),
+      getSession: () => ({ id: 's1', sport: clip?.durationMs > 60000 ? 'musculacao' : 'beachTennis', startedAt: 0, paid: true }),
       updateClip: jest.fn((id: string, patch: object) => {
         clip = { ...clip, ...patch };
         version += 1;

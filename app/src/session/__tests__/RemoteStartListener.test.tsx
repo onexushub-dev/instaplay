@@ -7,6 +7,7 @@ jest.mock('../../../modules/replay-camera', () => ({
 }));
 jest.mock('expo-router', () => ({ router: { navigate: jest.fn() } }));
 jest.mock('../../data/mmkv', () => ({ repo: { getPrefs: () => ({ sport: 'beachTennis' }) } }));
+jest.mock('../../payments/feedback', () => ({ openPaywall: jest.fn() }));
 jest.mock('../SessionContext', () => ({ useSession: jest.fn() }));
 
 const camera = jest.requireMock('../../../modules/replay-camera');
@@ -14,7 +15,7 @@ const { useSession } = jest.requireMock('../SessionContext');
 const { router } = jest.requireMock('expo-router');
 
 function session(state: object) {
-  const value = { state: { phase: 'idle', camera: 'on', ...state }, start: jest.fn(async () => {}) };
+  const value = { state: { phase: 'idle', camera: 'on', ...state }, start: jest.fn(async (): Promise<string> => 'started') };
   useSession.mockReturnValue(value);
   return value;
 }
@@ -55,4 +56,13 @@ test.each([
   await askToStart();
   expect(s.start).not.toHaveBeenCalled();
   expect(router.navigate).not.toHaveBeenCalled();
+});
+
+test('a blocked remote start goes to setup and opens no paywall', async () => {
+  const s = session({});
+  s.start.mockResolvedValue('blocked');
+  await render(<RemoteStartListener />);
+  await askToStart();
+  expect(router.navigate).toHaveBeenCalledWith('/setup');
+  expect(jest.requireMock('../../payments/feedback').openPaywall).not.toHaveBeenCalled();
 });

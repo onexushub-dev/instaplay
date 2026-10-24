@@ -1,3 +1,4 @@
+import { monthKey } from '../payments/rules';
 import { type Clip, DEFAULT_PREFS, DEFAULT_TRIM_MS, MAX_CLIP_NAME, MAX_GAME_NAME, type Prefs, type Session, type Sport } from './schema';
 
 export interface KV {
@@ -19,6 +20,8 @@ const key = {
   clip: (id: string) => `repplay:v1:clip:${id}`,
   clipsOf: (sessionId: string) => `repplay:v1:clips-of:${sessionId}`,
   sessions: 'repplay:v1:sessions',
+  spentPasses: 'repplay:v1:spentPasses',
+  freeCount: (month: string) => `repplay:v1:freeCount:${month}`,
 };
 const SESSION_PREFIX = 'repplay:v1:session:';
 
@@ -43,12 +46,49 @@ export function createRepo(kv: KV, files: FileProbe, newId: () => string) {
     return read<Session>(key.session(id));
   }
 
+  /** Absent, unreadable or not a whole number >= 0 reads as 0. */
+  function freeCountOf(now: number): number {
+    const n = Number(kv.getString(key.freeCount(monthKey(now))));
+    return Number.isInteger(n) && n >= 0 ? n : 0;
+  }
+
   function sessionIds(): string[] {
     const ids = read<string[]>(key.sessions);
     if (ids) return ids;
     const found = (kv.keys?.() ?? []).filter((k) => k.startsWith(SESSION_PREFIX)).map((k) => k.slice(SESSION_PREFIX.length));
     write(key.sessions, found);
     return found;
+  }
+
+  /** Pass transaction ids already tied to a game. Rebuilt from existing games when the key is missing or unreadable. */
+  function spentList(): string[] {
+    try {
+      const stored = read<unknown>(key.spentPasses);
+      if (Array.isArray(stored)) return stored.filter((x): x is string => typeof x === 'string');
+    } catch {
+      // corrupt value: rebuild below
+    }
+    const found: string[] = [];
+    for (const id of sessionIds()) {
+      try {
+        const tx = getSession(id)?.passTransactionId;
+        if (tx) found.push(tx);
+      } catch {
+        // a corrupt game record is skipped
+      }
+    }
+    const unique = [...new Set(found)];
+    write(key.spentPasses, unique);
+    return unique;
+  }
+
+  /** Writes the merged list; true if anything was added. Does not notify. */
+  function addSpent(ids: string[]): boolean {
+    const current = spentList();
+    const next = [...new Set([...current, ...ids])];
+    if (next.length === current.length) return false;
+    write(key.spentPasses, next);
+    return true;
   }
 
   return {
@@ -73,11 +113,29 @@ export function createRepo(kv: KV, files: FileProbe, newId: () => string) {
       return version;
     },
 
-    startSession(sport: Sport, now: number): Session {
+    /** Pass transaction ids already tied to a game; only grows. */
+    spentPasses(): Set<string> {
+      return new Set(spentList());
+    },
+
+    spendPasses(ids: string[]): void {
+      if (addSpent(ids)) changed();
+    },
+
+    /** Free recordings started in the month of `now`; only grows (deleting a game gives nothing back). */
+    freeCount(now: number): number {
+      return freeCountOf(now);
+    },
+
+    startSession(sport: Sport, now: number, plan: { paid: boolean; passTransactionId?: string }): Session {
       const ids = sessionIds(); // before writing, so a first-time rebuild doesn't list this game twice
-      const session: Session = { id: newId(), sport, startedAt: now };
+      spentList(); // build the ledger from existing games before this one exists
+      const { passTransactionId } = plan;
+      const session: Session = { id: newId(), sport, startedAt: now, paid: plan.paid, ...(passTransactionId ? { passTransactionId } : {}) };
       write(key.session(session.id), session);
       write(key.sessions, [...ids, session.id]);
+      if (passTransactionId) addSpent([passTransactionId]);
+      if (!plan.paid) kv.set(key.freeCount(monthKey(now)), String(freeCountOf(now) + 1));
       changed();
       return session;
     },
@@ -196,6 +254,7 @@ export function createRepo(kv: KV, files: FileProbe, newId: () => string) {
      * (the repo knows nothing about the file system beyond probing).
      */
     deleteSession(id: string): string[] {
+      spentList(); // the ledger must exist before a game carrying a Pass disappears
       const paths: string[] = [];
       for (const clipId of clipIds(id)) {
         const clip = read<Clip>(key.clip(clipId));

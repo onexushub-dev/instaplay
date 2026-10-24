@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-na
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { colors, fonts } from '../theme/tokens';
+import { useT } from '../i18n/useT';
 
 type Props = {
   /** The video, laid out for the space between the top bar and the panel. */
@@ -18,18 +19,19 @@ type Props = {
 
 /** Edit mode: Cancelar · EDITAR · Concluir, the video, the open tool's panel, the cut and the tool bar. */
 export function ClipEdit({ renderStage, onCancel, onDone, panel, cut, toolBar }: Props) {
+  const { t } = useT();
   const window = useWindowDimensions();
   // Until the stage is measured, about the space it gets, so the video shows at once.
   const [area, setArea] = useState(() => ({ width: window.width, height: Math.round(window.height * 0.45) }));
   return (
     <SafeAreaView edges={['top', 'bottom']} style={styles.root}>
       <View style={styles.top}>
-        <Pressable accessibilityRole="button" accessibilityLabel="Cancelar" onPress={onCancel} hitSlop={8} style={styles.cancel}>
-          <Text style={styles.cancelText}>Cancelar</Text>
+        <Pressable accessibilityRole="button" accessibilityLabel={t('common.cancel')} onPress={onCancel} hitSlop={8} style={styles.cancel}>
+          <Text style={styles.cancelText}>{t('common.cancel')}</Text>
         </Pressable>
-        <Text style={styles.title}>EDITAR</Text>
-        <Pressable accessibilityRole="button" accessibilityLabel="Concluir" onPress={onDone} hitSlop={8} style={styles.done}>
-          <Text style={styles.doneText}>Concluir</Text>
+        <Text style={styles.title}>{t('clip.editTitle')}</Text>
+        <Pressable accessibilityRole="button" accessibilityLabel={t('clip.done')} onPress={onDone} hitSlop={8} style={styles.done}>
+          <Text style={styles.doneText}>{t('clip.done')}</Text>
         </Pressable>
       </View>
       <View

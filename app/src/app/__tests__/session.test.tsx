@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 
+import { setLocale } from '../../i18n';
 import SessionSummary from '../session/[id]';
 
 jest.mock('expo-router', () => ({
@@ -9,6 +10,9 @@ jest.mock('expo-router', () => ({
   useLocalSearchParams: () => ({ id: 's1' }),
 }));
 jest.mock('../../components/useClipThumbnail', () => ({ useClipThumbnail: () => undefined }));
+jest.mock('../../payments', () => ({
+  payments: { subscribe: () => () => {}, version: () => 0, nextPlan: jest.fn(() => 'free'), showPaywall: jest.fn() },
+}));
 jest.mock('../../session/SessionContext', () => ({ useSession: jest.fn() }));
 jest.mock('../../data/mmkv', () => {
   const listeners = new Set<() => void>();
@@ -37,6 +41,7 @@ jest.mock('../../data/mmkv', () => {
 
 const { repo } = jest.requireMock('../../data/mmkv');
 const { router } = jest.requireMock('expo-router');
+const { payments } = jest.requireMock('../../payments');
 const { useSession } = jest.requireMock('../../session/SessionContext');
 
 const clip = (id: string, source: string, createdAt: number) => ({
@@ -52,7 +57,7 @@ const clip = (id: string, source: string, createdAt: number) => ({
 beforeEach(() => {
   jest.clearAllMocks();
   useSession.mockReturnValue({ reset: jest.fn(), state: {} });
-  repo.getSession.mockReturnValue({ id: 's1', sport: 'futevolei', startedAt: new Date(2026, 9, 17, 18, 40).getTime() });
+  repo.getSession.mockReturnValue({ id: 's1', sport: 'futevolei', startedAt: new Date(2026, 9, 17, 18, 40).getTime(), paid: true });
 });
 
 test('shows the game stats', async () => {
@@ -115,7 +120,7 @@ test('typing a name and submitting renames the game', async () => {
 });
 
 test('a named game shows its name as the title', async () => {
-  repo.getSession.mockReturnValue({ id: 's1', sport: 'futevolei', startedAt: 0, name: 'Final do torneio' });
+  repo.getSession.mockReturnValue({ id: 's1', sport: 'futevolei', startedAt: 0, name: 'Final do torneio', paid: true });
   repo.listClips.mockReturnValue([]);
   repo.sessionStats.mockReturnValue({ clips: 0, bytes: 0, recordedMs: 0 });
   await render(<SessionSummary />);
@@ -149,6 +154,47 @@ test('a named clip is identified by its name in the recording', async () => {
   expect(screen.getByText('Ace no fundo')).toBeTruthy();
   expect(screen.getByRole('button', { name: /^Clipe 1 · Ace no fundo/ })).toBeTruthy();
   expect(screen.getByRole('button', { name: /^Clipe 2,/ })).toBeTruthy();
+});
+
+describe('free recording', () => {
+  const oldLockedClip = (id: string, createdAt: number) => ({ ...clip(id, 'screen', createdAt), locked: true });
+  const setup = (tier: string) => {
+    // The recording's own plan: 'pass' is an older session that holds a Pass and has no `paid` flag.
+    const plan = tier === 'free' ? { paid: false } : tier === 'pass' ? { passTransactionId: 'tx-1' } : { paid: true };
+    repo.getSession.mockReturnValue({ id: 's1', sport: 'futevolei', startedAt: 0, ...plan });
+    repo.listClips.mockReturnValue([clip('a', 'gesture', 1), oldLockedClip('b', 2)]);
+    repo.sessionStats.mockReturnValue({ clips: 2, bytes: 1, recordedMs: 1 });
+  };
+
+  test('the free plan shows the card and the unlock button that opens the paywall for this recording', async () => {
+    setup('free');
+    await render(<SessionSummary />);
+    expect(screen.getByText('Gravação no plano grátis')).toBeTruthy();
+    expect(screen.getByText('720p com a marca e sem câmera lenta. O Passe Avulso libera tudo nesta gravação.')).toBeTruthy();
+    await fireEvent.press(screen.getByRole('button', { name: 'Liberar HD e recursos' }));
+    expect(payments.showPaywall).toHaveBeenCalledWith();
+  });
+
+  test.each(['pass', 'pro'])('on the %s plan there is no card', async (tier) => {
+    setup(tier);
+    await render(<SessionSummary />);
+    expect(screen.queryByText('Gravação no plano grátis')).toBeNull();
+    expect(screen.queryByText('Liberar HD e recursos')).toBeNull();
+  });
+
+  test.each(['free', 'pass', 'pro'])('on the %s plan any clipe opens, even an old one stored with locked: true', async (tier) => {
+    setup(tier);
+    await render(<SessionSummary />);
+    await fireEvent.press(screen.getByRole('button', { name: /^Clipe 2,/ }));
+    expect(router.push).toHaveBeenCalledWith('/clip/b');
+    expect(payments.showPaywall).not.toHaveBeenCalled();
+  });
+
+  test('no clipe is labeled as blocked', async () => {
+    setup('free');
+    await render(<SessionSummary />);
+    expect(screen.queryByText(/bloqueado/i)).toBeNull();
+  });
 });
 
 function lastAlertButtons(alert: jest.SpyInstance) {
@@ -223,4 +269,22 @@ test('a game recorded without any clip still opens as an empty summary', async (
   await act(async () => repo.__change());
   expect(repo.deleteSession).not.toHaveBeenCalled();
   expect(router.dismissTo).not.toHaveBeenCalled();
+});
+
+test('an English phone sees the selection and delete texts in English', async () => {
+  setLocale('en');
+  try {
+    repo.listClips.mockReturnValue([clip('a', 'gesture', 1), clip('b', 'screen', 2)]);
+    repo.sessionStats.mockReturnValue({ clips: 2, bytes: 1, recordedMs: 1 });
+    const alert = jest.spyOn(require('react-native').Alert, 'alert').mockImplementation(() => {});
+    await render(<SessionSummary />);
+    await fireEvent.press(screen.getByRole('button', { name: 'Select clips' }));
+    await fireEvent.press(screen.getByRole('button', { name: /^Clip 1/ }));
+    expect(screen.getByText('1 selected')).toBeTruthy();
+    await fireEvent.press(screen.getByRole('button', { name: 'Delete 1 clip' }));
+    expect(alert).toHaveBeenLastCalledWith('Delete 1 clip?', "This can't be undone.", expect.any(Array));
+    alert.mockRestore();
+  } finally {
+    setLocale('pt-BR');
+  }
 });

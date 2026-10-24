@@ -1,6 +1,9 @@
 import SwiftUI
 import WidgetKit
 
+// Texts are English keys looked up in this target's Localizable.xcstrings (English and Brazilian Portuguese), like
+// the watch app's; the brand is never translated.
+
 private let ground = Color(red: 0.059, green: 0.063, blue: 0.051) // #0F100D
 private let accent = Color(red: 0.812, green: 0.918, blue: 0.475) // #CFEA79
 
@@ -37,12 +40,12 @@ struct RepplayCard: View {
     case .accessoryCircular:
       VStack(spacing: 0) {
         Image(systemName: state.recording ? "record.circle" : "bookmark.fill").font(.title3)
-        Text("Repplay").font(.system(size: 9, weight: .heavy, design: .rounded))
+        Text(verbatim: "Repplay").font(.system(size: 9, weight: .heavy, design: .rounded))
       }
     default:
       VStack(alignment: .leading, spacing: 1) {
         HStack {
-          Text("Repplay").font(.system(.caption, design: .rounded).weight(.heavy)).widgetAccentable()
+          Text(verbatim: "Repplay").font(.system(.caption, design: .rounded).weight(.heavy)).widgetAccentable()
           Spacer(minLength: 4)
           if state.recording, let start = state.startedAtMs {
             Text(Date(timeIntervalSince1970: start / 1000), style: .timer)
@@ -52,7 +55,7 @@ struct RepplayCard: View {
               .frame(maxWidth: 56, alignment: .trailing)
           }
         }
-        Text(state.recording ? WatchSharedState.clipLabel(state.clipCount) : "Abrir")
+        (state.recording ? Text("\(state.clipCount) clips") : Text("Open"))
           .font(.system(.title3, design: .rounded).weight(.heavy))
       }
       .frame(maxWidth: .infinity, alignment: .leading)
@@ -68,7 +71,7 @@ struct RepplayWidget: Widget {
         .containerBackground(accent, for: .widget)
     }
     .configurationDisplayName("Repplay")
-    .description("Mostra o tempo e os clipes da gravação e abre o Repplay com um toque.")
+    .description(Text("Shows the recording's time and clips and opens Repplay with a tap."))
     .supportedFamilies([.accessoryRectangular, .accessoryCircular])
   }
 }

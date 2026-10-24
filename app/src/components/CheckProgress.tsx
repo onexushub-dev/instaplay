@@ -1,5 +1,7 @@
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { type AppLocale, currentLocale, translate } from '../i18n';
+import { useT } from '../i18n/useT';
 import { colors, fonts, radius } from '../theme/tokens';
 import { CheckIcon, CloseIcon } from './icons';
 
@@ -10,16 +12,16 @@ export type CheckView = { phase: 'checking' } | { phase: 'ok'; ms: number } | { 
 export const OK_VISIBLE_MS = 2000;
 export const FAILED_VISIBLE_MS = 4000;
 
-export function checkTitle(name: string, view: CheckView): string {
-  if (view.phase === 'checking') return `Verificando ${name}…`;
-  if (view.phase === 'ok') return `${name} respondeu`;
-  return `${name} não respondeu`;
+export function checkTitle(name: string, view: CheckView, locale: AppLocale = currentLocale()): string {
+  if (view.phase === 'checking') return translate(locale, 'check.checking', { name });
+  if (view.phase === 'ok') return translate(locale, 'check.answered', { name });
+  return translate(locale, 'check.noAnswer', { name });
 }
 
 /** The line under the title; null while it is still checking. */
-export function checkDetail(view: CheckView): string | null {
+export function checkDetail(view: CheckView, locale: AppLocale = currentLocale()): string | null {
   if (view.phase === 'ok') return `${view.ms} ms`;
-  if (view.phase === 'failed') return 'Abra o Repplay nesse celular e tente de novo.';
+  if (view.phase === 'failed') return translate(locale, 'check.retryHint');
   return null;
 }
 
@@ -30,13 +32,14 @@ type Props = { name: string; view: CheckView; onDismiss: () => void };
  * "Preparando o vídeo…". While checking it lets touches through; once there is an answer a tap anywhere closes it.
  */
 export function CheckProgress({ name, view, onDismiss }: Props) {
-  const title = checkTitle(name, view);
-  const detail = checkDetail(view);
+  const { t, locale } = useT();
+  const title = checkTitle(name, view, locale);
+  const detail = checkDetail(view, locale);
   const checking = view.phase === 'checking';
   return (
     <View pointerEvents={checking ? 'none' : 'auto'} style={styles.wrap}>
       {checking ? null : (
-        <Pressable accessibilityRole="button" accessibilityLabel="Fechar aviso" onPress={onDismiss} style={StyleSheet.absoluteFill} />
+        <Pressable accessibilityRole="button" accessibilityLabel={t('check.dismiss')} onPress={onDismiss} style={StyleSheet.absoluteFill} />
       )}
       <View
         accessibilityRole={checking ? 'progressbar' : 'alert'}

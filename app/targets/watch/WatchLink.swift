@@ -18,6 +18,8 @@ final class WatchLink: NSObject, ObservableObject, WCSessionDelegate {
   @Published private(set) var starting = false
   /// The phone did not answer a start: the Repplay app is not open on it. Shown as a message, then cleared.
   @Published private(set) var startFailed = false
+  /// The phone's word on the watch trigger (paid): false hides Save. Allowed until the phone says otherwise.
+  @Published private(set) var saveAllowed = true
 
   private var confirmationReset: DispatchWorkItem?
 
@@ -52,7 +54,7 @@ final class WatchLink: NSObject, ObservableObject, WCSessionDelegate {
   func sendSave() {
     // Full-screen target: a sleeve or a ball must not save a clip every few seconds.
     let now = Date().timeIntervalSince1970
-    guard WatchModel.canSave(now: now, lastSave: lastSaveAt) else { return }
+    guard WatchModel.canSave(now: now, lastSave: lastSaveAt, allowed: saveAllowed) else { return }
     lastSaveAt = now
     WKInterfaceDevice.current().play(.click)
     let session = WCSession.default
@@ -148,7 +150,8 @@ final class WatchLink: NSObject, ObservableObject, WCSessionDelegate {
   private func apply(_ payload: [String: Any], fresh: Bool = true) {
     DispatchQueue.main.async {
       switch WatchMessage.decode(payload) {
-      case let .state(recording, clipCount, startedAt)?:
+      case let .state(recording, clipCount, startedAt, saveAllowed)?:
+        if self.saveAllowed != saveAllowed { self.saveAllowed = saveAllowed }
         self.recording = recording
         self.clipCount = clipCount
         self.startedAtMs = startedAt

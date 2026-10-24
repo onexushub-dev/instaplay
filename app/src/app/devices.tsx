@@ -11,22 +11,15 @@ import { StepList } from '../components/StepList';
 import { remoteDeviceView } from '../devices/remoteDevice';
 import { setRemoteSheetOpen } from '../devices/remoteTest';
 import { useRemoteTest } from '../devices/useRemoteTest';
+import { useT } from '../i18n/useT';
 import { colors, fonts, radius } from '../theme/tokens';
 
 /** After this long without a press the sheet adds what to check. */
 const WAITED_LONG_MS = 15_000;
 
-const STEPS = [
-  'Ligue o controle e deixe em modo de pareamento.',
-  'Abra Ajustes > Bluetooth e toque no nome dele.',
-  'Volte ao Repplay e aperte um botão do controle.',
-];
-
-const FORGET_HELP =
-  'O Repplay deixa de mostrar este controle como pareado. Para desconectar de vez: Ajustes > Bluetooth > ⓘ ao lado do controle > Ignorar este dispositivo.';
-
 /** The Bluetooth remote's side of the Dispositivos sheet: what to do to connect it, and proof when it works. */
 export default function Devices() {
+  const { t, locale } = useT();
   const { pressed, testedBefore, forget } = useRemoteTest();
   const [waitedLong, setWaitedLong] = useState(false);
 
@@ -46,13 +39,14 @@ export default function Devices() {
     };
   }, [pressed]);
 
-  const view = remoteDeviceView({ pressed, testedBefore, waitedLong });
+  const view = remoteDeviceView({ pressed, testedBefore, waitedLong }, locale);
+  const steps = [t('devices.step1'), t('devices.step2'), t('devices.step3')];
   const remembered = pressed || testedBefore;
 
   const confirmForget = () =>
-    Alert.alert('Esquecer o controle?', FORGET_HELP, [
-      { text: 'Cancelar', style: 'cancel' },
-      { text: 'Esquecer', style: 'destructive', onPress: forget },
+    Alert.alert(t('devices.forgetTitle'), t('devices.forgetHelp'), [
+      { text: t('common.cancel'), style: 'cancel' },
+      { text: t('remote.forget'), style: 'destructive', onPress: forget },
     ]);
 
   return (
@@ -60,7 +54,7 @@ export default function Devices() {
       <ScrollView contentContainerStyle={styles.body}>
         <View style={styles.header}>
           <RemoteIcon color={colors.accent} size={28} />
-          <Text style={styles.title}>Controle Bluetooth</Text>
+          <Text style={styles.title}>{t('setup.bluetoothRemote')}</Text>
         </View>
         <StatusPill text={view.statusText} tone={view.state === 'connected' ? 'on' : 'idle'} />
 
@@ -69,41 +63,38 @@ export default function Devices() {
             <View style={styles.doneBadge}>
               <CheckIcon size={56} />
             </View>
-            <Text style={styles.success}>Controle conectado</Text>
+            <Text style={styles.success}>{t('devices.connected')}</Text>
           </View>
         ) : null}
 
-        {view.showSteps ? <StepList steps={STEPS} /> : null}
+        {view.showSteps ? <StepList steps={steps} /> : null}
 
         {view.showWaiting ? (
           <View style={styles.waiting}>
             <PulseRing color={colors.accent} size={28} />
-            <Text style={styles.waitingText}>Aperte um botão do controle…</Text>
+            <Text style={styles.waitingText}>{t('devices.waiting')}</Text>
           </View>
         ) : null}
 
         {view.showNote ? (
-          <Text style={styles.note}>
-            Nada ainda? Confira se o controle aparece como Conectado em Ajustes &gt; Bluetooth. Funciona com controles de
-            selfie (tecla de volume).
-          </Text>
+          <Text style={styles.note}>{t('devices.note')}</Text>
         ) : null}
 
         {remembered ? (
           <View style={styles.row}>
-            <Text style={styles.rowName}>Controle pareado</Text>
+            <Text style={styles.rowName}>{t('devices.paired')}</Text>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Esquecer controle"
+              accessibilityLabel={t('devices.forgetA11y')}
               hitSlop={8}
               onPress={confirmForget}
               style={styles.forget}>
-              <Text style={styles.forgetText}>Esquecer</Text>
+              <Text style={styles.forgetText}>{t('remote.forget')}</Text>
             </Pressable>
           </View>
         ) : null}
 
-        <Button label="Pronto" variant={view.state === 'connected' ? 'primary' : 'secondary'} onPress={() => router.back()} />
+        <Button label={t('devices.done')} variant={view.state === 'connected' ? 'primary' : 'secondary'} onPress={() => router.back()} />
       </ScrollView>
     </SafeAreaView>
   );

@@ -1,3 +1,4 @@
+import { Alert } from 'react-native';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 
 import Setup from '../setup';
@@ -56,14 +57,31 @@ jest.mock('../../data/mmkv', () => {
     repo: {
       getPrefs: () => prefs,
       setPrefs: jest.fn((p: object) => (prefs = { ...prefs, ...p })),
+      subscribe: jest.fn(() => () => {}),
+      version: jest.fn(() => 0),
     },
   };
 });
 jest.mock('../../session/SessionContext', () => ({ useSession: jest.fn() }));
+jest.mock('../../share/entitlement', () => ({ usePlan: jest.fn(() => 'paid') }));
+jest.mock('../../payments/feedback', () => ({
+  openPaywall: jest.fn(async () => 'cancelled'),
+}));
+jest.mock('../../payments', () => ({
+  payments: {
+    peekStart: jest.fn(() => ({ kind: 'pro' })),
+    credits: jest.fn(() => 0),
+    freeLeft: jest.fn(() => 5),
+    subscribe: jest.fn(() => () => {}),
+    version: jest.fn(() => 0),
+  },
+}));
 
 const { repo } = jest.requireMock('../../data/mmkv');
 const { useSession } = jest.requireMock('../../session/SessionContext');
 const { router } = jest.requireMock('expo-router');
+const { payments } = jest.requireMock('../../payments');
+const { openPaywall } = jest.requireMock('../../payments/feedback');
 
 function session(state: object) {
   const value = {
@@ -76,7 +94,7 @@ function session(state: object) {
       thermal: { level: 'nominal', degraded: false },
       ...state,
     },
-    start: jest.fn(async () => {}),
+    start: jest.fn(async (): Promise<string | void> => {}),
     prepare: jest.fn(async () => true),
     release: jest.fn(async () => {}),
     trigger: jest.fn(),
@@ -103,6 +121,10 @@ beforeEach(() => {
   module.remoteHostPeers.mockReturnValue([]);
   module.getDeviceUpright.mockReturnValue('portrait');
   module.remoteControllerHost.mockReturnValue(null);
+  jest.requireMock('../../share/entitlement').usePlan.mockReturnValue('paid');
+  payments.peekStart.mockReturnValue({ kind: 'pro' });
+  payments.credits.mockReturnValue(0);
+  openPaywall.mockResolvedValue('cancelled');
 });
 
 test('keeps the screen awake while the phone is being positioned', async () => {
@@ -126,7 +148,7 @@ test('under another screen (Minhas gravações, editor, Salvar) it releases the 
 test('turns the camera on for the live preview', async () => {
   const s = session({ camera: 'off' });
   await render(<Setup />);
-  expect(s.prepare).toHaveBeenCalledWith('quadra'); // a pre-modes sport opens as Quadra
+  expect(s.prepare).toHaveBeenCalledWith('quadra', 'paid'); // a pre-modes sport opens as Quadra
 });
 
 const zoomButton = (name: string) => screen.getByRole('button', { name });
@@ -360,6 +382,7 @@ test('the voice tile says when this phone cannot recognize speech offline', asyn
   await render(<Setup />);
   await openSettings();
   expect(screen.getByLabelText('Voz, Indisponível neste celular')).toBeTruthy();
+  expect(jest.requireMock('../../../modules/replay-camera').isVoiceSupported).toHaveBeenCalledWith('pt-BR');
 });
 
 test('Minhas gravações opens the game list, and is hidden during a game', async () => {
@@ -474,7 +497,7 @@ const camera = () => jest.requireMock('../../../modules/replay-camera');
 
 test.each([
   ['unsupported', 'Sem relógio pareado'],
-  ['notInstalled', 'Instale o app no relógio'],
+  ['notInstalled', 'Instale o app no Apple Watch'],
   ['ready', 'Pronto'],
 ])('the Relógio tile says %s as "%s"', async (status, text) => {
   camera().getWatchStatus.mockReturnValueOnce(status);
@@ -502,6 +525,88 @@ test('the collapsed summary mentions a ready watch, and only then', async () => 
   await act(async () => listener({ status: 'ready' }));
   expect(screen.getByRole('button', { name: /relógio pronto$/ })).toBeTruthy();
   view.unmount();
+});
+
+// ---- The watch trigger is paid (Pro, or a game already paid with the Pass)
+
+function freeTier() {
+  jest.requireMock('../../share/entitlement').usePlan.mockReturnValue('free');
+}
+
+test('on the free tier the Relógio tile shows a Pro badge and opens the paywall', async () => {
+  freeTier();
+  camera().getWatchStatus.mockReturnValueOnce('ready');
+  session({});
+  await render(<Setup />);
+  await openSettings();
+  expect(screen.getAllByText('Pro').length).toBeGreaterThan(0);
+  const tile = screen.getByRole('button', { name: 'Relógio, Pronto, Disponível no Pro' });
+  await fireEvent.press(tile);
+  expect(openPaywall).toHaveBeenCalledTimes(1);
+  expect(openPaywall.mock.calls[0]).toHaveLength(1);
+  expect(openPaywall.mock.calls[0][0]('setup.watchProOnly')).toBe('Disponível no Pro');
+});
+
+test('on the free tier clip lengths above 15s are locked and open the paywall', async () => {
+  freeTier();
+  session({});
+  await render(<Setup />);
+  expect(screen.getByText('Clipes de até 15s')).toBeTruthy(); // 30s is stored, but the free plan gets 15s
+  await openSettings();
+  expect(screen.getByRole('button', { name: '15s' })).toBeSelected();
+  expect(screen.getByRole('button', { name: '30s, Disponível no Pro' })).not.toBeSelected();
+  for (const label of ['30s', '45s', '60s']) {
+    openPaywall.mockClear();
+    await fireEvent.press(screen.getByRole('button', { name: `${label}, Disponível no Pro` }));
+    expect(openPaywall).toHaveBeenCalledTimes(1);
+  }
+  expect(repo.setPrefs).not.toHaveBeenCalledWith(expect.objectContaining({ modeSettings: expect.anything() }));
+});
+
+test('on the free tier picking 15s is free and saves it', async () => {
+  freeTier();
+  session({});
+  await render(<Setup />);
+  await openSettings();
+  await fireEvent.press(screen.getByRole('button', { name: '15s' }));
+  expect(openPaywall).not.toHaveBeenCalled();
+  expect(repo.setPrefs).toHaveBeenCalledWith({ modeSettings: { quadra: { cutSeconds: 15 } } });
+});
+
+test('on the free tier the Bluetooth and phone remote tiles show Pro but still open their pairing screens', async () => {
+  freeTier();
+  camera().isRemoteSupported.mockReturnValue(true);
+  session({});
+  await render(<Setup />);
+  await openSettings();
+  for (const [title, path] of [
+    ['Controle Bluetooth', '/devices'],
+    ['Conectar um celular controle', '/pairing'],
+    ['Usar este celular como controle', '/remote'],
+  ] as const) {
+    router.push.mockClear?.();
+    await fireEvent.press(screen.getByRole('button', { name: new RegExp(`^${title}.*Disponível no Pro$`) }));
+    expect(router.push).toHaveBeenLastCalledWith(path === '/devices' ? expect.objectContaining({ pathname: path }) : path);
+  }
+  expect(openPaywall).not.toHaveBeenCalled();
+});
+
+test('on the free tier a locked watch is not counted as ready in the summary', async () => {
+  freeTier();
+  camera().getWatchStatus.mockReturnValueOnce('ready');
+  session({});
+  await render(<Setup />);
+  expect(screen.getByRole('button', { name: /^Ajustes:/ }).props.accessibilityLabel).not.toMatch(/relógio/);
+});
+
+test('on Pro the Relógio tile has no badge and no paywall', async () => {
+  camera().getWatchStatus.mockReturnValueOnce('ready');
+  session({});
+  await render(<Setup />);
+  await openSettings();
+  expect(screen.queryByText('Pro')).toBeNull();
+  expect(screen.getByLabelText('Relógio, Pronto')).toBeTruthy();
+  expect(screen.queryByRole('button', { name: /^Relógio/ })).toBeNull();
 });
 
 test('without a watch the other triggers behave as before', async () => {
@@ -606,7 +711,7 @@ test('"Desconectar deste celular" asks first, then forgets the camera phone and 
   session({});
   camera().isRemoteSupported.mockReturnValue(true);
   camera().remoteControllerHost.mockReturnValue({ id: 'h1', name: 'iPhone XR#1234' });
-  const alert = jest.spyOn(require('react-native').Alert, 'alert').mockImplementation(() => {});
+  const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
   await render(<Setup />);
   await openSettings();
   await fireEvent.press(screen.getByRole('button', { name: 'Desconectar deste celular' }));
@@ -658,6 +763,78 @@ test('the Dispositivos sheet over the setup keeps the camera and the volume butt
   await act(async () => setRemoteSheetOpen(false));
   expect(useVolumeRemote).toHaveBeenLastCalledWith(false, expect.any(Function));
   jest.requireMock('expo-router').useIsFocused.mockReturnValue(true);
+});
+
+test('the status line follows the start decision', async () => {
+  session({});
+  payments.peekStart.mockReturnValue({ kind: 'free' });
+  const view = await render(<Setup />);
+  expect(screen.queryByText(/Passe/)).toBeNull();
+  payments.peekStart.mockReturnValue({ kind: 'credit', passTransactionId: 'p1' });
+  payments.credits.mockReturnValue(2);
+  await view.rerender(<Setup />);
+  expect(screen.getByText('Você tem 2 Passes Avulsos.')).toBeTruthy();
+  payments.credits.mockReturnValue(1);
+  await view.rerender(<Setup />);
+  expect(screen.getByText('Você tem 1 Passe Avulso.')).toBeTruthy();
+  payments.peekStart.mockReturnValue({ kind: 'pro' });
+  await view.rerender(<Setup />);
+  expect(screen.queryByText(/Passe/)).toBeNull();
+});
+
+const pressStart = () => fireEvent.press(screen.getByRole('button', { name: 'Começar gravação' }));
+
+test('a started recording never opens the paywall', async () => {
+  const s = session({});
+  s.start.mockResolvedValue('started');
+  await render(<Setup />);
+  await pressStart();
+  expect(s.start).toHaveBeenCalledTimes(1);
+  expect(openPaywall).not.toHaveBeenCalled();
+});
+
+test('a cancelled paywall keeps the player on the setup screen', async () => {
+  const s = session({});
+  s.start.mockResolvedValue('blocked');
+  openPaywall.mockResolvedValue('cancelled');
+  const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+  await render(<Setup />);
+  await pressStart();
+  expect(openPaywall).toHaveBeenCalledWith(expect.any(Function));
+  expect(s.start).toHaveBeenCalledTimes(1);
+  expect(router.push).not.toHaveBeenCalled();
+  expect(router.replace).not.toHaveBeenCalled();
+  expect(router.navigate).not.toHaveBeenCalled();
+  expect(alert).not.toHaveBeenCalled();
+  alert.mockRestore();
+});
+
+test.each(['purchased', 'restored'])('after %s it starts once more, and does not ask again if still unpaid', async (outcome) => {
+  const s = session({});
+  s.start.mockResolvedValue('blocked');
+  openPaywall.mockResolvedValue(outcome);
+  await render(<Setup />);
+  await pressStart();
+  expect(s.start).toHaveBeenCalledTimes(2);
+  expect(openPaywall).toHaveBeenCalledTimes(1);
+});
+
+test('a paywall error does not start again', async () => {
+  const s = session({});
+  s.start.mockResolvedValue('blocked');
+  openPaywall.mockResolvedValue('error');
+  await render(<Setup />);
+  await pressStart();
+  expect(s.start).toHaveBeenCalledTimes(1);
+});
+
+test('a double tap while start is pending starts once', async () => {
+  const s = session({});
+  s.start.mockReturnValue(new Promise(() => {}));
+  await render(<Setup />);
+  await pressStart();
+  await pressStart();
+  expect(s.start).toHaveBeenCalledTimes(1);
 });
 
 describe('phone held on its side', () => {

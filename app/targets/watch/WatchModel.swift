@@ -66,10 +66,11 @@ enum WatchModel {
     viewOn && reachable && recording
   }
 
-  static func canSave(now: Double, lastSave: Double?) -> Bool {
+  /// `allowed` is the phone's word on the watch trigger (paid): when locked nothing is sent at all.
+  static func canSave(now: Double, lastSave: Double?, allowed: Bool = true) -> Bool {
+    guard allowed else { return false }
     guard let lastSave else { return true }
     return now - lastSave >= saveCooldown
   }
 
-  static func countLabel(_ count: Int) -> String { count == 1 ? "1 clipe" : "\(count) clipes" }
 }

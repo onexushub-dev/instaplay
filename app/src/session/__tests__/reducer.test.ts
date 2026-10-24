@@ -1,15 +1,30 @@
 import { initialState, reducer, type SessionState } from '../reducer';
 
 const recording = (over: Partial<SessionState> = {}): SessionState => ({
-  ...reducer(reducer(initialState, { type: 'startRequested' }), { type: 'started', sessionId: 's1', startedAt: 100 }),
+  ...reducer(reducer(initialState, { type: 'startRequested' }), { type: 'started', sessionId: 's1', startedAt: 100, paid: false, bufferSeconds: 15 }),
   ...over,
 });
 
 test('start happy path: idle → starting → recording', () => {
   const starting = reducer(initialState, { type: 'startRequested' });
   expect(starting.phase).toBe('starting');
-  const rec = reducer(starting, { type: 'started', sessionId: 's1', startedAt: 100 });
+  const rec = reducer(starting, { type: 'started', sessionId: 's1', startedAt: 100, paid: false, bufferSeconds: 15 });
   expect(rec).toMatchObject({ phase: 'recording', sessionId: 's1', startedAt: 100, clipCount: 0 });
+});
+
+test('started keeps the plan and the buffer the game runs with; stop and reset clear them', () => {
+  const rec = reducer(reducer(initialState, { type: 'startRequested' }), {
+    type: 'started',
+    sessionId: 's1',
+    startedAt: 100,
+    paid: true,
+    bufferSeconds: 60,
+  });
+  expect(rec).toMatchObject({ paid: true, bufferSeconds: 60 });
+  const ended = reducer(reducer(rec, { type: 'stopRequested' }), { type: 'stopped' });
+  expect(ended.paid).toBeUndefined();
+  expect(ended.bufferSeconds).toBeUndefined();
+  expect(reducer(rec, { type: 'reset' }).paid).toBeUndefined();
 });
 
 test('start failure returns to idle with the error code', () => {
@@ -80,4 +95,15 @@ test('camera lifecycle: off → starting → on, and failures keep the code', ()
 test('starting a game keeps the camera that is already on', () => {
   const on = reducer(initialState, { type: 'cameraOn' });
   expect(reducer(on, { type: 'startRequested' }).camera).toBe('on');
+});
+
+test('saved keeps neither locked nor lastFree in lastSaved', () => {
+  const s = reducer(recording(), { type: 'saved', sessionId: 's1', clipId: 'c1', source: 'screen', at: 1, cutMs: 30_000 });
+  expect(s.lastSaved).toEqual({ clipId: 'c1', number: 1, source: 'screen', at: 1, cutMs: 30_000 });
+});
+
+test('startBlocked after startRequested goes back to idle keeping the camera, without an error', () => {
+  const on = reducer(initialState, { type: 'cameraOn' });
+  const s = reducer(reducer(on, { type: 'startRequested' }), { type: 'startBlocked' });
+  expect(s).toEqual({ ...initialState, camera: 'on' });
 });

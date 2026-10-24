@@ -1,9 +1,11 @@
 import type { StyleProp, ViewStyle } from 'react-native';
 
 export type Lens = 'ultraWide' | 'wide';
-export type Quality = '1080p60' | '1080p30' | '720p30';
+export type Quality = '1080p60' | '1080p30' | '720p60' | '720p30';
 export type TriggerSource = 'screen' | 'gesture' | 'remote' | 'watch' | 'voice' | 'phone';
-export type ThermalLevel = 'nominal' | 'fair' | 'serious' | 'critical';
+/** The language the voice command listens in (iOS speech recognizer locale). */
+export type VoiceLocale = 'pt-BR' | 'en-US';
+export type ThermalLevel ='nominal' | 'fair' | 'serious' | 'critical';
 export type ReplayErrorCode =
   | 'LOW_STORAGE'
   | 'CAMERA_PERMISSION'
@@ -18,7 +20,8 @@ export type ReplayErrorCode =
  * `bufferSeconds`: the rolling window kept for saves (default 60; gym modes use 120).
  * `zoom`: the starting zoom where zoom is continuous (iOS: 0.5 = ultra-wide, 1 = wide); `lens` is what the others open.
  */
-export type SessionOptions = { lens: Lens; zoom?: number; maxQuality: Quality; bufferSeconds?: number };
+/** `audio`: record the microphone into the buffer (off on the free plan); native support is separate. */
+export type SessionOptions = { lens: Lens; zoom?: number; maxQuality: Quality; bufferSeconds?: number; audio?: boolean };
 /** What the camera can zoom: `continuous` is false where only the two lenses exist (Android). */
 /** Which edge of the phone points up (UIDeviceOrientation naming). */
 export type DeviceUpright = 'portrait' | 'portraitUpsideDown' | 'landscapeLeft' | 'landscapeRight';

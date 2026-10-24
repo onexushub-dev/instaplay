@@ -9,8 +9,9 @@ public enum WatchMessage: Equatable {
   case start
   /// Watch → phone: end the current recording.
   case stop
-  /// Phone → watch: the recording as it is; `startedAt` is ms since 1970, nil when idle.
-  case state(recording: Bool, clipCount: Int, startedAt: Double?)
+  /// Phone → watch: the recording as it is; `startedAt` is ms since 1970, nil when idle. `saveAllowed` is false when the
+  /// watch trigger is locked (it is paid): the watch hides Save. Missing (an older phone build) means allowed.
+  case state(recording: Bool, clipCount: Int, startedAt: Double?, saveAllowed: Bool)
   /// Phone → watch: how the last save ended.
   case result(saved: Bool)
   /// Watch → phone: show (true) or stop (false) the camera view. Sent again every second while it is open.
@@ -25,8 +26,8 @@ public enum WatchMessage: Equatable {
       return ["cmd": "start"]
     case .stop:
       return ["cmd": "stop"]
-    case let .state(recording, clipCount, startedAt):
-      var out: [String: Any] = ["recording": recording, "clipCount": clipCount]
+    case let .state(recording, clipCount, startedAt, saveAllowed):
+      var out: [String: Any] = ["recording": recording, "clipCount": clipCount, "saveAllowed": saveAllowed]
       if let startedAt { out["startedAt"] = startedAt }
       return out
     case let .result(saved):
@@ -59,6 +60,8 @@ public enum WatchMessage: Equatable {
     }
     guard let recording = payload["recording"] as? Bool,
           let count = payload["clipCount"] as? Int, count >= 0 else { return nil }
-    return .state(recording: recording, clipCount: count, startedAt: payload["startedAt"] as? Double)
+    return .state(
+      recording: recording, clipCount: count, startedAt: payload["startedAt"] as? Double,
+      saveAllowed: payload["saveAllowed"] as? Bool ?? true)
   }
 }

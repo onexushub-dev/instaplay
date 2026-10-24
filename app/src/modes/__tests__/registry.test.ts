@@ -1,11 +1,11 @@
-import { MODE_LABEL } from '../../components/format';
+import { modeLabel } from '../../components/format';
 import { DEFAULT_PREFS, type Prefs } from '../../data/schema';
 import { effectiveSettings, MODES, modeById, offeredMode, withModeOverride } from '../registry';
 
 const prefs = (over: Partial<Prefs> = {}): Prefs => ({ ...DEFAULT_PREFS, ...over });
 
 test('the app offers one free mode, with nothing drawn over the camera', () => {
-  expect(MODES.map((m) => [m.id, m.label, m.guide, m.tip])).toEqual([['quadra', 'Livre', 'none', '']]);
+  expect(MODES.map((m) => [m.id, m.guide, m.tip])).toEqual([['quadra', 'none', false]]);
   expect(DEFAULT_PREFS.sport).toBe('quadra');
 });
 
@@ -17,6 +17,7 @@ test('the free mode defaults to 0.5x (ultra-wide), 60s, gesture on, last 30s', (
     bufferSeconds: 60,
     cutSeconds: 30,
     quality: '1080p60',
+    audio: true,
   });
 });
 
@@ -66,10 +67,12 @@ test('saving a zoom writes zoom and never lens', () => {
 });
 
 test('games saved with an old sport keep their label, and everything maps to the one mode on offer', () => {
-  expect(MODE_LABEL.beachTennis).toBe('Beach tennis');
-  expect(MODE_LABEL.musculacao).toBe('Musculação');
-  expect(MODE_LABEL.quadra).toBe('Gravação');
+  expect(modeLabel('beachTennis')).toBe('Beach tennis');
+  expect(modeLabel('musculacao')).toBe('Musculação');
+  expect(modeLabel('musculacao', 'en')).toBe('Weightlifting');
+  expect(modeLabel('quadra')).toBe('Gravação');
+  expect(modeLabel('quadra', 'en')).toBe('Recording');
   for (const id of ['futevolei', 'crossfit', 'academia', 'quadra'] as const) expect(offeredMode(id)).toBe('quadra');
-  expect(modeById('academia').label).toBe('Academia');
-  expect(modeById('voleiPraia').label).toBe('Vôlei de praia');
+  expect(modeLabel(modeById('academia').id)).toBe('Academia');
+  expect(modeLabel(modeById('voleiPraia').id)).toBe('Vôlei de praia');
 });

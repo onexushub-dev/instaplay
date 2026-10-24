@@ -1,5 +1,6 @@
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { useT } from '../i18n/useT';
 import { colors, fonts } from '../theme/tokens';
 import type { ToolId } from './editSession';
 import { EDIT_TOOLS, type EditTool } from './tools';
@@ -17,6 +18,7 @@ export function ToolBar({
   /** The tools this phone has (no Foco where Modo Foco cannot run). */
   tools?: EditTool[];
 }) {
+  const { t } = useT();
   return (
     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.bar}>
       {tools.map((tool) => {
@@ -26,14 +28,14 @@ export function ToolBar({
           <Pressable
             key={tool.id}
             accessibilityRole="tab"
-            accessibilityLabel={marked ? `${tool.label}, ligado` : tool.label}
+            accessibilityLabel={marked ? t('clip.toolOn', { tool: t(tool.label) }) : t(tool.label)}
             accessibilityState={{ selected }}
             onPress={() => onOpen(tool.id)}
             style={styles.tool}>
             <View style={[styles.icon, selected ? styles.iconOn : null]}>
               {tool.icon(selected ? colors.onAccent : marked ? colors.accent : colors.text)}
             </View>
-            <Text style={[styles.label, selected ? styles.labelOn : null]}>{tool.label}</Text>
+            <Text style={[styles.label, selected ? styles.labelOn : null]}>{t(tool.label)}</Text>
             {marked && !selected ? <View style={styles.dot} /> : null}
           </Pressable>
         );

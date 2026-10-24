@@ -1,43 +1,54 @@
-import type { Session, Sport } from '../data/schema';
+import type { ModeId, Session } from '../data/schema';
+import { type AppLocale, currentLocale, translate } from '../i18n';
+import type { ModeGroup } from '../modes/registry';
 
-export const MODE_LABEL: Record<Sport, string> = {
-  quadra: 'Gravação',
-  academia: 'Academia',
-  beachTennis: 'Beach tennis',
-  futevolei: 'Futevôlei',
-  voleiPraia: 'Vôlei de praia',
-  outro: 'Outro',
-  musculacao: 'Musculação',
-  crossfit: 'Crossfit',
-  funcional: 'Funcional',
-  outroAcademia: 'Outro',
-};
-/** The original name, kept for the court screens and stored sessions. */
-export const SPORT_LABEL = MODE_LABEL;
+// Every helper takes the language last (the app's current one by default). Components pass `locale` from useT(),
+// so a memoized render is recomputed when the language changes.
+
+/** A mode's (or a saved sport's) name. */
+export function modeLabel(id: ModeId, locale: AppLocale = currentLocale()): string {
+  return translate(locale, `modes.label.${id}`);
+}
+
+/** Where to put the phone, for a mode group. */
+export function modeTip(group: ModeGroup, locale: AppLocale = currentLocale()): string {
+  return translate(locale, `modes.tip.${group}`);
+}
 
 const pad = (n: number) => String(n).padStart(2, '0');
 
-/** "2h14" from 2h14min; "14min" under an hour. */
-export function recordedLabel(ms: number): string {
+/** "2h14" / "2h 14m" from 2h14min; "14min" / "14 min" under an hour. */
+export function recordedLabel(ms: number, locale: AppLocale = currentLocale()): string {
   const minutes = Math.floor(ms / 60_000);
   const h = Math.floor(minutes / 60);
-  return h > 0 ? `${h}h${pad(minutes % 60)}` : `${minutes}min`;
+  return h > 0
+    ? translate(locale, 'common.hoursMinutes', { h, m: pad(minutes % 60) })
+    : translate(locale, 'common.minutes', { m: minutes });
 }
 
-export function megabytes(bytes: number): string {
-  return `${Math.round(bytes / 1_000_000)} MB`;
+export function megabytes(bytes: number, locale: AppLocale = currentLocale()): string {
+  return translate(locale, 'common.megabytes', { size: new Intl.NumberFormat(locale).format(Math.round(bytes / 1_000_000)) });
 }
 
-export function timeOfDay(at: number): string {
-  const d = new Date(at);
-  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+/** "18:40" in Portuguese, "6:40 PM" in English. */
+export function timeOfDay(at: number, locale: AppLocale = currentLocale()): string {
+  return new Intl.DateTimeFormat(locale, { hour: locale === 'en' ? 'numeric' : '2-digit', minute: '2-digit' }).format(
+    new Date(at),
+  );
 }
 
-/** "hoje, 18:40" or "16/10, 18:40". */
-export function dayAndTime(at: number, now = Date.now()): string {
-  const d = new Date(at);
-  const today = new Date(now).toDateString() === d.toDateString();
-  return `${today ? 'hoje' : `${pad(d.getDate())}/${pad(d.getMonth() + 1)}`}, ${timeOfDay(at)}`;
+/** "16/10" in Portuguese, "10/16" in English. */
+function dayMonth(at: number, locale: AppLocale): string {
+  return new Intl.DateTimeFormat(locale, { day: '2-digit', month: '2-digit' }).format(new Date(at));
+}
+
+/** "hoje, 18:40" / "today, 6:40 PM", or "16/10, 18:40" / "10/16, 6:40 PM". */
+export function dayAndTime(at: number, now = Date.now(), locale: AppLocale = currentLocale()): string {
+  const time = timeOfDay(at, locale);
+  const today = new Date(now).toDateString() === new Date(at).toDateString();
+  return today
+    ? translate(locale, 'common.today', { time })
+    : translate(locale, 'common.dayTime', { day: dayMonth(at, locale), time });
 }
 
 /** The number a clip shows in its recording: the one it was saved with, or its place in the list for older clips. */
@@ -45,14 +56,18 @@ export function clipNumber(clip: { number?: number }, index: number): number {
   return clip.number !== undefined ? clip.number : index + 1;
 }
 
+/** "m:ss", the same in every language. */
 export function seconds(ms: number): string {
   const s = Math.round(ms / 1000);
   return `${Math.floor(s / 60)}:${pad(s % 60)}`;
 }
 
-/** A game's name, or "<Esporte> · DD/MM, HH:MM". */
-export function sessionLabel(session: Session, now = Date.now()): string {
+/** A game's name, or "<Mode> · <day>, <time>". */
+export function sessionLabel(session: Session, now = Date.now(), locale: AppLocale = currentLocale()): string {
   if (session.name) return session.name;
-  const d = new Date(session.startedAt);
-  return `${SPORT_LABEL[session.sport]} · ${pad(d.getDate())}/${pad(d.getMonth() + 1)}, ${timeOfDay(session.startedAt)}`;
+  return translate(locale, 'common.sessionLabel', {
+    mode: modeLabel(session.sport, locale),
+    day: dayMonth(session.startedAt, locale),
+    time: timeOfDay(session.startedAt, locale),
+  });
 }

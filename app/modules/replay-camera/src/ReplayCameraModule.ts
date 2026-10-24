@@ -12,6 +12,7 @@ import type {
   RemotePeer,
   SavedClip,
   SessionOptions,
+  VoiceLocale,
   WatchStatus,
   ZoomRange,
 } from './ReplayCamera.types';
@@ -29,9 +30,9 @@ declare class ReplayCameraModule extends NativeModule<ReplayCameraModuleEvents> 
   requestPermissions(): Promise<boolean>;
   signalSaved(sound: boolean, flash: boolean): void;
   signalSaveFailed(sound: boolean): void;
-  setVoiceEnabled(enabled: boolean): void;
+  setVoiceEnabled(enabled: boolean, locale: VoiceLocale): void;
   requestSpeechPermission(): Promise<boolean>;
-  isVoiceSupported(): boolean;
+  isVoiceSupported(locale: VoiceLocale): boolean;
   getSpeechPermission(): 'granted' | 'denied' | 'undetermined';
   createThumbnail(clipPath: string, atMs: number): Promise<string>;
   findContentStart?(clipPath: string): Promise<number>;
@@ -42,6 +43,8 @@ declare class ReplayCameraModule extends NativeModule<ReplayCameraModuleEvents> 
   getWatchStatus(): WatchStatus;
   watchSync(recording: boolean, clipCount: number, startedAt: number | null): void;
   watchSignal(saved: boolean): void;
+  /** Missing on native builds from before the watch trigger was paid. */
+  watchSetSaveAllowed?(allowed: boolean): void;
   // Second iPhone as a remote (iOS only: these are missing on Android).
   remoteHostStart?(): void;
   remoteHostStop?(): void;

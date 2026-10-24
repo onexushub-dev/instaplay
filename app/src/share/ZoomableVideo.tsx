@@ -6,6 +6,7 @@ import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from '
 
 import type { FocusFollow } from '../focus/useFocusFraming';
 
+import { useT } from '../i18n/useT';
 import { NO_ZOOM, type Rotation, type Zoom } from './editing';
 import { useZoomGesture } from './useZoomGesture';
 
@@ -42,6 +43,7 @@ type Props = {
 
 /** The video with pinch zoom (around the fingers), drag to move it, and tap. Remount it to start again from `zoom`. */
 export function ZoomableVideo({ player, area, box, zoom, rotation, onCommit, onTap, onSwipe, follow, enterMs = 0, pinch, onHold, onDrag, onDragCancel, poster, onFirstFrame }: Props) {
+  const { t } = useT();
   const [live, setLive] = useState<Zoom>(zoom ?? NO_ZOOM);
   // A gesture on a followed picture takes over from where the framing is, and the picture stops following.
   // Which framing a gesture took over from: a new framing (Modo Foco turned on again) is followed afresh.
@@ -114,7 +116,7 @@ export function ZoomableVideo({ player, area, box, zoom, rotation, onCommit, onT
   });
 
   return (
-    <View {...panHandlers} accessibilityLabel="Vídeo" style={[styles.area, area]}>
+    <View {...panHandlers} accessibilityLabel={t('clip.video')} style={[styles.area, area]}>
       <View pointerEvents="none" style={[styles.box, box]}>
         <Animated.View style={[StyleSheet.absoluteFill, picture]}>
           <VideoView

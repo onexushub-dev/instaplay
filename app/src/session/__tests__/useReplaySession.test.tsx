@@ -1,11 +1,14 @@
 import { act, renderHook } from '@testing-library/react-native';
 
 import { createRepo, type KV } from '../../data/repo';
+import type { StartDecision } from '../../payments/types';
 import { SETTLE_MS, type SessionDeps, useReplaySession } from '../useReplaySession';
 
 type Listener = (e: any) => void;
 
 function fakeDeps() {
+  const startDecision = jest.fn(async (): Promise<StartDecision> => ({ kind: 'free' }));
+  const useRemote = jest.fn((_enabled: boolean, _onPress: () => void) => {});
   const listeners = new Map<string, Listener>();
   const map = new Map<string, string>();
   const kv: KV = { getString: (k) => map.get(k), set: (k, v) => void map.set(k, v), delete: (k) => void map.delete(k) };
@@ -42,13 +45,19 @@ function fakeDeps() {
     deleteFile: (p) => void deleted.push(p),
     haptic: jest.fn(),
     now: () => t,
-    useRemote: () => {},
+    locale: () => 'pt-BR',
+    startDecision,
+    useRemote,
     onClipSaved: jest.fn(),
   };
   return {
     deps,
+    startDecision,
+    useRemote,
     camera,
     deleted,
+    // Every game written, with clips or not (listSessions only lists games with clips).
+    sessionIds: (): string[] => JSON.parse(map.get('repplay:v1:sessions') ?? '[]'),
     emit: (event: string, e: any = {}) => listeners.get(event)?.(e),
     advance: (ms: number) => void (t += ms),
     finishSave: (v = { clipPath: '/c.mp4', durationMs: 60000 }) => pendingSave?.(v),
@@ -145,7 +154,7 @@ test('prepare turns the camera on so starting the game is immediate', async () =
   const f = fakeDeps();
   const view = await renderHook(() => useReplaySession(f.deps));
 
-  await act(() => view.result.current.prepare('beachTennis'));
+  await act(() => view.result.current.prepare('beachTennis', 'free'));
   expect(f.camera.startSession).toHaveBeenCalledTimes(1);
   expect(view.result.current.state.camera).toBe('on');
 
@@ -157,32 +166,33 @@ test('prepare turns the camera on so starting the game is immediate', async () =
 test('a saved sport opens the same camera as the free mode: wide framing, 1080p60, the fixed 60s buffer', async () => {
   const f = fakeDeps();
   const view = await renderHook(() => useReplaySession(f.deps));
-  await act(() => view.result.current.prepare('musculacao'));
-  expect(f.camera.startSession).toHaveBeenLastCalledWith({ lens: 'ultraWide', zoom: 0.5, maxQuality: '1080p60', bufferSeconds: 60 });
+  await act(() => view.result.current.prepare('musculacao', 'paid'));
+  expect(f.camera.startSession).toHaveBeenLastCalledWith({ lens: 'ultraWide', zoom: 0.5, maxQuality: '1080p60', bufferSeconds: 60, audio: true });
 });
 
 test('every sport id runs with the same settings, so switching between them does not reopen the camera', async () => {
   const f = fakeDeps();
   const view = await renderHook(() => useReplaySession(f.deps));
-  await act(() => view.result.current.prepare('beachTennis'));
-  await act(() => view.result.current.prepare('musculacao'));
+  await act(() => view.result.current.prepare('beachTennis', 'paid'));
+  await act(() => view.result.current.prepare('musculacao', 'paid'));
+  f.startDecision.mockResolvedValue({ kind: 'pro' });
 
   expect(f.camera.stopSession).not.toHaveBeenCalled();
   expect(f.camera.startSession).toHaveBeenCalledTimes(1);
 
   await act(() => view.result.current.start('musculacao'));
   expect(f.camera.setGestureEnabled).toHaveBeenLastCalledWith(true);
-  expect(f.camera.setVoiceEnabled).toHaveBeenLastCalledWith(false);
+  expect(f.camera.setVoiceEnabled).toHaveBeenLastCalledWith(false, 'pt-BR');
 });
 
 test('with two fixed lenses (Android), a zoom that crosses 1x reopens the camera with the other lens', async () => {
   const f = fakeDeps();
   const view = await renderHook(() => useReplaySession(f.deps));
-  await act(() => view.result.current.prepare('quadra'));
-  expect(f.camera.startSession).toHaveBeenLastCalledWith({ lens: 'ultraWide', zoom: 0.5, maxQuality: '1080p60', bufferSeconds: 60 });
+  await act(() => view.result.current.prepare('quadra', 'paid'));
+  expect(f.camera.startSession).toHaveBeenLastCalledWith({ lens: 'ultraWide', zoom: 0.5, maxQuality: '1080p60', bufferSeconds: 60, audio: true });
   f.deps.repo.setPrefs({ modeSettings: { quadra: { zoom: 1 } } });
-  await act(() => view.result.current.prepare('quadra'));
-  expect(f.camera.startSession).toHaveBeenLastCalledWith({ lens: 'wide', zoom: 1, maxQuality: '1080p60', bufferSeconds: 60 });
+  await act(() => view.result.current.prepare('quadra', 'paid'));
+  expect(f.camera.startSession).toHaveBeenLastCalledWith({ lens: 'wide', zoom: 1, maxQuality: '1080p60', bufferSeconds: 60, audio: true });
   expect(f.camera.startSession).toHaveBeenCalledTimes(2);
 });
 
@@ -190,8 +200,8 @@ test('a lens saved before zoom existed still opens the same lens', async () => {
   const f = fakeDeps();
   f.deps.repo.setPrefs({ modeSettings: { quadra: { lens: 'wide' } } });
   const view = await renderHook(() => useReplaySession(f.deps));
-  await act(() => view.result.current.prepare('quadra'));
-  expect(f.camera.startSession).toHaveBeenLastCalledWith({ lens: 'wide', zoom: 1, maxQuality: '1080p60', bufferSeconds: 60 });
+  await act(() => view.result.current.prepare('quadra', 'paid'));
+  expect(f.camera.startSession).toHaveBeenLastCalledWith({ lens: 'wide', zoom: 1, maxQuality: '1080p60', bufferSeconds: 60, audio: true });
 });
 
 describe('continuous zoom (iOS)', () => {
@@ -202,8 +212,8 @@ describe('continuous zoom (iOS)', () => {
     f.camera.getZoomRange.mockReturnValue(continuous);
     f.deps.repo.setPrefs({ modeSettings: { quadra: { zoom: 2 } } });
     const view = await renderHook(() => useReplaySession(f.deps));
-    await act(() => view.result.current.prepare('quadra'));
-    expect(f.camera.startSession).toHaveBeenLastCalledWith({ lens: 'wide', zoom: 2, maxQuality: '1080p60', bufferSeconds: 60 });
+    await act(() => view.result.current.prepare('quadra', 'paid'));
+    expect(f.camera.startSession).toHaveBeenLastCalledWith({ lens: 'wide', zoom: 2, maxQuality: '1080p60', bufferSeconds: 60, audio: true });
   });
 
   test('a zoom saved above the range is clamped when the camera opens', async () => {
@@ -211,17 +221,17 @@ describe('continuous zoom (iOS)', () => {
     f.camera.getZoomRange.mockReturnValue({ min: 1, max: 5, continuous: true });
     f.deps.repo.setPrefs({ modeSettings: { quadra: { zoom: 0.5 } } });
     const view = await renderHook(() => useReplaySession(f.deps));
-    await act(() => view.result.current.prepare('quadra'));
-    expect(f.camera.startSession).toHaveBeenLastCalledWith({ lens: 'wide', zoom: 1, maxQuality: '1080p60', bufferSeconds: 60 });
+    await act(() => view.result.current.prepare('quadra', 'paid'));
+    expect(f.camera.startSession).toHaveBeenLastCalledWith({ lens: 'wide', zoom: 1, maxQuality: '1080p60', bufferSeconds: 60, audio: true });
   });
 
   test('changing the zoom never reopens the camera', async () => {
     const f = fakeDeps();
     f.camera.getZoomRange.mockReturnValue(continuous);
     const view = await renderHook(() => useReplaySession(f.deps));
-    await act(() => view.result.current.prepare('quadra'));
+    await act(() => view.result.current.prepare('quadra', 'paid'));
     f.deps.repo.setPrefs({ modeSettings: { quadra: { zoom: 2 } } });
-    await act(() => view.result.current.prepare('quadra'));
+    await act(() => view.result.current.prepare('quadra', 'paid'));
     expect(f.camera.startSession).toHaveBeenCalledTimes(1);
     expect(f.camera.stopSession).not.toHaveBeenCalled();
   });
@@ -230,10 +240,10 @@ describe('continuous zoom (iOS)', () => {
     const f = fakeDeps();
     f.camera.getZoomRange.mockReturnValue(continuous);
     const view = await renderHook(() => useReplaySession(f.deps));
-    await act(() => view.result.current.prepare('quadra'));
+    await act(() => view.result.current.prepare('quadra', 'paid'));
     f.deps.repo.setPrefs({ modeSettings: { quadra: { zoom: 2 } } });
-    await act(() => view.result.current.prepare('quadra'));
-    await act(() => view.result.current.prepare('quadra'));
+    await act(() => view.result.current.prepare('quadra', 'paid'));
+    await act(() => view.result.current.prepare('quadra', 'paid'));
     expect(f.camera.setZoom).toHaveBeenCalledTimes(1);
     expect(f.camera.setZoom).toHaveBeenCalledWith(2, false);
   });
@@ -242,11 +252,11 @@ describe('continuous zoom (iOS)', () => {
     const f = fakeDeps();
     f.camera.getZoomRange.mockReturnValue(continuous);
     const view = await renderHook(() => useReplaySession(f.deps));
-    await act(() => view.result.current.prepare('quadra'));
+    await act(() => view.result.current.prepare('quadra', 'paid'));
     await act(async () => view.result.current.setZoom(2, true));
     expect(f.camera.setZoom).toHaveBeenCalledWith(2, true);
     f.deps.repo.setPrefs({ modeSettings: { quadra: { zoom: 2 } } });
-    await act(() => view.result.current.prepare('quadra'));
+    await act(() => view.result.current.prepare('quadra', 'paid'));
     expect(f.camera.setZoom).toHaveBeenCalledTimes(1);
   });
 });
@@ -256,7 +266,7 @@ test('a camera that fails to open reports its code before any game starts', asyn
   f.camera.startSession.mockRejectedValueOnce(Object.assign(new Error('x'), { code: 'CAMERA_PERMISSION' }));
   const view = await renderHook(() => useReplaySession(f.deps));
 
-  await act(() => view.result.current.prepare('beachTennis'));
+  await act(() => view.result.current.prepare('beachTennis', 'free'));
 
   expect(view.result.current.state).toMatchObject({ camera: 'off', error: 'CAMERA_PERMISSION', phase: 'idle' });
 });
@@ -305,7 +315,7 @@ test('starting a game applies the voice preference', async () => {
 
   await act(() => view.result.current.start('beachTennis'));
 
-  expect(f.camera.setVoiceEnabled).toHaveBeenLastCalledWith(true);
+  expect(f.camera.setVoiceEnabled).toHaveBeenLastCalledWith(true, 'pt-BR');
 });
 
 test('after a native error the camera is reopened for the next game', async () => {
@@ -313,7 +323,7 @@ test('after a native error the camera is reopened for the next game', async () =
   await act(async () => emit('onError', { code: 'ENCODER_FAILED', message: 'thermal' }));
   await act(async () => view.result.current.reset());
 
-  await act(() => view.result.current.prepare('beachTennis'));
+  await act(() => view.result.current.prepare('beachTennis', 'free'));
 
   expect(camera.startSession).toHaveBeenCalledTimes(2);
 });
@@ -322,7 +332,7 @@ test('the gesture only runs during the game, not while positioning', async () =>
   const f = fakeDeps();
   const view = await renderHook(() => useReplaySession(f.deps));
 
-  await act(() => view.result.current.prepare('beachTennis'));
+  await act(() => view.result.current.prepare('beachTennis', 'free'));
   expect(f.camera.setGestureEnabled).toHaveBeenLastCalledWith(false);
 
   await act(() => view.result.current.start('beachTennis'));
@@ -332,7 +342,7 @@ test('the gesture only runs during the game, not while positioning', async () =>
 test('release turns the camera off while idle, but never during a game', async () => {
   const f = fakeDeps();
   const view = await renderHook(() => useReplaySession(f.deps));
-  await act(() => view.result.current.prepare('beachTennis'));
+  await act(() => view.result.current.prepare('beachTennis', 'free'));
   await act(() => view.result.current.release());
   expect(f.camera.stopSession).toHaveBeenCalledTimes(1);
   expect(view.result.current.state.camera).toBe('off');
@@ -354,6 +364,7 @@ const trims = (f: ReturnType<typeof fakeDeps>, view: Awaited<ReturnType<typeof s
 
 test('each clip is cut to the chosen length, but never back past the previous clip (30s, saves at 0:30, 0:45, 1:00, 2:47)', async () => {
   const f = fakeDeps();
+  f.startDecision.mockResolvedValue({ kind: 'pro' });
   const view = await renderHook(() => useReplaySession(f.deps));
   await act(() => view.result.current.start('quadra'));
 
@@ -408,6 +419,7 @@ test('a save right after another still cuts at least the debounce window, never 
 
 test('undoing a clip gives its span back to the next save', async () => {
   const f = fakeDeps();
+  f.startDecision.mockResolvedValue({ kind: 'pro' });
   const view = await renderHook(() => useReplaySession(f.deps));
   await act(() => view.result.current.start('quadra'));
 
@@ -441,7 +453,7 @@ test('voice stays off natively when the phone may not listen', async () => {
   f.camera.getSpeechPermission.mockReturnValue('denied');
   const view = await renderHook(() => useReplaySession(f.deps));
   await act(() => view.result.current.start('musculacao'));
-  expect(f.camera.setVoiceEnabled).toHaveBeenLastCalledWith(false);
+  expect(f.camera.setVoiceEnabled).toHaveBeenLastCalledWith(false, 'pt-BR');
 });
 
 test('starting a recording tells the watch', async () => {
@@ -571,6 +583,415 @@ test('the remote phone is told how a save ended', async () => {
   bad.camera.saveClip.mockRejectedValueOnce(new Error('x'));
   await act(async () => bad.view.result.current.trigger('screen'));
   expect(bad.camera.remoteSignal).toHaveBeenCalledWith(false);
+});
+
+test('the voice command listens in the app language', async () => {
+  const f = fakeDeps();
+  f.deps.locale = () => 'en';
+  f.deps.repo.setPrefs({ modeSettings: { quadra: { voiceEnabled: true } } });
+  const view = await renderHook(() => useReplaySession(f.deps));
+  await act(() => view.result.current.start('quadra'));
+  expect(f.camera.setVoiceEnabled).toHaveBeenLastCalledWith(true, 'en-US');
+});
+
+async function saveClips(f: ReturnType<typeof fakeDeps>, view: any, n: number) {
+  for (let i = 0; i < n; i++) {
+    f.advance(5000);
+    await act(async () => view.result.current.trigger('screen'));
+    await act(async () => f.finishSave());
+  }
+}
+
+describe('no locked clips while recording', () => {
+  test('a free session: the eleventh and twelfth clips are saved without locked', async () => {
+    const f = fakeDeps();
+    const view = await renderHook(() => useReplaySession(f.deps));
+    await act(() => view.result.current.start('futevolei'));
+    const id = view.result.current.state.sessionId!;
+    await saveClips(f, view, 12);
+    expect(f.deps.repo.listClips(id)).toHaveLength(12);
+    expect(f.deps.repo.listClips(id).every((c) => !('locked' in c))).toBe(true);
+    expect(view.result.current.state.phase).toBe('recording');
+  });
+
+  test('state.lastSaved has neither locked nor lastFree', async () => {
+    const f = fakeDeps();
+    const view = await renderHook(() => useReplaySession(f.deps));
+    await act(() => view.result.current.start('futevolei'));
+    await saveClips(f, view, 10);
+    expect(view.result.current.state.lastSaved).toBeDefined();
+    expect(view.result.current.state.lastSaved).not.toHaveProperty('locked');
+    expect(view.result.current.state.lastSaved).not.toHaveProperty('lastFree');
+  });
+});
+
+describe('start decision', () => {
+  type F = ReturnType<typeof fakeDeps>;
+  const setup = async () => {
+    const f = fakeDeps();
+    const view = await renderHook(() => useReplaySession(f.deps));
+    return { ...f, view };
+  };
+  const startResult = async (f: { view: any }, sport: 'quadra' | 'futevolei' = 'quadra') => {
+    let r: unknown;
+    await act(async () => void (r = await f.view.result.current.start(sport)));
+    return r;
+  };
+  const freeCount = (f: F) => f.deps.repo.freeCount(f.deps.now());
+  const lowStorage = () => Object.assign(new Error('x'), { code: 'LOW_STORAGE' });
+
+  test('blocked touches nothing: no starting phase, no camera, no session, no count', async () => {
+    const d = fakeDeps();
+    const phases = new Set<string>();
+    const view = await renderHook(() => {
+      const r = useReplaySession(d.deps);
+      phases.add(r.state.phase);
+      return r;
+    });
+    const f = { ...d, view };
+    f.startDecision.mockResolvedValue({ kind: 'blocked' });
+    expect(await startResult(f)).toBe('blocked');
+    expect([...phases]).toEqual(['idle']);
+    expect(f.view.result.current.state.error).toBeUndefined();
+    expect(f.camera.startSession).not.toHaveBeenCalled();
+    expect(f.sessionIds()).toEqual([]);
+    expect(freeCount(f)).toBe(0);
+  });
+
+  test('blocked after a game leaves the ended game on screen as it was', async () => {
+    const f = await setup();
+    await startResult(f);
+    await act(async () => void (await f.view.result.current.stop()));
+    const before = f.view.result.current.state;
+    f.startDecision.mockResolvedValue({ kind: 'blocked' });
+    expect(await startResult(f)).toBe('blocked');
+    expect(f.view.result.current.state).toBe(before);
+    expect(freeCount(f)).toBe(1);
+  });
+
+  test('blocked at the second decision goes back to idle, keeps the camera and records nothing', async () => {
+    const f = await setup();
+    const startSession = jest.spyOn(f.deps.repo, 'startSession');
+    f.startDecision.mockResolvedValueOnce({ kind: 'pro' }).mockResolvedValueOnce({ kind: 'blocked' });
+    expect(await startResult(f)).toBe('blocked');
+    expect(f.view.result.current.state).toMatchObject({ phase: 'idle', camera: 'on' });
+    expect(f.view.result.current.state.error).toBeUndefined();
+    expect(f.camera.stopSession).not.toHaveBeenCalled();
+    expect(startSession).not.toHaveBeenCalled();
+    expect(f.sessionIds()).toEqual([]);
+    expect(freeCount(f)).toBe(0);
+    expect(f.camera.setGestureEnabled).not.toHaveBeenCalledWith(true);
+  });
+
+  test('free: HD without sound, 15 s clips, an unpaid session and one free recording counted', async () => {
+    const f = await setup();
+    expect(await startResult(f)).toBe('started');
+    expect(f.camera.startSession).toHaveBeenLastCalledWith(
+      expect.objectContaining({ maxQuality: '720p60', bufferSeconds: 15, audio: false }),
+    );
+    const id = f.view.result.current.state.sessionId!;
+    await saveClips(f, f.view, 12);
+    const clips = f.deps.repo.listClips(id);
+    expect(clips).toHaveLength(12);
+    expect(clips.every((c) => (c.trim ? c.trim.endMs - c.trim.startMs : c.durationMs) <= 15_000)).toBe(true);
+    expect(f.deps.repo.getSession(id)).toMatchObject({ paid: false });
+    expect(freeCount(f)).toBe(1);
+    expect(f.view.result.current.state).toMatchObject({ paid: false, bufferSeconds: 15 });
+  });
+
+  test('Pro: Full HD with sound, a paid session, no credit and no count', async () => {
+    const f = await setup();
+    f.startDecision.mockResolvedValue({ kind: 'pro' });
+    expect(await startResult(f)).toBe('started');
+    expect(f.camera.startSession).toHaveBeenLastCalledWith(
+      expect.objectContaining({ maxQuality: '1080p60', bufferSeconds: 60, audio: true }),
+    );
+    expect(f.deps.repo.getSession(f.view.result.current.state.sessionId!)).toMatchObject({ paid: true });
+    expect(f.deps.repo.spentPasses().size).toBe(0);
+    expect(freeCount(f)).toBe(0);
+    expect(f.view.result.current.state).toMatchObject({ paid: true, bufferSeconds: 60 });
+  });
+
+  test('a credit is spent once and does not count', async () => {
+    const f = await setup();
+    f.startDecision.mockResolvedValue({ kind: 'credit', passTransactionId: 'tx-1' });
+    expect(await startResult(f)).toBe('started');
+    expect(f.deps.repo.getSession(f.view.result.current.state.sessionId!)).toMatchObject({
+      paid: true,
+      passTransactionId: 'tx-1',
+    });
+    expect([...f.deps.repo.spentPasses()]).toEqual(['tx-1']);
+    expect(freeCount(f)).toBe(0);
+  });
+
+  test.each([
+    ['free', { kind: 'free' } as const],
+    ['a credit', { kind: 'credit', passTransactionId: 'tx-1' } as const],
+  ])('a camera failure on %s records nothing, counts nothing and spends nothing', async (_n, decision) => {
+    const f = await setup();
+    f.startDecision.mockResolvedValue(decision);
+    f.camera.startSession.mockRejectedValueOnce(lowStorage());
+    expect(await startResult(f)).toBe('failed');
+    expect(f.view.result.current.state).toMatchObject({ phase: 'idle', error: 'LOW_STORAGE' });
+    expect(f.sessionIds()).toEqual([]);
+    expect(freeCount(f)).toBe(0);
+    expect(f.deps.repo.spentPasses().size).toBe(0);
+  });
+
+  test('a plan that changed since the preview reopens the camera before the session exists', async () => {
+    const f = await setup();
+    await act(() => f.view.result.current.prepare('quadra', 'free'));
+    expect(f.camera.startSession).toHaveBeenLastCalledWith(expect.objectContaining({ maxQuality: '720p60', audio: false }));
+    f.startDecision.mockResolvedValue({ kind: 'pro' });
+    const order: string[] = [];
+    f.camera.stopSession.mockImplementation(async () => void order.push('stop'));
+    f.camera.startSession.mockImplementation(async () => void order.push('open'));
+    const write = f.deps.repo.startSession;
+    f.deps.repo.startSession = (...a) => (order.push('session'), write(...a));
+    expect(await startResult(f)).toBe('started');
+    expect(f.camera.startSession).toHaveBeenLastCalledWith(
+      expect.objectContaining({ maxQuality: '1080p60', bufferSeconds: 60, audio: true }),
+    );
+    expect(order).toEqual(['stop', 'open', 'session']);
+  });
+
+  test('Pro lapsing between the two decisions reopens in HD without sound and counts a free recording', async () => {
+    const f = await setup();
+    f.startDecision.mockResolvedValueOnce({ kind: 'pro' }).mockResolvedValueOnce({ kind: 'free' });
+    expect(await startResult(f)).toBe('started');
+    expect(f.camera.startSession).toHaveBeenCalledTimes(2);
+    expect(f.camera.startSession).toHaveBeenNthCalledWith(1, expect.objectContaining({ maxQuality: '1080p60', audio: true }));
+    expect(f.camera.startSession).toHaveBeenLastCalledWith(
+      expect.objectContaining({ maxQuality: '720p60', bufferSeconds: 15, audio: false }),
+    );
+    expect(f.deps.repo.getSession(f.view.result.current.state.sessionId!)).toMatchObject({ paid: false });
+    expect(freeCount(f)).toBe(1);
+  });
+
+  test.each([
+    ['free', { kind: 'free' } as const],
+    ['a credit', { kind: 'credit', passTransactionId: 'tx-1' } as const],
+  ])('a double tap on %s starts one session and counts or spends once', async (_n, decision) => {
+    const f = await setup();
+    f.startDecision.mockResolvedValue(decision);
+    let rs: unknown[] = [];
+    await act(async () => {
+      rs = await Promise.all([f.view.result.current.start('quadra'), f.view.result.current.start('quadra')]);
+    });
+    expect([...rs].sort()).toEqual(['busy', 'started']);
+    expect(f.sessionIds()).toHaveLength(1);
+    if (decision.kind === 'free') expect(freeCount(f)).toBe(1);
+    else expect([...f.deps.repo.spentPasses()]).toEqual(['tx-1']);
+  });
+
+  test('prepare never touches the camera while recording, starting or stopping', async () => {
+    const f = await setup();
+    f.startDecision.mockResolvedValue({ kind: 'pro' });
+    await startResult(f);
+    f.camera.startSession.mockClear();
+    let ok: unknown;
+    await act(async () => void (ok = await f.view.result.current.prepare('quadra', 'free')));
+    expect(ok).toBe(true);
+    expect(f.camera.startSession).not.toHaveBeenCalled();
+    expect(f.camera.stopSession).not.toHaveBeenCalled();
+    f.camera.stopSession.mockImplementationOnce(() => new Promise<void>(() => {}));
+    await act(async () => void f.view.result.current.stop());
+    await act(async () => void (ok = await f.view.result.current.prepare('quadra', 'free')));
+    expect(ok).toBe(true);
+    expect(f.camera.startSession).not.toHaveBeenCalled();
+  });
+
+  test('prepare while start is opening the camera does not reopen it', async () => {
+    const f = await setup();
+    let open!: () => void;
+    f.camera.startSession.mockImplementationOnce(() => new Promise<void>((r) => (open = r)));
+    let pending!: Promise<unknown>;
+    await act(async () => void (pending = f.view.result.current.start('quadra')));
+    expect(f.view.result.current.state.phase).toBe('starting');
+    let ok: unknown;
+    await act(async () => void (ok = await f.view.result.current.prepare('quadra', 'paid')));
+    expect(ok).toBe(true);
+    await act(async () => {
+      open();
+      await pending;
+    });
+    expect(f.camera.startSession).toHaveBeenCalledTimes(1);
+    expect(f.view.result.current.state.phase).toBe('recording');
+  });
+
+  test('the Bluetooth remote is only on in a paid game', async () => {
+    const free = await setup();
+    await startResult(free);
+    expect(free.useRemote).toHaveBeenLastCalledWith(false, expect.any(Function));
+    const paid = await setup();
+    paid.startDecision.mockResolvedValue({ kind: 'pro' });
+    await startResult(paid);
+    expect(paid.useRemote).toHaveBeenLastCalledWith(true, expect.any(Function));
+  });
+
+  test('a paid trigger that fires in a free game still saves the play', async () => {
+    const f = await setup();
+    await startResult(f);
+    await act(async () => f.emit('onTrigger', { source: 'watch', at: 1 }));
+    await act(async () => f.finishSave());
+    expect(f.deps.repo.listClips(f.view.result.current.state.sessionId!)).toHaveLength(1);
+  });
+
+  test('a first decision that cannot be read starts free', async () => {
+    const f = await setup();
+    f.startDecision.mockRejectedValueOnce(new Error('x'));
+    expect(await startResult(f)).toBe('started');
+    expect(f.deps.repo.getSession(f.view.result.current.state.sessionId!)).toMatchObject({ paid: false });
+    expect(freeCount(f)).toBe(1);
+  });
+
+  test('a second decision that cannot be read starts free', async () => {
+    const f = await setup();
+    f.startDecision.mockResolvedValueOnce({ kind: 'pro' }).mockRejectedValueOnce(new Error('x'));
+    expect(await startResult(f)).toBe('started');
+    expect(f.deps.repo.getSession(f.view.result.current.state.sessionId!)).toMatchObject({ paid: false });
+    expect(f.camera.startSession).toHaveBeenLastCalledWith(expect.objectContaining({ maxQuality: '720p60', audio: false }));
+  });
+
+  test.each([
+    ['setVoiceEnabled', (f: F) => f.camera.setVoiceEnabled.mockImplementationOnce(() => { throw new Error('x'); })],
+    ['setGestureEnabled', (f: F) => f.camera.setGestureEnabled.mockImplementation((on: boolean) => { if (on) throw new Error('x'); })],
+    ['getSpeechPermission', (f: F) => {
+      f.deps.repo.setPrefs({ voiceEnabled: true });
+      f.camera.getSpeechPermission.mockImplementationOnce(() => { throw new Error('x'); });
+    }],
+    ['repo.startSession', (f: F) => jest.spyOn(f.deps.repo, 'startSession').mockImplementationOnce(() => { throw new Error('x'); })],
+  ])('a throw from %s fails the start, counts nothing, spends nothing, and a later start works', async (name, arm) => {
+    for (const decision of [{ kind: 'free' } as const, { kind: 'credit', passTransactionId: 'tx-1' } as const]) {
+      const f = await setup();
+      f.startDecision.mockResolvedValue(decision);
+      arm(f);
+      expect(await startResult(f)).toBe('failed');
+      expect(f.view.result.current.state).toMatchObject({ phase: 'idle', error: expect.any(String) });
+      expect(f.sessionIds()).toEqual([]);
+      expect(freeCount(f)).toBe(0);
+      expect(f.deps.repo.spentPasses().size).toBe(0);
+      if (name === 'repo.startSession') {
+        expect(f.camera.setGestureEnabled).toHaveBeenLastCalledWith(false);
+        expect(f.camera.setVoiceEnabled).toHaveBeenLastCalledWith(false, 'pt-BR');
+      }
+      if (name === 'setGestureEnabled') f.camera.setGestureEnabled.mockImplementation(() => {});
+      expect(await startResult(f)).toBe('started');
+    }
+  });
+
+  test('a throw from reading the prefs while the camera is chosen fails the start before anything is written', async () => {
+    const f = await setup();
+    await act(() => f.view.result.current.prepare('quadra', 'free'));
+    jest.spyOn(f.deps.repo, 'getPrefs').mockImplementationOnce(() => { throw new Error('x'); });
+    expect(await startResult(f)).toBe('failed');
+    expect(f.sessionIds()).toEqual([]);
+    expect(freeCount(f)).toBe(0);
+    expect(await startResult(f)).toBe('started');
+  });
+
+  test('prefs changed while the camera opens do not reach the game: it runs with what the camera was opened with', async () => {
+    const f = await setup();
+    f.startDecision.mockResolvedValueOnce({ kind: 'free' }).mockImplementationOnce(async () => {
+      f.deps.repo.setPrefs({ modeSettings: { quadra: { cutSeconds: 5, gestureEnabled: false, voiceEnabled: true } } });
+      return { kind: 'free' };
+    });
+    expect(await startResult(f)).toBe('started');
+    expect(f.camera.startSession).toHaveBeenCalledTimes(1);
+    expect(f.camera.startSession).toHaveBeenLastCalledWith(expect.objectContaining({ bufferSeconds: 15 }));
+    expect(f.view.result.current.state.bufferSeconds).toBe(15);
+    expect(f.camera.setGestureEnabled).toHaveBeenLastCalledWith(true);
+    expect(f.camera.setVoiceEnabled).toHaveBeenLastCalledWith(false, 'pt-BR');
+    f.advance(20_000); // a cut never reaches back before the recording started
+    await saveClips(f, f.view, 1);
+    const [clip] = f.deps.repo.listClips(f.view.result.current.state.sessionId!);
+    expect(clip.trim).toEqual({ startMs: 45000, endMs: 60000 });
+  });
+
+  test('a credit gone between the two decisions: reopens in HD without sound, spends nothing, counts a free recording', async () => {
+    const f = await setup();
+    f.startDecision.mockResolvedValueOnce({ kind: 'credit', passTransactionId: 'tx-1' }).mockResolvedValueOnce({ kind: 'free' });
+    expect(await startResult(f)).toBe('started');
+    expect(f.camera.startSession).toHaveBeenNthCalledWith(1, expect.objectContaining({ maxQuality: '1080p60', audio: true }));
+    expect(f.camera.startSession).toHaveBeenLastCalledWith(
+      expect.objectContaining({ maxQuality: '720p60', bufferSeconds: 15, audio: false }),
+    );
+    const session = f.deps.repo.getSession(f.view.result.current.state.sessionId!)!;
+    expect(session.paid).toBe(false);
+    expect(session.passTransactionId).toBeUndefined();
+    expect(f.deps.repo.spentPasses().size).toBe(0);
+    expect(freeCount(f)).toBe(1);
+  });
+
+  test('a credit arriving between the two decisions: reopens in Full HD with sound, spends it once, counts nothing', async () => {
+    const f = await setup();
+    f.startDecision.mockResolvedValueOnce({ kind: 'free' }).mockResolvedValueOnce({ kind: 'credit', passTransactionId: 'tx-1' });
+    expect(await startResult(f)).toBe('started');
+    expect(f.camera.startSession).toHaveBeenNthCalledWith(1, expect.objectContaining({ maxQuality: '720p60', audio: false }));
+    expect(f.camera.startSession).toHaveBeenLastCalledWith(
+      expect.objectContaining({ maxQuality: '1080p60', bufferSeconds: 60, audio: true }),
+    );
+    expect(f.deps.repo.getSession(f.view.result.current.state.sessionId!)).toMatchObject({ paid: true, passTransactionId: 'tx-1' });
+    expect([...f.deps.repo.spentPasses()]).toEqual(['tx-1']);
+    expect(freeCount(f)).toBe(0);
+  });
+
+  test.each([
+    ['gesture', 'voice'],
+    ['voice', 'gesture'],
+  ])('a failed start switches %s off even when switching %s off throws', async (stays, throws) => {
+    const f = await setup();
+    f.deps.repo.setPrefs({ voiceEnabled: true });
+    jest.spyOn(f.deps.repo, 'startSession').mockImplementationOnce(() => {
+      const thrower = throws === 'gesture' ? f.camera.setGestureEnabled : f.camera.setVoiceEnabled;
+      thrower.mockImplementation((on: boolean) => {
+        if (!on) throw new Error('y');
+      });
+      throw new Error('x');
+    });
+    expect(await startResult(f)).toBe('failed');
+    if (stays === 'gesture') expect(f.camera.setGestureEnabled).toHaveBeenLastCalledWith(false);
+    else expect(f.camera.setVoiceEnabled).toHaveBeenLastCalledWith(false, 'pt-BR');
+  });
+
+  test('a prepare right after the start was asked for, before React commits, does not touch the camera', async () => {
+    const f = await setup();
+    let open!: () => void;
+    f.camera.startSession.mockImplementationOnce(() => new Promise<void>((r) => (open = r)));
+    let r: unknown;
+    let ok: unknown;
+    await act(async () => {
+      const pending = f.view.result.current.start('quadra');
+      while (f.camera.startSession.mock.calls.length === 0) await Promise.resolve();
+      ok = await Promise.race([f.view.result.current.prepare('quadra', 'paid'), Promise.resolve('pending')]);
+      open();
+      r = await pending;
+    });
+    expect(ok).toBe(true);
+    expect(r).toBe('started');
+    expect(f.camera.startSession).toHaveBeenCalledTimes(1);
+  });
+
+  test('start is busy while recording and while stopping', async () => {
+    const f = await setup();
+    await startResult(f);
+    expect(await startResult(f)).toBe('busy');
+    f.camera.stopSession.mockImplementationOnce(() => new Promise<void>(() => {}));
+    await act(async () => void f.view.result.current.stop());
+    expect(await startResult(f)).toBe('busy');
+    expect(freeCount(f)).toBe(1);
+  });
+
+  test('Pro lapsing mid-game never interrupts it', async () => {
+    const f = await setup();
+    f.startDecision.mockResolvedValue({ kind: 'pro' });
+    await startResult(f);
+    f.startDecision.mockResolvedValue({ kind: 'free' });
+    await saveClips(f, f.view, 3);
+    expect(f.deps.repo.listClips(f.view.result.current.state.sessionId!)).toHaveLength(3);
+    expect(f.view.result.current.state).toMatchObject({ phase: 'recording', paid: true });
+    expect(f.camera.stopSession).not.toHaveBeenCalled();
+  });
 });
 
 test('right after the recording starts, a gesture, voice or volume press saves nothing; a tap does', async () => {

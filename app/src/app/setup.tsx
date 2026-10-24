@@ -1,7 +1,7 @@
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { router, useIsFocused } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, AppState, PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Alert, AppState, PanResponder, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
@@ -23,6 +23,8 @@ import { useDeviceLandscape } from '../camera/useDeviceLandscape';
 import { Button } from '../components/Button';
 import { Chip } from '../components/Chip';
 import { CompactDock } from '../components/CompactDock';
+import { modeTip } from '../components/format';
+import { sourceLabel } from '../components/sourceLabel';
 import { PositionGuide } from '../components/PositionGuide';
 import { RecordingPanel } from '../components/RecordingPanel';
 import { ArmsUpIcon, MicIcon, QrIcon, RemoteIcon, TapIcon, WatchIcon } from '../components/icons';
@@ -30,6 +32,12 @@ import { TriggerTile } from '../components/TriggerTile';
 import { ZoomBubble } from '../components/ZoomBubble';
 import { ZoomButton } from '../components/ZoomButton';
 import { repo } from '../data/mmkv';
+import { useStartPreview } from '../payments/useStartPreview';
+import { openPaywall } from '../payments/feedback';
+import { FREE_MAX_SECONDS, triggerAllowed } from '../payments/limits';
+import { usePlan } from '../share/entitlement';
+import { type MessageKey, type TFunction, VOICE_WORDS, voiceLocale } from '../i18n';
+import { useT } from '../i18n/useT';
 import { remoteDeviceView } from '../devices/remoteDevice';
 import { clearRemotePress } from '../devices/remoteTest';
 import { useRemoteSheetOpen, useRemoteTest } from '../devices/useRemoteTest';
@@ -43,28 +51,29 @@ import { useVolumeRemote } from '../triggers/useVolumeRemote';
 /** How long the zoom value stays over the preview after the last pinch move. */
 const BUBBLE_MS = 800;
 
-const START_ERRORS: Partial<Record<ReplayErrorCode, string>> = {
-  LOW_STORAGE: 'Pouco espaço no celular. Libere pelo menos 500 MB para gravar.',
-  CAMERA_PERMISSION: 'Sem câmera não dá para gravar os clipes. Libere em Ajustes.',
+const START_ERRORS: Partial<Record<ReplayErrorCode, MessageKey>> = {
+  LOW_STORAGE: 'setup.lowStorage',
+  CAMERA_PERMISSION: 'common.cameraDenied',
 };
 
 /** Under "Conectar um celular controle": how many remotes are linked right now. Nothing when none is. */
-function controllersStatus(linked: number): string | undefined {
+function controllersStatus(t: TFunction, linked: number): string | undefined {
   if (linked <= 0) return undefined;
-  return linked === 1 ? '1 controle conectado' : `${linked} controles conectados`;
+  return linked === 1 ? t('setup.controllerLinkedOne') : t('setup.controllerLinkedMany', { count: linked });
 }
 
 /**
  * Under "Usar este celular como controle": the camera phone this one is paired with. It says "Pareado", not
  * "Conectado": this screen cannot tell if the link is up, because the remote side only connects while its own screen is open.
  */
-function cameraStatus(host: { name: string } | null): string | undefined {
+function cameraStatus(t: TFunction, host: { name: string } | null): string | undefined {
   if (host === null) return undefined;
-  return host.name.length > 0 ? `Pareado com ${host.name}` : 'Pareado';
+  return host.name.length > 0 ? t('setup.pairedWith', { name: host.name }) : t('setup.paired');
 }
 
 export default function Setup() {
   const session = useSession();
+  const { t, locale } = useT();
   // This screen stays mounted under Minhas gravações, the editor and the save screen: only hold the camera,
   // the volume buttons and the screen awake while it is the visible one.
   const focused = useIsFocused();
@@ -114,7 +123,10 @@ export default function Setup() {
   };
   // The Bluetooth remote: the app cannot see the iOS pairing, only presses (this launch, or heard before).
   const remoteTest = useRemoteTest();
-  const remoteView = remoteDeviceView({ pressed: remoteTest.pressed, testedBefore: remoteTest.testedBefore, waitedLong: false });
+  const remoteView = remoteDeviceView(
+    { pressed: remoteTest.pressed, testedBefore: remoteTest.testedBefore, waitedLong: false },
+    locale,
+  );
   const remoteWorks = remoteView.state === 'connected';
   // The sheet opens collapsed so the camera and its guide stay visible; mode and triggers sit behind the summary.
   const [expanded, setExpanded] = useState(false);
@@ -128,7 +140,8 @@ export default function Setup() {
   );
   const [speechDenied, setSpeechDenied] = useState(false);
   // Offline recognition only: court audio is never streamed to a server.
-  const [voiceSupported] = useState(() => isVoiceSupported());
+  // Asked again if the language changes: the on-device model is per language.
+  const voiceSupported = useMemo(() => isVoiceSupported(voiceLocale(locale)), [locale]);
   const [speech, setSpeech] = useState(() => getSpeechPermission());
   const speechGranted = speech === 'granted';
   const mode = modeById(modeId);
@@ -139,7 +152,19 @@ export default function Setup() {
     return () => sub.remove();
   }, []);
   const watchStatus =
-    watch === 'ready' ? 'Pronto' : watch === 'notInstalled' ? 'Instale o app no relógio' : 'Sem relógio pareado';
+    watch === 'ready' ? t('setup.watchReady') : watch === 'notInstalled' ? t('setup.watchNotInstalled') : t('setup.watchNone');
+  // The watch trigger is paid: before a game the next start's plan decides; the lock opens the paywall.
+  const plan = usePlan();
+  // Apple Watch only: no Android smartwatch was tested, so the tile stays visible but disabled there.
+  const watchSupported = Platform.OS === 'ios';
+  const watchAllowed = triggerAllowed('watch', plan);
+  const watchOn = watchSupported && watchAllowed && watch === 'ready';
+  // The Bluetooth remote and the phone remote are paid too. Pairing and testing them stays open to everyone; the lock
+  // is on turning them on for a game.
+  const bluetoothAllowed = triggerAllowed('remote', plan);
+  const phoneAllowed = triggerAllowed('phone', plan);
+  // The free plan cuts clips at 15 s: a longer pick is paid, and what the screen shows is what the game will get.
+  const clipSeconds = plan === 'paid' ? settings.cutSeconds : Math.min(settings.cutSeconds, FREE_MAX_SECONDS);
   // The phone remote (a second iPhone that taps Salvar for this one). The camera phone waits for its paired remotes for
   // as long as the app is open (see the root layout); pairing happens on its own sheet (/pairing).
   const [remoteSupported] = useState(() => isRemoteSupported());
@@ -163,12 +188,12 @@ export default function Setup() {
   const disconnectControl = () => {
     const name = controlHost === null ? '' : controlHost.name;
     Alert.alert(
-      `Esquecer ${name}?`,
-      'Este celular deixa de ser o controle dessa câmera. Para usar de novo, é preciso parear outra vez.',
+      t('remote.forgetTitle', { name }),
+      t('remote.forgetBody'),
       [
-        { text: 'Cancelar', style: 'cancel' },
+        { text: t('common.cancel'), style: 'cancel' },
         {
-          text: 'Esquecer',
+          text: t('remote.forget'),
           style: 'destructive',
           onPress: () => {
             remoteControllerForget();
@@ -181,14 +206,14 @@ export default function Setup() {
   // Voice counts as on only when this mode wants it and the phone may listen.
   const voiceOn = voiceSupported && settings.voiceEnabled && speechGranted;
   const voiceStatus = !voiceSupported
-    ? 'Indisponível neste celular'
+    ? t('setup.voiceUnavailable')
     : !settings.voiceEnabled
-      ? 'Desligado'
+      ? t('setup.off')
       : speechGranted
-        ? 'Diga “salvar” ou “gravar”'
+        ? t('setup.voiceSay', { first: VOICE_WORDS[locale][0], second: VOICE_WORDS[locale][1] })
         : speech === 'denied'
-          ? 'Negado · libere em Ajustes'
-          : 'Toque para permitir';
+          ? t('setup.voiceDenied')
+          : t('setup.tapToAllow');
 
   async function toggleVoice() {
     if (voiceOn) return updateMode({ voiceEnabled: false });
@@ -198,22 +223,30 @@ export default function Setup() {
     if (granted) updateMode({ voiceEnabled: true });
   }
 
-  const summary = `Ajustes: ${[
-    `clipes de até ${settings.cutSeconds} segundos`,
-    `voz ${voiceOn ? 'ligada' : 'desligada'}`,
-    `acenar com os braços ${settings.gestureEnabled ? 'ligado' : 'desligado'}`,
-    `controle ${remoteView.state === 'connected' ? 'conectado' : remoteView.state === 'offline' ? 'pareado' : 'não conectado'}`,
-    ...(watch === 'ready' ? ['relógio pronto'] : []),
-  ].join(', ')}`;
+  const summary = t('setup.summary', {
+    items: [
+      t('setup.summaryClip', { seconds: clipSeconds }),
+      t(voiceOn ? 'setup.summaryVoiceOn' : 'setup.summaryVoiceOff'),
+      t(settings.gestureEnabled ? 'setup.summaryGestureOn' : 'setup.summaryGestureOff'),
+      t(
+        remoteView.state === 'connected'
+          ? 'setup.summaryRemoteConnected'
+          : remoteView.state === 'offline'
+            ? 'setup.summaryRemotePaired'
+            : 'setup.summaryRemoteNotConnected',
+      ),
+      ...(watchOn ? [t('setup.summaryWatchReady')] : []),
+    ].join(', '),
+  });
 
   const { phase, error, camera } = session.state;
   const { prepare, release } = session;
 
   // Live preview while positioning; the buffer starts filling now, so "Começar gravação" is instant.
   useEffect(() => {
-    if (live) void prepare(modeId);
+    if (live) void prepare(modeId, plan);
     else void release();
-  }, [live, prepare, release, modeId, lens]);
+  }, [live, prepare, release, modeId, lens, plan]);
 
   useEffect(() => {
     if (!focused) return;
@@ -232,9 +265,27 @@ export default function Setup() {
     return () => sub.remove();
   }, []);
 
+  const preview = useStartPreview();
+  const startNote =
+    preview.decision.kind === 'credit' ? t('setup.passCredits', { count: preview.credits }) : null;
+  const busy = useRef(false);
+  async function onStart() {
+    if (busy.current) return;
+    busy.current = true;
+    try {
+      if ((await session.start(modeId)) !== 'blocked') return;
+      const outcome = await openPaywall(t);
+      // One retry right after a purchase: the player already asked to start. A purchase that shows up later
+      // (SDK lag) only changes the status line; the next tap starts.
+      if (outcome === 'purchased' || outcome === 'restored') await session.start(modeId);
+    } finally {
+      busy.current = false;
+    }
+  }
+
   const opening = camera === 'starting';
   const starting = phase === 'starting' || opening;
-  const errorText = error ? (START_ERRORS[error] ?? 'Não foi possível abrir a câmera. Tente de novo.') : null;
+  const errorText = error ? t(START_ERRORS[error] ?? 'setup.cameraFailed') : null;
 
   // On its side the phone shows only two small buttons (the settings open on demand), so the sheet does not cover the camera.
   const landscape = useDeviceLandscape(live && phase === 'idle');
@@ -267,16 +318,16 @@ export default function Setup() {
           <View style={styles.topRow}>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Minhas gravações"
+              accessibilityLabel={t('setup.myRecordings')}
               onPress={() => router.push('/games')}
               style={[styles.pill, styles.pillButton]}>
-              <Text style={styles.pillText}>Minhas gravações</Text>
+              <Text style={styles.pillText}>{t('setup.myRecordings')}</Text>
             </Pressable>
             <ZoomButton value={zoom} onPress={cycleZoom} />
           </View>
-          {mode.tip.length > 0 && !compact ? (
+          {mode.tip && !compact ? (
             <View style={styles.tip}>
-              <Text style={styles.tipText}>{mode.tip}</Text>
+              <Text style={styles.tipText}>{modeTip(mode.group, locale)}</Text>
             </View>
           ) : null}
         </SafeAreaView>
@@ -293,7 +344,7 @@ export default function Setup() {
           <SafeAreaView edges={['bottom']} style={styles.sheetBody} {...swipe.panHandlers}>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={expanded ? 'Fechar ajustes' : 'Abrir ajustes'}
+              accessibilityLabel={expanded ? t('setup.closeSettings') : t('setup.openSettings')}
               onPress={() => setExpanded(!expanded)}
               hitSlop={12}
               style={styles.handleArea}>
@@ -302,11 +353,12 @@ export default function Setup() {
             {expanded ? renderSettings() : renderSummary()}
 
             {errorText ? <Text style={styles.error}>{errorText}</Text> : null}
+            {startNote ? <Text style={styles.startNote}>{startNote}</Text> : null}
             <Button
-              label={opening ? 'Abrindo a câmera…' : 'Começar gravação'}
+              label={opening ? t('setup.openingCamera') : t('setup.start')}
               icon={starting ? <ActivityIndicator color={colors.onAccent} /> : undefined}
               disabled={starting}
-              onPress={() => session.start(modeId)}
+              onPress={() => void onStart()}
             />
           </SafeAreaView>
         </View>
@@ -324,16 +376,16 @@ export default function Setup() {
         onPress={() => setExpanded(true)}
         style={styles.summary}>
         <View style={styles.summaryHead}>
-          <Text style={styles.section}>COMO SALVAR O CLIPE</Text>
+          <Text style={styles.section}>{t('setup.howToSave')}</Text>
         </View>
         <View style={styles.summaryIcons}>
           <MicIcon color={iconColor(voiceOn)} size={32} />
           <ArmsUpIcon color={iconColor(settings.gestureEnabled)} size={32} />
           <RemoteIcon color={iconColor(remoteWorks)} size={32} />
-          <WatchIcon color={iconColor(watch === 'ready')} size={32} />
+          <WatchIcon color={iconColor(watchOn)} size={32} />
           {remoteSupported ? <QrIcon color={iconColor(remoteLinked > 0)} size={32} /> : null}
         </View>
-        <Text style={styles.summaryClip}>{`Clipes de até ${settings.cutSeconds}s`}</Text>
+        <Text style={styles.summaryClip}>{t('setup.clipUpTo', { seconds: clipSeconds })}</Text>
       </Pressable>
     );
   }
@@ -342,25 +394,30 @@ export default function Setup() {
     return (
       <>
         <View style={styles.clipLength}>
-          <Text style={styles.section}>TAMANHO DO CLIPE</Text>
+          <Text style={styles.section}>{t('setup.clipLength')}</Text>
           <View style={styles.chips}>
-            {CLIP_SECONDS_OPTIONS.map((seconds) => (
-              <Chip
-                key={seconds}
-                label={`${seconds}s`}
-                selected={settings.cutSeconds === seconds}
-                onPress={() => updateMode({ cutSeconds: seconds })}
-              />
-            ))}
+            {CLIP_SECONDS_OPTIONS.map((seconds) => {
+              const allowed = plan === 'paid' || seconds <= FREE_MAX_SECONDS;
+              return (
+                <Chip
+                  key={seconds}
+                  label={`${seconds}s`}
+                  selected={clipSeconds === seconds}
+                  lockedBadge={allowed ? undefined : t('setup.proBadge')}
+                  lockedHint={allowed ? undefined : t('setup.proOnly')}
+                  onPress={allowed ? () => updateMode({ cutSeconds: seconds }) : () => void openPaywall(t)}
+                />
+              );
+            })}
           </View>
         </View>
 
-        <Text style={styles.section}>GATILHOS</Text>
+        <Text style={styles.section}>{t('setup.triggers')}</Text>
         <View style={styles.grid}>
           <View style={styles.gridRow}>
             <TriggerTile
               icon={<MicIcon />}
-              title="Voz"
+              title={sourceLabel('voice', locale)}
               status={voiceStatus}
               active={voiceOn}
               disabled={!voiceSupported}
@@ -368,8 +425,8 @@ export default function Setup() {
             />
             <TriggerTile
               icon={<ArmsUpIcon />}
-              title="Acenar com os braços"
-              status={settings.gestureEnabled ? 'Ativo' : 'Desligado'}
+              title={sourceLabel('gesture', locale)}
+              status={settings.gestureEnabled ? t('setup.on') : t('setup.off')}
               active={settings.gestureEnabled}
               onPress={() => updateMode({ gestureEnabled: !settings.gestureEnabled })}
             />
@@ -377,17 +434,22 @@ export default function Setup() {
           <View style={styles.gridRow}>
             <TriggerTile
               icon={<RemoteIcon />}
-              title="Controle Bluetooth"
+              title={t('setup.bluetoothRemote')}
               status={remoteView.statusText}
               active={remoteWorks}
+              lockedBadge={bluetoothAllowed ? undefined : t('setup.proBadge')}
+              lockedHint={bluetoothAllowed ? undefined : t('setup.proOnly')}
               onPress={() => router.push({ pathname: '/devices', params: { kind: 'remote' } })}
             />
             <TriggerTile
               icon={<WatchIcon />}
-              title="Relógio"
-              status={watchStatus}
-              active={watch === 'ready'}
-              disabled={watch === 'unsupported'}
+              title={sourceLabel('watch', locale)}
+              status={watchSupported ? watchStatus : t('setup.watchIosOnly')}
+              active={watchOn}
+              disabled={!watchSupported || (watchAllowed && watch === 'unsupported')}
+              lockedBadge={watchSupported && !watchAllowed ? t('setup.watchProBadge') : undefined}
+              lockedHint={watchSupported && !watchAllowed ? t('setup.watchProOnly') : undefined}
+              onPress={watchSupported && !watchAllowed ? () => void openPaywall(t) : undefined}
             />
           </View>
         </View>
@@ -398,44 +460,48 @@ export default function Setup() {
             <View style={styles.gridRow}>
               <TriggerTile
                 icon={<QrIcon />}
-                title="Conectar um celular controle"
-                status={controllersStatus(remoteLinked)}
+                title={t('setup.connectPhoneRemote')}
+                status={controllersStatus(t, remoteLinked)}
                 active={remoteLinked > 0}
+                lockedBadge={phoneAllowed ? undefined : t('setup.proBadge')}
+                lockedHint={phoneAllowed ? undefined : t('setup.proOnly')}
                 onPress={() => router.push('/pairing')}
               />
               <TriggerTile
                 icon={<TapIcon />}
-                title="Usar este celular como controle"
-                status={cameraStatus(controlHost)}
+                title={t('setup.useAsRemote')}
+                status={cameraStatus(t, controlHost)}
                 active={controlHost !== null}
+                lockedBadge={phoneAllowed ? undefined : t('setup.proBadge')}
+                lockedHint={phoneAllowed ? undefined : t('setup.proOnly')}
                 onPress={() => router.push('/remote')}
               />
             </View>
             {controlHost !== null ? (
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="Desconectar deste celular"
+                accessibilityLabel={t('setup.disconnectThisPhone')}
                 hitSlop={8}
                 onPress={disconnectControl}
                 style={styles.remoteLinkBox}>
-                <Text style={styles.remoteLink}>Desconectar deste celular</Text>
+                <Text style={styles.remoteLink}>{t('setup.disconnectThisPhone')}</Text>
               </Pressable>
             ) : null}
           </>
         ) : null}
 
-        {speechDenied ? <Text style={styles.error}>Libere o reconhecimento de fala em Ajustes.</Text> : null}
+        {speechDenied ? <Text style={styles.error}>{t('setup.speechDenied')}</Text> : null}
 
         <View style={styles.feedbackRow}>
-          <Text style={styles.section}>AVISOS AO SALVAR</Text>
+          <Text style={styles.section}>{t('setup.saveAlerts')}</Text>
           <View style={styles.chips}>
             <Chip
-              label="Som"
+              label={t('setup.sound')}
               selected={prefs.soundOnSave}
               onPress={() => update({ soundOnSave: !prefs.soundOnSave })}
             />
             <Chip
-              label="Flash"
+              label={t('setup.flash')}
               selected={prefs.flashOnSave}
               onPress={() => update({ flashOnSave: !prefs.flashOnSave })}
             />
@@ -529,6 +595,7 @@ const styles = StyleSheet.create({
   grid: { gap: 8 },
   gridRow: { flexDirection: 'row', gap: 8 },
   error: { fontFamily: fonts.bodySemi, fontSize: 14, color: colors.warning },
+  startNote: { fontFamily: fonts.body, fontSize: 13, color: colors.soft, textAlign: 'center' },
   feedbackRow: {
     flexDirection: 'row',
     alignItems: 'center',

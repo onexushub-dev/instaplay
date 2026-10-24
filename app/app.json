@@ -11,14 +11,15 @@
       "icon": "./assets/expo.icon",
       "bundleIdentifier": "app.repplay.mobile",
       "infoPlist": {
-        "NSCameraUsageDescription": "O Repplay usa a câmera para gravar seus clipes.",
-        "NSMicrophoneUsageDescription": "O Repplay grava o som dos seus clipes.",
-        "NSSpeechRecognitionUsageDescription": "O Repplay escuta você dizer \"salvar\" ou \"gravar\" para salvar o clipe sem tocar no celular.",
+        "NSCameraUsageDescription": "Repplay uses the camera to record your clips.",
+        "NSMicrophoneUsageDescription": "Repplay records the sound of your clips.",
+        "NSSpeechRecognitionUsageDescription": "Repplay listens for you to say \"save\" or \"record\" so you can save a clip without touching your phone.",
         "LSApplicationQueriesSchemes": [
           "instagram-stories"
         ],
-        "NSPhotoLibraryAddUsageDescription": "O Repplay salva os clipes que você exportar na sua galeria.",
-        "NSLocalNetworkUsageDescription": "O Repplay usa a rede local para mostrar a imagem da câmera no celular que serve de controle.",
+        "NSPhotoLibraryAddUsageDescription": "Repplay saves the clips you export to your photo library.",
+        "NSLocalNetworkUsageDescription": "Repplay uses your local network to show the camera image on the phone you use as a remote.",
+        "CFBundleAllowMixedLocalizations": true,
         "NSBonjourServices": [
           "_repplay-remote._tcp"
         ],
@@ -62,8 +63,22 @@
       "expo-sharing",
       "@bacons/apple-targets",
       "./plugins/withPodsDeploymentTarget",
-      "expo-image"
+      "expo-image",
+      [
+        "expo-localization",
+        {
+          "supportedLocales": {
+            "ios": ["en", "pt-BR"],
+            "android": ["en", "pt-BR"]
+          },
+          "allowDynamicLocaleChangesAndroid": true
+        }
+      ]
     ],
+    "locales": {
+      "en": "./locales/en.json",
+      "pt-BR": "./locales/pt-BR.json"
+    },
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true

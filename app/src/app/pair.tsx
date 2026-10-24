@@ -14,6 +14,8 @@ import { Button } from '../components/Button';
 import { CheckIcon, CloseIcon } from '../components/icons';
 import { PulseRing } from '../components/PulseRing';
 import { RequirementsChecklist } from '../components/RequirementsChecklist';
+import type { TFunction } from '../i18n';
+import { useT } from '../i18n/useT';
 import { parsePairLink } from '../remote/pairLink';
 import { colors, fonts } from '../theme/tokens';
 
@@ -26,29 +28,30 @@ function one(value: string | string[] | undefined): string | undefined {
   return value;
 }
 
-function failureText(reason: RemotePairFailure): string {
+function failureText(reason: RemotePairFailure, t: TFunction): string {
   switch (reason) {
     case 'expired':
-      return 'Código vencido. Peça um novo no celular da câmera.';
+      return t('remote.failExpired');
     case 'locked':
-      return 'Muitas tentativas. Gere um novo código.';
+      return t('remote.failLocked');
     case 'notFound':
-      return 'Não encontrei o celular da câmera. Chegue mais perto e confira se o Repplay está aberto lá.';
+      return t('remote.failNotFound');
     case 'denied':
-      return 'Este celular não está mais pareado com a câmera. Pareie de novo.';
+      return t('remote.failUnpairedRepair');
     case 'full':
-      return 'O celular da câmera já tem 4 controles. Remova um lá para conectar este.';
+      return t('remote.failFull');
     case 'used':
-      return 'Outro celular está usando este código agora. Peça um novo no celular da câmera.';
+      return t('remote.failUsed');
     case 'closed':
-      return 'O celular da câmera não está pareando agora. Toque em “Parear outro celular” lá e tente de novo.';
+      return t('remote.failClosed');
     default:
-      return 'Código incorreto. Peça um novo no celular da câmera.';
+      return t('remote.failWrongCodeLink');
   }
 }
 
 /** Where the `repplay://pair?...` link (read by the Camera app from the QR code) lands. */
 export default function Pair() {
+  const { t } = useT();
   const params = useLocalSearchParams<{ h?: string; s?: string; n?: string }>();
   const h = one(params.h);
   const s = one(params.s);
@@ -115,41 +118,41 @@ export default function Pair() {
   return (
     <SafeAreaView style={styles.root}>
       <View style={styles.body}>
-        <Text style={styles.role}>ESTE IPHONE É O CONTROLE</Text>
+        <Text style={styles.role}>{t('remote.roleRemote')}</Text>
         {link === null ? (
           <>
             <View style={[styles.badge, styles.badgeBad]}>
               <CloseIcon color={colors.ground} size={56} />
             </View>
-            <Text style={styles.warning}>Este link de pareamento não é válido. Peça um novo código no celular da câmera.</Text>
-            <Button label="Digitar código" onPress={() => router.replace('/remote')} />
+            <Text style={styles.warning}>{t('remote.invalidLink')}</Text>
+            <Button label={t('remote.enterCode')} onPress={() => router.replace('/remote')} />
           </>
         ) : paired ? (
           <>
             <View style={styles.badge}>
               <CheckIcon size={64} />
             </View>
-            <Text style={styles.success}>{`Pronto! Este celular agora controla ${hostName}`}</Text>
+            <Text style={styles.success}>{t('remote.pairedWith', { name: hostName })}</Text>
           </>
         ) : failure !== null ? (
           <>
             <View style={[styles.badge, styles.badgeBad]}>
               <CloseIcon color={colors.ground} size={56} />
             </View>
-            <Text style={styles.warning}>{failureText(failure)}</Text>
+            <Text style={styles.warning}>{failureText(failure, t)}</Text>
             {failure === 'notFound' ? <RequirementsChecklist /> : null}
-            {failure === 'notFound' ? <Button label="Tentar de novo" onPress={retry} /> : null}
+            {failure === 'notFound' ? <Button label={t('common.tryAgain')} onPress={retry} /> : null}
             {failure !== 'notFound' ? (
-              <Button label="Digitar código" onPress={() => router.replace('/remote')} />
+              <Button label={t('remote.enterCode')} onPress={() => router.replace('/remote')} />
             ) : null}
           </>
         ) : (
           <>
             <PulseRing color={colors.accent} />
-            <Text style={styles.status}>{`Conectando a ${hostName}…`}</Text>
+            <Text style={styles.status}>{t('remote.connectingTo', { name: hostName })}</Text>
           </>
         )}
-        {paired ? null : <Button label="Fechar" variant="secondary" onPress={leave} />}
+        {paired ? null : <Button label={t('common.close')} variant="secondary" onPress={leave} />}
       </View>
     </SafeAreaView>
   );

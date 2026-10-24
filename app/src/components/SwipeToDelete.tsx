@@ -1,6 +1,7 @@
 import { type ReactNode, useRef, useState } from 'react';
 import { Animated, PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { useT } from '../i18n/useT';
 import { colors, fonts } from '../theme/tokens';
 
 /** How far the row slides to show the button. */
@@ -14,7 +15,9 @@ export function settlesOpen(x: number): boolean {
 type Props = { children: ReactNode; onDelete: () => void; label?: string };
 
 /** A row that slides left to show an "Apagar" button; a tap on the row while it is open only closes it. */
-export function SwipeToDelete({ children, onDelete, label = 'Apagar' }: Props) {
+export function SwipeToDelete({ children, onDelete, label }: Props) {
+  const { t } = useT();
+  const text = label ?? t('common.delete');
   const [x] = useState(() => new Animated.Value(0));
   const [open, setOpen] = useState(false);
   const openRef = useRef(false);
@@ -44,21 +47,21 @@ export function SwipeToDelete({ children, onDelete, label = 'Apagar' }: Props) {
       <View style={styles.behind}>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={label}
+          accessibilityLabel={text}
           disabled={!open}
           onPress={() => {
             settle(false);
             onDelete();
           }}
           style={styles.button}>
-          <Text style={styles.buttonText}>{label}</Text>
+          <Text style={styles.buttonText}>{text}</Text>
         </Pressable>
       </View>
       <Animated.View style={{ transform: [{ translateX: x }] }} {...pan.panHandlers}>
         {children}
         {open ? (
           // While open the row does not open the game: a tap just puts it back.
-          <Pressable accessibilityLabel="Fechar" onPress={() => settle(false)} style={StyleSheet.absoluteFill} />
+          <Pressable accessibilityLabel={t('common.close')} onPress={() => settle(false)} style={StyleSheet.absoluteFill} />
         ) : null}
       </Animated.View>
     </View>
