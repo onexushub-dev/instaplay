@@ -22,7 +22,7 @@ GEO = json.loads((HERE / 'geometry.json').read_text())
 FONT = HERE / 'fonts' / 'Manrope_500Medium.ttf'
 
 # ---- brand tokens ---------------------------------------------------------------------------
-INK, PAPER, LIME, OLIVE, WHITE = '#0B0B09', '#F3EDE1', '#CFEA79', '#5F7D0B', '#FFFFFF'
+INK, PAPER, LIME, OLIVE, WHITE = '#0B0B09', '#F3EDE1', '#D6F23F', '#5F7D0B', '#FFFFFF'
 SCHEMES = {  # name -> (main, accent)
     'fundo-claro':  (INK, OLIVE),
     'fundo-escuro': (PAPER, LIME),

@@ -5,7 +5,7 @@ import WidgetKit
 // the watch app's; the brand is never translated.
 
 private let ground = Color(red: 0.059, green: 0.063, blue: 0.051) // #0F100D
-private let accent = Color(red: 0.812, green: 0.918, blue: 0.475) // #CFEA79
+private let accent = Color(red: 0.839, green: 0.949, blue: 0.247) // #D6F23F
 
 struct SaveEntry: TimelineEntry {
   let date: Date

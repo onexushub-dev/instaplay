@@ -4,7 +4,7 @@ import SwiftUI
 // shows the watch's own language.
 
 private let ground = Color(red: 0.059, green: 0.063, blue: 0.051) // #0F100D
-private let accent = Color(red: 0.812, green: 0.918, blue: 0.475) // #CFEA79
+private let accent = Color(red: 0.839, green: 0.949, blue: 0.247) // #D6F23F
 
 struct ContentView: View {
   @StateObject private var link = WatchLink()

@@ -8,7 +8,7 @@ Aplicar na oferta `default` (Paywalls, no painel). Valores do kit de marca (`doc
 |---|---|---|
 | Fundo da página | azul-marinho `#0F1226`-ish | **Ink `#0B0B09`** |
 | Cartões e planos (fundo) | azul acinzentado | **Surface `#1B1D18`** |
-| Plano selecionado (borda e fundo) | borda ciano, fundo azul | borda **Lima `#CFEA79`** 2 px, fundo Surface |
+| Plano selecionado (borda e fundo) | borda ciano, fundo azul | borda **Lima `#D6F23F`** 2 px, fundo Surface |
 | Selo "SAVE 19%" | ciano com texto escuro | fundo **Lima**, texto **Ink** |
 | Ícones dos benefícios | ciano sobre azul | **Lima** sobre Surface |
 | Botão "Go Pro" | **vermelho coral** | fundo **Lima**, texto **Ink** |
@@ -29,7 +29,7 @@ Por que o botão não pode ser vermelho: no app, o vermelho-laranja (`rec`, `#FF
 | Contorno em repouso | Border | `#3A3D34` |
 | Texto | Paper | `#F3EDE1` |
 | Texto secundário | Muted | `#A9A79C` |
-| Acento (botão, selo, ícones, plano selecionado) | Lima | `#CFEA79` |
+| Acento (botão, selo, ícones, plano selecionado) | Lima | `#D6F23F` |
 | Texto sobre o acento | Ink | `#0B0B09` |
 
 Nunca usar Lima sobre fundo branco ou claro (regra do kit).
@@ -40,8 +40,8 @@ Nunca usar Lima sobre fundo branco ou claro (regra do kit).
 |---|---|
 | Paper sobre Ink | 16,9:1 |
 | Paper sobre Surface | 14,6:1 |
-| Lima sobre Ink | 14,7:1 |
-| Ink sobre Lima (botão e selo) | 14,7:1 |
+| Lima sobre Ink | 15,6:1 |
+| Ink sobre Lima (botão e selo) | 15,6:1 |
 | Muted sobre Ink | 8,2:1 |
 | Muted sobre Surface | 7,0:1 |
 | Border sobre Ink | 1,8:1, só decorativo: o plano selecionado se distingue por Lima, não pela borda cinza |

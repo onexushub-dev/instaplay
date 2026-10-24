@@ -14,6 +14,6 @@ module.exports = {
     'com.apple.security.application-groups': [group],
   },
   colors: {
-    $accent: '#CFEA79',
+    $accent: '#D6F23F',
   },
 };

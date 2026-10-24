@@ -36,11 +36,11 @@ Abra `guia-de-marca.html` para ver tudo montado.
 |---|---|---|---|---|
 | Ink | `#0B0B09` | (11, 11, 9) | (0, 0, 18, 96) | Fundo escuro, texto e símbolo sobre fundo claro. |
 | Paper | `#F3EDE1` | (243, 237, 225) | (0, 2, 7, 5) | Texto e símbolo sobre fundo escuro; fundo quente alternativo. |
-| Lima | `#CFEA79` | (207, 234, 121) | (12, 0, 48, 8) | Acento sobre fundo escuro (o triângulo play). Nunca sobre branco: contraste insuficiente. |
+| Lima | `#D6F23F` | (214, 242, 63) | (12, 0, 74, 5) | Acento sobre fundo escuro (o triângulo play). Nunca sobre branco: contraste insuficiente. |
 | Oliva | `#5F7D0B` | (95, 125, 11) | (24, 0, 91, 51) | O acento da versão para fundo claro (triângulo play). |
 
 CMYK é conversão matemática, não referência de gráfica. Peça prova de cor e Pantone equivalente ao fornecedor antes de imprimir em escala.
-O app usa o mesmo lima do logo (`#CFEA79`): o acento da interface (`colors.accent`, em `app/src/theme/tokens.ts`) foi alinhado a ele.
+O app usa o mesmo lima do logo (`#D6F23F`): o acento da interface (`colors.accent`, em `app/src/theme/tokens.ts`) foi alinhado a ele.
 
 ## Regras rápidas
 
