@@ -7,6 +7,8 @@ import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from '
 import type { FocusFollow } from '../focus/useFocusFraming';
 
 import { useT } from '../i18n/useT';
+import { turned } from '../clip/stage';
+
 import { NO_ZOOM, type Rotation, type Zoom } from './editing';
 import { useZoomGesture } from './useZoomGesture';
 
@@ -131,21 +133,6 @@ export function ZoomableVideo({ player, area, box, zoom, rotation, onCommit, onT
       </View>
     </View>
   );
-}
-
-/** The video laid out at its own shape in the middle of `box`, then turned, so that it fills `box` after the turn. */
-function turned(box: { width: number; height: number }, rotation: Rotation) {
-  const sideways = rotation % 180 !== 0;
-  const width = sideways ? box.height : box.width;
-  const height = sideways ? box.width : box.height;
-  return {
-    position: 'absolute' as const,
-    left: (box.width - width) / 2,
-    top: (box.height - height) / 2,
-    width,
-    height,
-    transform: [{ rotate: `${rotation}deg` }],
-  };
 }
 
 const styles = StyleSheet.create({

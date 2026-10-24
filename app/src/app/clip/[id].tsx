@@ -1,5 +1,4 @@
 import { Directory, File, Paths } from 'expo-file-system';
-import { Image as ExpoImage } from 'expo-image';
 import { Asset, requestPermissionsAsync } from 'expo-media-library';
 import { router, useLocalSearchParams } from 'expo-router';
 import { shareAsync } from 'expo-sharing';
@@ -25,6 +24,8 @@ import { ClipEdit } from '../../clip/ClipEdit';
 import { ClipWatch } from '../../clip/ClipWatch';
 import { beginEdit, type EditSnapshot, hasChanges, lastTool, rememberTool, restorePatch, type ToolId } from '../../clip/editSession';
 import { IconButton, SCRIM } from '../../clip/IconButton';
+import { NeighbourStage } from '../../clip/NeighbourStage';
+import { previewBox } from '../../clip/stage';
 import { ToolBar } from '../../clip/ToolBar';
 import { EDIT_TOOLS, type EditTool, type FocusUi, type ToolContext } from '../../clip/tools';
 import { WatchProgress } from '../../clip/WatchProgress';
@@ -58,8 +59,6 @@ const SLIDE_MS = 220;
 const RUBBER = 0.3;
 /** If the first frame is never reported, the still gives way after this long anyway. */
 const POSTER_MAX_MS = 1500;
-/** Neighbours are measured this long after the open clip, so they never hold it up. */
-const NEIGHBOUR_WAIT_MS = 300;
 /** Which side the next clip comes in from; set just before navigating, read by the screen that mounts. */
 let enterFrom: 1 | -1 | 0 = 0;
 
@@ -113,11 +112,41 @@ function clearOldExports() {
  */
 export default function ClipScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  // Keyed by clip: moving to another clip starts the screen from that clip's own state.
-  return <ClipEditor key={id} id={id} />;
+  // After a swipe the clip left behind stays on top, looking exactly like the new one's first frame, until the new one
+  // (made underneath) shows that frame: the switch is never seen, and the controls never leave the screen.
+  const [held, setHeld] = useState<string>();
+  const layers = held !== undefined && held !== id ? [id, held] : [id];
+  return (
+    <View style={styles.layers}>
+      {layers.map((clipId) => {
+        const leaving = clipId !== id;
+        return (
+          // Keyed by clip: each clip starts from its own state; the one leaving keeps its place in the list, so it is not made again.
+          <View key={clipId} pointerEvents={leaving ? 'none' : 'auto'} style={StyleSheet.absoluteFill}>
+            <ClipEditor
+              id={clipId}
+              leaving={leaving}
+              onSwitch={() => setHeld(clipId)}
+              onShown={() => setHeld(undefined)}
+            />
+          </View>
+        );
+      })}
+    </View>
+  );
 }
 
-function ClipEditor({ id }: { id: string }) {
+type EditorProps = {
+  id: string;
+  /** Swiped away: kept on top, still, until the next clip is on screen under it. */
+  leaving: boolean;
+  /** Right before moving to another clip by swiping: keep this one on top meanwhile. */
+  onSwitch: () => void;
+  /** The video's first frame is on screen (or took too long): whatever was kept on top can go. */
+  onShown: () => void;
+};
+
+function ClipEditor({ id, leaving, onSwitch, onShown }: EditorProps) {
   const { t, locale } = useT();
   const version = useSyncExternalStore(repo.subscribe, repo.version);
   // eslint-disable-next-line react-hooks/exhaustive-deps -- version is the change signal
@@ -182,6 +211,8 @@ function ClipEditor({ id }: { id: string }) {
   const [posterAt] = useState(() => (clip ? clip.trim.startMs : 0));
   const poster = useClipThumbnail(clip ? clip.path : '', posterAt);
   const [framed, setFramed] = useState(false);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- once, when the first frame is up
+  useEffect(() => (framed ? onShown() : undefined), [framed]);
   useEffect(() => {
     const timer = setTimeout(() => setFramed(true), POSTER_MAX_MS);
     return () => clearTimeout(timer);
@@ -282,6 +313,12 @@ function ClipEditor({ id }: { id: string }) {
     p.currentTime = trim.startMs / 1000;
     p.play();
   });
+  // Swiped away: stand still (and quiet) on top until the next clip is on screen underneath.
+  useEffect(() => {
+    if (!leaving) return;
+    wantsPlay.current = false;
+    setPlaying(player, false);
+  }, [leaving, player]);
   const follow = useFocusFraming(player, track, focusActive);
 
   // The first time a clip opens, find where its picture starts: a black start is not part of the video.
@@ -377,6 +414,7 @@ function ClipEditor({ id }: { id: string }) {
     }).start(() => {
       // The neighbour's still is already in place: the new clip opens right there, without a second slide.
       enterFrom = 0;
+      onSwitch();
       router.setParams({ id: target.id });
     });
   }
@@ -600,24 +638,18 @@ function ClipEditor({ id }: { id: string }) {
 
   /** The export's frame as large as `area` allows, the video in it, the app mark over it. */
   function renderStage(area: { width: number; height: number }) {
-    const previewHeight = Math.min(area.height, (area.width * frame.height) / frame.width);
-    const scale = previewHeight / frame.height;
-    const videoBox = {
-      left: layout.video.x * scale,
-      top: layout.video.y * scale,
-      width: layout.video.width * scale,
-      height: layout.video.height * scale,
-    };
+    // The same reckoning as the neighbours' stills, so that a swipe lands on the picture that slid in.
+    const { height: previewHeight, scale, video: videoBox } = previewBox(frame, layout, area);
     return (
       <Animated.View testID="clip-stage" style={[styles.stage, { transform: [{ translateX: slide }] }]}>
         {/* What a drag uncovers on each side: the neighbouring clips' stills, or the way back on the first clip. */}
         {!editing ? (
           <>
             <View pointerEvents="none" style={[styles.neighbour, { left: -area.width, width: area.width }]}>
-              {previous ? <NeighbourStill clip={previous} /> : at === 0 ? <Text style={styles.backHint}>{t('clip.backToRecording')}</Text> : null}
+              {previous ? <NeighbourStage clip={previous} tier={plan} area={area} /> : at === 0 ? <Text style={styles.backHint}>{t('clip.backToRecording')}</Text> : null}
             </View>
             <View pointerEvents="none" style={[styles.neighbour, { left: area.width, width: area.width }]}>
-              {next ? <NeighbourStill clip={next} /> : null}
+              {next ? <NeighbourStage clip={next} tier={plan} area={area} /> : null}
             </View>
           </>
         ) : null}
@@ -756,25 +788,8 @@ function ClipEditor({ id }: { id: string }) {
   );
 }
 
-/** A neighbouring clip's still, the same one its screen shows until its video starts. */
-function NeighbourStill({ clip }: { clip: { path?: string; trim?: { startMs: number } } }) {
-  const path = clip.path || '';
-  const uri = useClipThumbnail(path, clip.trim ? clip.trim.startMs : 0);
-  // Its shape too, so that if the swipe lands there the screen opens laid out, with Salvar/Enviar ready.
-  useEffect(() => {
-    if (!uri || !path || knownShape(path)) return;
-    // After the open clip has had its turn: this one only matters if the finger goes there.
-    const timer = setTimeout(() => {
-      Image.getSize(uri)
-        .then(({ width, height }) => rememberShape(path, { width, height }))
-        .catch(() => {});
-    }, NEIGHBOUR_WAIT_MS);
-    return () => clearTimeout(timer);
-  }, [uri, path]);
-  return uri ? <ExpoImage source={{ uri }} contentFit="contain" style={StyleSheet.absoluteFill} /> : null;
-}
-
 const styles = StyleSheet.create({
+  layers: { flex: 1, backgroundColor: colors.ground },
   root: { flex: 1, backgroundColor: colors.ground },
   neighbour: { position: 'absolute', top: 0, bottom: 0, backgroundColor: colors.ground, alignItems: 'center', justifyContent: 'center' },
   backHint: { color: colors.muted, fontFamily: fonts.bodySemi, fontSize: 15 },

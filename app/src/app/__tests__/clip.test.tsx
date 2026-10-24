@@ -4,7 +4,11 @@ import { Alert, Image } from 'react-native';
 import { forgetShapes } from '../../components/clipShape';
 import ClipEditor from '../clip/[id]';
 
-jest.mock('expo-router', () => ({ router: { push: jest.fn(), back: jest.fn(), setParams: jest.fn() }, useLocalSearchParams: () => ({ id: 'c1' }) }));
+const mockParams = { id: 'c1' };
+jest.mock('expo-router', () => ({
+  router: { push: jest.fn(), back: jest.fn(), setParams: jest.fn() },
+  useLocalSearchParams: () => ({ id: mockParams.id }),
+}));
 jest.mock('expo-video', () => {
   const listeners = new Map<string, Set<(e: any) => void>>();
   const mockPlayer = {
@@ -43,8 +47,8 @@ jest.mock('../../focus/appFocusQueue', () => ({ focusQueue: { ensure: jest.fn() 
 jest.mock('../../data/focusFile', () => ({ ...jest.requireActual('../../data/focusFile'), readFocusFile: jest.fn(() => undefined) }));
 jest.mock('../../components/useReduceMotion', () => ({ useReduceMotion: jest.fn(() => false) }));
 jest.mock('../../share/ZoomableVideo', () => {
-  const props: { last?: any } = {};
-  return { __props: props, ZoomableVideo: (p: any) => ((props.last = p), null) };
+  const props: { last?: any; all: any[] } = { all: [] };
+  return { __props: props, ZoomableVideo: (p: any) => ((props.last = p), props.all.push(p), null) };
 });
 jest.mock('../../components/TrimBar', () => {
   const props: { last?: any } = {};
@@ -107,6 +111,8 @@ beforeEach(() => {
   __setClip({ ...base });
   jest.requireMock('../../data/mmkv').__setFirst(false);
   forgetShapes();
+  mockParams.id = 'c1';
+  jest.requireMock('../../share/ZoomableVideo').__props.all.length = 0;
   // The intro is covered by its own tests; elsewhere it was already seen.
   jest.requireMock('../../data/mmkv').__setPrefs({ ...jest.requireActual('../../data/schema').DEFAULT_PREFS, focusIntroSeen: true });
   // jest-expo's ImageLoader mock predates RN 0.88's promise-based getSize.
@@ -809,6 +815,43 @@ describe('swiping between clips follows the finger', () => {
     await render(<ClipEditor />);
     expect(screen.getByRole('button', { name: 'Salvar na galeria' })).toBeEnabled();
     expect(video.last.poster).toBe('file:///c1.jpg');
+  });
+
+  test('a swipe keeps this screen on top until the next clip has its first frame, so nothing flashes', async () => {
+    const { rerender } = await render(<ClipEditor />);
+    await act(async () => {});
+    await act(async () => video.last.onDrag(150));
+    await act(async () => video.last.onSwipe(-1));
+    await settle();
+    expect(router.setParams).toHaveBeenCalledWith({ id: 'c0' });
+    // The router moves to c0: c0 is made under this screen, which stays until c0 shows its first frame.
+    mockParams.id = 'c0';
+    await act(async () => rerender(<ClipEditor />));
+    expect(screen.getAllByLabelText('Nome do clipe')).toHaveLength(2);
+    expect(player.pause).toHaveBeenCalled();
+    await act(async () => video.all.forEach((p: any) => p.onFirstFrame()));
+    expect(screen.getAllByLabelText('Nome do clipe')).toHaveLength(1);
+  });
+
+  test('if the next clip never reports its first frame, the screen still moves on', async () => {
+    const { rerender } = await render(<ClipEditor />);
+    await act(async () => video.last.onSwipe(-1));
+    await settle();
+    mockParams.id = 'c0';
+    await act(async () => rerender(<ClipEditor />));
+    expect(screen.getAllByLabelText('Nome do clipe')).toHaveLength(2);
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 1600)));
+    expect(screen.getAllByLabelText('Nome do clipe')).toHaveLength(1);
+  });
+
+  test('after deleting, the next clip simply takes over (the deleted one is not kept on screen)', async () => {
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    const { rerender } = await render(<ClipEditor />);
+    await pressAction('Apagar clipe');
+    alert.mock.calls[0][2]!.find((b) => b.text === 'Apagar')!.onPress!();
+    mockParams.id = 'c0';
+    await act(async () => rerender(<ClipEditor />));
+    expect(screen.getAllByLabelText('Nome do clipe')).toHaveLength(1);
   });
 
   test('editing does not follow sideways drags', async () => {
