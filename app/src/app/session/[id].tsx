@@ -272,7 +272,7 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.ground, paddingHorizontal: 20, gap: 16 },
   header: { gap: 4, marginTop: 16 },
   subtitle: { fontFamily: fonts.body, fontSize: 13, color: colors.muted },
-  title: { fontFamily: fonts.displayBold, fontSize: 44, color: colors.text },
+  title: { fontFamily: fonts.displayBold, fontSize: 44, lineHeight: 46, color: colors.text },
   nameBox: { gap: 4, marginTop: 4 },
   nameInput: {
     minHeight: 48,
