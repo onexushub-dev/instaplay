@@ -78,3 +78,15 @@ Itens adiados nas revisões finais. Nada aqui bloqueia o uso, mas vale resolver 
 - (revisão) Segurar para ver o original: limpar o timer ao desmontar e soltar o `peek` se o acompanhamento mudar durante o toque.
 - (revisão) Vídeo quadrado: analisador usa largura >= altura, editor usa largura > altura.
 - (revisão) Teste do layout do overlay (retrato e paisagem) prometido na spec §4.5.
+
+## Tela do clipe: assistir + editar (revisão de 2026-10-23)
+- Cancelar sem mudança não deveria regravar nem voltar o vídeo ao início do corte; também sincronizar o Modo Foco com o corte restaurado quando pausado.
+- Se o início útil do clipe (`findContentStart`) chegar depois de abrir o modo edição, o Cancelar regrava o corte antigo: ajustar o instantâneo ao novo início.
+- Tocar no selo do Modo Foco deveria contar como "última ferramenta usada".
+- Altura fixa para o painel das ferramentas (hoje o vídeo muda de tamanho ao trocar de ferramenta).
+- Trocar de modo remonta o vídeo: a entrada suave do Modo Foco se repete e pode piscar no Android. Conferir no aparelho.
+- Barra de progresso: a bolinha deveria seguir o dedo enquanto arrasta, e falta acessibilidade (ajustável no VoiceOver/TalkBack).
+- Alvos de toque abaixo de 44 pt: play da barra (40), selo do Modo Foco (36), botões redondos (42).
+- Acessibilidade: selo "preparando" sem estado ocupado; barra de ferramentas sem papel de lista de abas; título EDITAR sem papel de cabeçalho.
+- Segurar para 2x com o vídeo pausado mostra o selo 2x mas não toca (o Reels toca enquanto segura).
+- Se o clipe sumir no modo edição, o primeiro "voltar" do Android é engolido.

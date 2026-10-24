@@ -101,3 +101,30 @@ test('a one-finger flick on a followed picture changes the clip and does not tak
   expect(calls.change).toBe(0);
   expect(calls.commit).toBe(0);
 });
+
+test('without pinch (watch mode) two fingers change nothing, and a flick still changes the clip', async () => {
+  const calls = { change: 0, commit: 0, swipe: [] as number[] };
+  const view = await renderHook(() =>
+    useZoomGesture({
+      zoom: NO_ZOOM,
+      pinch: false,
+      box: { left: 0, top: 0, width: 300, height: 200 },
+      onChange: () => void calls.change++,
+      onCommit: () => void calls.commit++,
+      onTap: () => {},
+      onSwipe: (step) => void calls.swipe.push(step),
+    }),
+  );
+  const handlers = view.result.current as any;
+  const at = (x: number) => ({ pageX: x, pageY: 100, locationX: x, locationY: 100 });
+  await act(async () => void handlers.onResponderGrant(event([at(140), at(160)])));
+  for (const d of [20, 40, 60]) await act(async () => void handlers.onResponderMove(event([at(140 - d), at(160 + d)])));
+  await act(async () => void handlers.onResponderRelease(event([])));
+  expect(calls.change).toBe(0);
+  expect(calls.commit).toBe(0);
+  await act(async () => void handlers.onResponderGrant(event([at(200)])));
+  for (const x of [170, 130, 90, 50]) await act(async () => void handlers.onResponderMove(event([at(x)])));
+  await act(async () => void handlers.onResponderRelease(event([])));
+  expect(calls.swipe).toEqual([1]);
+  expect(calls.change).toBe(0);
+});

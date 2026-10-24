@@ -34,6 +34,8 @@ jest.mock('../../components/TrimBar', () => {
 });
 jest.mock('../../data/mmkv', () => {
   let clip: any;
+  let version = 0;
+  const listeners = new Set<() => void>();
   let prefs: any = jest.requireActual('../../data/schema').DEFAULT_PREFS;
   return {
     __setClip: (c: any) => (clip = c),
@@ -45,11 +47,20 @@ jest.mock('../../data/mmkv', () => {
       getPrefs: () => prefs,
       setPrefs: jest.fn((p: object) => (prefs = { ...prefs, ...p })),
       getSession: () => ({ id: 's1', sport: clip?.durationMs > 60000 ? 'musculacao' : 'beachTennis', startedAt: 0 }),
-      updateClip: jest.fn((id: string, patch: object) => (clip = { ...clip, ...patch })),
+      updateClip: jest.fn((id: string, patch: object) => {
+        clip = { ...clip, ...patch };
+        version += 1;
+        listeners.forEach((listener) => listener());
+        return clip;
+      }),
       renameClip: jest.fn(),
       deleteClip: jest.fn(),
-      subscribe: () => () => {},
-      version: () => 0,
+      // Like the real repo: the screen hears every change and reads the clip again.
+      subscribe: (listener: () => void) => {
+        listeners.add(listener);
+        return () => void listeners.delete(listener);
+      },
+      version: () => version,
     },
   };
 });
@@ -80,12 +91,19 @@ const open = async () => {
   await act(async () => {});
 };
 const pressAction = (name: string) => act(async () => fireEvent.press(screen.getByRole('button', { name })));
+/** Opens the clip and goes to edit mode, on `tool` when given (tabs are named by the tool, Foco may say "ligado"). */
+const openEdit = async (tool?: string) => {
+  await open();
+  await pressAction('Editar');
+  if (tool) await act(async () => fireEvent.press(screen.getByRole('tab', { name: new RegExp(`^${tool}`) })));
+};
 
 test('the name field shows which clip it is until the player names it', async () => {
   await open();
   const input = screen.getByLabelText('Nome do clipe');
   expect(input.props.placeholder).toBe('Clipe #2 · 19:40');
   expect(input.props.maxLength).toBe(40);
+  await pressAction('Editar');
   expect(screen.getByText('Corte: 0:30')).toBeTruthy();
 });
 
@@ -111,49 +129,51 @@ test('the clip is renamed on the same screen, saved on blur', async () => {
   expect(repo.renameClip).toHaveBeenCalledWith('c1', 'Match point');
 });
 
-test('the top bar has icon buttons for delete, save to Photos and share, and no text "Salvar"', async () => {
+test('watching shows back, delete and Editar · Salvar · Enviar, and no tools', async () => {
   await open();
   const labels = screen.getAllByRole('button').map((b) => b.props.accessibilityLabel);
-  expect(labels).toEqual(expect.arrayContaining(['Voltar', 'Apagar clipe', 'Salvar na galeria', 'Compartilhar']));
-  expect(screen.queryByText('Salvar')).toBeNull();
+  expect(labels).toEqual(expect.arrayContaining(['Voltar', 'Apagar clipe', 'Editar', 'Salvar na galeria', 'Compartilhar']));
+  expect(screen.getByText('Salvar')).toBeTruthy();
+  expect(screen.getByText('Enviar')).toBeTruthy();
   expect(screen.queryByText('Apagar clipe')).toBeNull();
   expect(screen.queryByText(/Story/)).toBeNull();
+  expect(screen.queryByRole('tab')).toBeNull();
 });
 
 test('choosing a speed stores it on the clip', async () => {
-  await open();
+  await openEdit('Velocidade');
   await fireEvent.press(screen.getByRole('button', { name: 'Velocidade 2x' }));
   expect(repo.updateClip).toHaveBeenCalledWith('c1', { edit: { speed: 2, muted: false } });
 });
 
 test('toggling sound stores muted', async () => {
-  await open();
+  await openEdit('Som');
   await fireEvent.press(screen.getByRole('button', { name: 'Som' }));
   expect(repo.updateClip).toHaveBeenLastCalledWith('c1', { edit: { speed: 1, muted: true } });
 });
 
 test('at any speed but 1x the sound shows as off and cannot be turned on', async () => {
   __setClip({ ...base, edit: { speed: 1.5, muted: false } });
-  await open();
+  await openEdit('Som');
   expect(screen.getByRole('button', { name: 'Som' })).toBeDisabled();
   expect(screen.getByText('Sem som')).toBeTruthy();
 });
 
 test('a clip saved with the old slow motion switch opens at 0.5x', async () => {
   __setClip({ ...base, edit: { slowmo: true, muted: false } });
-  await open();
+  await openEdit('Velocidade');
   expect(screen.getByRole('button', { name: 'Velocidade 0.5x' })).toBeSelected();
   expect(screen.getByText('Corte: 1:00')).toBeTruthy();
 });
 
 test('the cut label shows the length of the result, so 2x halves it', async () => {
   __setClip({ ...base, edit: { speed: 2, muted: false } });
-  await open();
+  await openEdit();
   expect(screen.getByText('Corte: 0:15')).toBeTruthy();
 });
 
 test('dragging a handle updates the time and shows that edge in the preview', async () => {
-  await open();
+  await openEdit();
   const bar = jest.requireMock('../../components/TrimBar').__props;
   await act(async () => bar.last.onChange({ startMs: 40000, endMs: 60000 }, 'start'));
   expect(screen.getByText('Corte: 0:20')).toBeTruthy();
@@ -164,7 +184,7 @@ test('dragging a handle updates the time and shows that edge in the preview', as
 });
 
 test('letting go of a handle saves the cut and plays it from the start', async () => {
-  await open();
+  await openEdit();
   const bar = jest.requireMock('../../components/TrimBar').__props;
   await act(async () => bar.last.onChange({ startMs: 40000, endMs: 60000 }, 'start'));
   player.play.mockClear();
@@ -175,7 +195,7 @@ test('letting go of a handle saves the cut and plays it from the start', async (
 });
 
 test('the play button pauses and resumes, and a paused clip stays paused after a cut', async () => {
-  await open();
+  await openEdit();
   await pressAction('Pausar');
   expect(player.pause).toHaveBeenCalled();
   expect(screen.getByRole('button', { name: 'Reproduzir' })).toBeTruthy();
@@ -190,14 +210,14 @@ test('the play button pauses and resumes, and a paused clip stays paused after a
 
 test('a clip allows cuts up to the 60s buffer', async () => {
   __setClip({ ...base, durationMs: 60000, trim: { startMs: 30000, endMs: 60000 } });
-  await open();
+  await openEdit();
   expect(jest.requireMock('../../components/TrimBar').__props.last.maxMs).toBe(60000);
 });
 
 test('the trim track covers only the cut the clip was saved with, not the rest of the buffer', async () => {
   const cut = { startMs: 47000, endMs: 60000 };
   __setClip({ ...base, durationMs: 60000, trim: cut, bounds: cut });
-  await open();
+  await openEdit();
   const bar = jest.requireMock('../../components/TrimBar').__props.last;
   expect(bar.floorMs).toBe(47000);
   expect(bar.durationMs).toBe(60000);
@@ -206,7 +226,7 @@ test('the trim track covers only the cut the clip was saved with, not the rest o
 
 test('a clip saved before bounds existed still shows its whole file', async () => {
   __setClip({ ...base });
-  await open();
+  await openEdit();
   const bar = jest.requireMock('../../components/TrimBar').__props.last;
   expect(bar.floorMs).toBe(0);
   expect(bar.durationMs).toBe(60000);
@@ -323,34 +343,162 @@ test('a name typed without closing the keyboard is saved when the player shares'
   expect(repo.renameClip).toHaveBeenCalledWith('c1', 'Match point');
 });
 
-test('full screen shows only the video and a way out, then brings the editor back', async () => {
-  await open();
-  await pressAction('Tela cheia');
-  expect(screen.getByRole('button', { name: 'Sair da tela cheia' })).toBeTruthy();
-  expect(screen.queryByRole('button', { name: 'Compartilhar' })).toBeNull();
-  await pressAction('Sair da tela cheia');
-  expect(screen.getByRole('button', { name: 'Compartilhar' })).toBeTruthy();
-  expect(screen.getByRole('button', { name: 'Tela cheia' })).toBeTruthy();
+describe('watch and edit', () => {
+  const { __props: video } = jest.requireMock('../../share/ZoomableVideo');
+  const tab = (name: RegExp) => screen.getByRole('tab', { name });
+
+  beforeEach(() => jest.requireActual('../../clip/editSession').rememberTool('focus'));
+
+  test('Editar opens the tools on Foco the first time, then on the last tool used', async () => {
+    await openEdit();
+    expect(screen.queryByRole('button', { name: 'Compartilhar' })).toBeNull();
+    expect(tab(/^Foco/).props.accessibilityState).toMatchObject({ selected: true });
+    await act(async () => fireEvent.press(tab(/^Som/)));
+    await pressAction('Concluir');
+    await pressAction('Editar');
+    expect(tab(/^Som/).props.accessibilityState).toMatchObject({ selected: true });
+  });
+
+  test('Cancelar puts the clip back as it was when editing began', async () => {
+    await openEdit('Velocidade');
+    await fireEvent.press(screen.getByRole('button', { name: 'Velocidade 2x' }));
+    await pressAction('Cancelar');
+    expect(repo.updateClip).toHaveBeenLastCalledWith('c1', { edit: undefined, trim: { startMs: 30000, endMs: 60000 } });
+    expect(screen.getByRole('button', { name: 'Compartilhar' })).toBeTruthy();
+  });
+
+  test('Concluir keeps the edits', async () => {
+    await openEdit('Velocidade');
+    await fireEvent.press(screen.getByRole('button', { name: 'Velocidade 2x' }));
+    repo.updateClip.mockClear();
+    await pressAction('Concluir');
+    expect(repo.updateClip).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Editar' })).toBeTruthy();
+  });
+
+  test('Android back while editing leaves at once when nothing changed, and asks when something did', async () => {
+    const { BackHandler } = jest.requireActual('react-native');
+    const listen = jest.spyOn(BackHandler, 'addEventListener');
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    await openEdit();
+    const back = () => (listen.mock.calls[listen.mock.calls.length - 1][1] as () => boolean)();
+    let handled = false;
+    await act(async () => void (handled = back()));
+    expect(handled).toBe(true);
+    expect(alert).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Editar' })).toBeTruthy();
+    await pressAction('Editar');
+    await act(async () => fireEvent.press(tab(/^Velocidade/)));
+    await fireEvent.press(screen.getByRole('button', { name: 'Velocidade 2x' }));
+    await act(async () => void back());
+    expect(alert).toHaveBeenCalledWith('Descartar alterações?', undefined, expect.any(Array));
+    listen.mockRestore();
+    alert.mockRestore();
+  });
+
+  test('holding the video while watching plays 2x, then the clip goes back to its own speed and sound', async () => {
+    __setClip({ ...base, edit: { speed: 0.5, muted: true } });
+    await open();
+    await act(async () => video.last.onHold(true));
+    expect(player.playbackRate).toBe(2);
+    expect(player.muted).toBe(true);
+    expect(screen.getByText('2x')).toBeTruthy();
+    await act(async () => video.last.onHold(false));
+    expect(player.playbackRate).toBe(0.5);
+    expect(player.muted).toBe(true);
+    expect(screen.queryByText('2x')).toBeNull();
+  });
+
+  test('an export right after Concluir has the edits just made, and is made once', async () => {
+    await openEdit('Velocidade');
+    await fireEvent.press(screen.getByRole('button', { name: 'Velocidade 2x' }));
+    await pressAction('Concluir');
+    await pressAction('Salvar na galeria');
+    expect(camera.exportClip).toHaveBeenCalledWith(expect.objectContaining({ speed: 2, muted: true }));
+    await pressAction('Compartilhar');
+    expect(camera.exportClip).toHaveBeenCalledTimes(1);
+  });
+
+  test('Cancelar after a pinch took over Modo Foco brings it back with no zoom', async () => {
+    jest.requireMock('../../data/focusFile').readFocusFile.mockReturnValue({ startMs: 30000, stepMs: 100, rects: [[0.1, 0.1, 0.8, 0.8]] });
+    __setClip({ ...base, focus: { v: 1, status: 'ready', file: '/c1.focus.json' } });
+    await openEdit('Zoom');
+    await act(async () => video.last.onCommit({ scale: 2, cx: 0.4, cy: 0.5 }));
+    expect(repo.updateClip).toHaveBeenLastCalledWith('c1', expect.objectContaining({ edit: expect.objectContaining({ focus: false }) }));
+    await pressAction('Cancelar');
+    expect(repo.updateClip).toHaveBeenLastCalledWith('c1', { edit: undefined, trim: { startMs: 30000, endMs: 60000 } });
+    expect(screen.getByRole('button', { name: 'Modo Foco' })).toBeTruthy();
+    jest.requireMock('../../data/focusFile').readFocusFile.mockReturnValue(undefined);
+  });
+
+  test('asked on Android back, Descartar puts the clip back and Continuar editando stays', async () => {
+    const { BackHandler } = jest.requireActual('react-native');
+    const listen = jest.spyOn(BackHandler, 'addEventListener');
+    const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => {});
+    const back = () => (listen.mock.calls[listen.mock.calls.length - 1][1] as () => boolean)();
+    const choose = (text: string) => {
+      const buttons = alert.mock.calls[alert.mock.calls.length - 1][2] as { text: string; onPress?: () => void }[];
+      const button = buttons.find((b) => b.text === text)!;
+      if (button.onPress) button.onPress();
+    };
+    await openEdit('Velocidade');
+    await fireEvent.press(screen.getByRole('button', { name: 'Velocidade 2x' }));
+    await act(async () => void back());
+    await act(async () => choose('Continuar editando'));
+    expect(screen.getByRole('button', { name: 'Concluir' })).toBeTruthy();
+    await act(async () => void back());
+    await act(async () => choose('Descartar'));
+    expect(repo.updateClip).toHaveBeenLastCalledWith('c1', { edit: undefined, trim: { startMs: 30000, endMs: 60000 } });
+    expect(screen.getByRole('button', { name: 'Editar' })).toBeTruthy();
+    listen.mockRestore();
+    alert.mockRestore();
+  });
+
+  test('a phone without Modo Foco has no Foco tool and opens on Velocidade', async () => {
+    camera.isFocusSupported.mockReturnValue(false);
+    await openEdit();
+    expect(screen.queryByRole('tab', { name: /^Foco/ })).toBeNull();
+    expect(tab(/^Velocidade/).props.accessibilityState).toMatchObject({ selected: true });
+    camera.isFocusSupported.mockReturnValue(true);
+  });
+
+  test('a ready framing waits for the video shape before saying anything about the clip', async () => {
+    (Image.getSize as jest.Mock).mockReturnValue(new Promise(() => {}));
+    __setClip({ ...base, focus: { v: 1, status: 'ready', file: '/c1.focus.json' } });
+    await openEdit('Foco');
+    expect(screen.getByText('Preparando o enquadramento…')).toBeTruthy();
+    expect(screen.queryByText('Modo Foco indisponível para esse clipe.')).toBeNull();
+  });
+
+  test('watching swipes between clips without zoom; editing zooms and does not swipe', async () => {
+    await open();
+    expect(video.last.onSwipe).toBeDefined();
+    expect(video.last.pinch).toBe(false);
+    await pressAction('Editar');
+    expect(video.last.onSwipe).toBeUndefined();
+    expect(video.last.pinch).toBe(true);
+    expect(video.last.onHold).toBeUndefined();
+  });
 });
 
 test('a zoomed clip shows its zoom and can go back to 1x', async () => {
   __setClip({ ...base, edit: { speed: 1, muted: false, zoom: { scale: 2.5, cx: 0.5, cy: 0.5 } } });
-  await open();
-  expect(screen.getByText('2.5x  ✕')).toBeTruthy();
+  await openEdit('Zoom');
+  expect(screen.getByText('2.5x')).toBeTruthy();
   await pressAction('Voltar zoom para 1x');
   expect(repo.updateClip).toHaveBeenLastCalledWith('c1', { edit: { speed: 1, muted: false } });
 });
 
 test('Girar turns the video a quarter, stored on the clip, and starts the zoom over', async () => {
   __setClip({ ...base, edit: { speed: 1, muted: false, zoom: { scale: 2, cx: 0.5, cy: 0.5 } } });
-  await open();
+  await openEdit('Girar');
   await pressAction('Girar vídeo');
   expect(repo.updateClip).toHaveBeenLastCalledWith('c1', { edit: { speed: 1, muted: false, rotation: 90 } });
 });
 
 test('turning a clip already turned three times brings it back to upright', async () => {
   __setClip({ ...base, edit: { speed: 1, muted: false, rotation: 270 } });
-  await open();
+  await openEdit('Girar');
   await pressAction('Girar vídeo');
   expect(repo.updateClip).toHaveBeenLastCalledWith('c1', { edit: { speed: 1, muted: false } });
 });
@@ -391,7 +539,7 @@ describe('a black start', () => {
 
   test('the track starts at the useful video: the left label shows its length, not the whole file', async () => {
     __setClip({ ...short, contentStartMs: 10750, trim: { startMs: 10750, endMs: 54000 } });
-    await open();
+    await openEdit();
     expect(screen.getByText('-0:46')).toBeTruthy();
     expect(jest.requireMock('../../components/TrimBar').__props.last.floorMs).toBe(10750);
   });
@@ -414,6 +562,9 @@ describe('Modo Foco', () => {
   test('a ready clip opens with Modo Foco on and the picture following the play', async () => {
     __setClip({ ...base, focus: ready });
     await open();
+    expect(screen.getByRole('button', { name: 'Modo Foco' })).toBeTruthy();
+    expect(video.last.follow).toBeDefined();
+    await pressAction('Modo Foco'); // the tag opens edit mode on Foco
     expect(chip().props.accessibilityState).toMatchObject({ checked: true });
     expect(video.last.follow).toBeDefined();
     expect(readFocusFile).toHaveBeenCalledWith('/c1.focus.json', 'landscape');
@@ -421,23 +572,23 @@ describe('Modo Foco', () => {
 
   test('turning it off is stored on the clip and shows the whole video', async () => {
     __setClip({ ...base, focus: ready });
-    await open();
+    await openEdit('Foco');
     await act(async () => fireEvent.press(chip()));
     expect(repo.updateClip).toHaveBeenLastCalledWith('c1', { edit: { speed: 1, muted: false, focus: false } });
     // The repo stand-in does not notify the screen: open the stored clip again.
-    await open();
+    await openEdit('Foco');
     expect(chip().props.accessibilityState).toMatchObject({ checked: false });
     expect(video.last.follow).toBeUndefined();
   });
 
   test('turned off stays off when another choice is made', async () => {
     __setClip({ ...base, focus: ready, edit: { muted: false, focus: false } });
-    await open();
+    await openEdit('Velocidade');
     await fireEvent.press(screen.getByRole('button', { name: 'Velocidade 2x' }));
     expect(repo.updateClip).toHaveBeenLastCalledWith('c1', { edit: { speed: 2, muted: false, focus: false } });
   });
 
-  test('while the analysis runs the chip says it is preparing', async () => {
+  test('while the analysis runs the tag says it is preparing', async () => {
     __setClip({ ...base, focus: { v: 1, status: 'pending' } });
     await open();
     expect(screen.getByText('Modo Foco · preparando')).toBeTruthy();
@@ -449,17 +600,21 @@ describe('Modo Foco', () => {
     ['analysis failed', { focus: { v: 1, status: 'failed' } }],
     ['video turned by hand', { focus: ready, edit: { muted: false, rotation: 90 } }],
     ['framing file unreadable', { focus: { v: 1, status: 'ready', file: '/gone.focus.json' } }],
-  ])('no chip when %s', async (_name, extra) => {
+  ])('no tag and no switch when %s', async (_name, extra) => {
     __setClip({ ...base, ...extra });
     await open();
-    expect(screen.queryByRole('switch', { name: 'Modo Foco' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Modo Foco' })).toBeNull();
     expect(video.last.follow).toBeUndefined();
+    await pressAction('Editar');
+    await act(async () => fireEvent.press(screen.getByRole('tab', { name: /^Foco/ })));
+    expect(screen.queryByRole('switch', { name: 'Modo Foco' })).toBeNull();
+    expect(screen.getByText('Modo Foco indisponível para esse clipe.')).toBeTruthy();
   });
 
-  test('no chip on a phone without the analysis', async () => {
+  test('no tag on a phone without the analysis', async () => {
     camera.isFocusSupported.mockReturnValueOnce(false).mockReturnValue(false);
     await open();
-    expect(screen.queryByRole('switch', { name: 'Modo Foco' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Modo Foco' })).toBeNull();
     camera.isFocusSupported.mockReturnValue(true);
   });
 
@@ -470,7 +625,7 @@ describe('Modo Foco', () => {
 
   test('a pinch while following takes over: the zoom is kept and Modo Foco turns off', async () => {
     __setClip({ ...base, focus: ready });
-    await open();
+    await openEdit('Zoom');
     await act(async () => video.last.onCommit({ scale: 2, cx: 0.4, cy: 0.5 }));
     expect(repo.updateClip).toHaveBeenLastCalledWith('c1', {
       edit: { speed: 1, muted: false, zoom: { scale: 2, cx: 0.4, cy: 0.5 }, focus: false },
@@ -479,7 +634,7 @@ describe('Modo Foco', () => {
 
   test('turning Modo Foco back on drops the hand zoom', async () => {
     __setClip({ ...base, focus: ready, edit: { muted: false, focus: false, zoom: { scale: 2, cx: 0.5, cy: 0.5 } } });
-    await open();
+    await openEdit('Foco');
     expect(chip().props.accessibilityState).toMatchObject({ checked: false });
     await act(async () => fireEvent.press(chip()));
     expect(repo.updateClip).toHaveBeenLastCalledWith('c1', { edit: { speed: 1, muted: false } });

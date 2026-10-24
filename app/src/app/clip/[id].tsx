@@ -3,49 +3,43 @@ import { Asset, requestPermissionsAsync } from 'expo-media-library';
 import { router, useLocalSearchParams } from 'expo-router';
 import { shareAsync } from 'expo-sharing';
 import { useVideoPlayer } from 'expo-video';
-import { type ComponentRef, type ReactNode, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { type ComponentRef, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import {
-  ActivityIndicator,
   Alert,
   Animated,
+  BackHandler,
   Easing,
   Image,
   PixelRatio,
   Pressable,
   StyleSheet,
   Text,
-  TextInput,
   useWindowDimensions,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { createThumbnail, exportClip, findContentStart, isFocusSupported } from '../../../modules/replay-camera';
+import { ClipEdit } from '../../clip/ClipEdit';
+import { ClipWatch } from '../../clip/ClipWatch';
+import { beginEdit, type EditSnapshot, hasChanges, lastTool, rememberTool, restorePatch, type ToolId } from '../../clip/editSession';
+import { IconButton, SCRIM } from '../../clip/IconButton';
+import { ToolBar } from '../../clip/ToolBar';
+import { EDIT_TOOLS, type EditTool, type FocusUi, type ToolContext } from '../../clip/tools';
+import { WatchProgress } from '../../clip/WatchProgress';
 import { ExportProgress, type ExportJob } from '../../components/ExportProgress';
-import { FocusChip } from '../../components/FocusChip';
 import { clipNumber, seconds, timeOfDay } from '../../components/format';
-import {
-  BackIcon,
-  CloseIcon,
-  DownloadIcon,
-  ExpandIcon,
-  PauseIcon,
-  PlayIcon,
-  RotateIcon,
-  ShareIcon,
-  TrashIcon,
-} from '../../components/icons';
+import { BackIcon, PauseIcon, PlayIcon } from '../../components/icons';
 import { Playhead } from '../../components/Playhead';
 import { TrimBar } from '../../components/TrimBar';
 import { useReduceMotion } from '../../components/useReduceMotion';
 import { readFocusFile } from '../../data/focusFile';
 import { removeFile, repo } from '../../data/mmkv';
-import { MAX_CLIP_NAME } from '../../data/schema';
 import { focusQueue } from '../../focus/appFocusQueue';
 import { useFocusFraming } from '../../focus/useFocusFraming';
 import { effectiveSettings } from '../../modes/registry';
 import { captureOverlay } from '../../share/captureOverlay';
-import { contentFloor, nextRotation, outputMs, raiseToFloor, readEdit, SPEEDS, turnedSize } from '../../share/editing';
+import { contentFloor, nextRotation, outputMs, raiseToFloor, readEdit, turnedSize } from '../../share/editing';
 import { clipWindow } from '../../share/trim';
 import { useEntitlement } from '../../share/entitlement';
 import { exportOptions } from '../../share/exportOptions';
@@ -63,6 +57,7 @@ const SAVED_VISIBLE_MS = 3500;
 const SHARE_HANDOFF_MS = 1200;
 const PREPARE_FAILED = 'Não foi possível preparar o vídeo. Tente de novo.';
 const FOCUS_INTRO = 'Modo Foco: a câmera acompanha o lance';
+const DISCARD_TITLE = 'Descartar alterações?';
 const FOCUS_INTRO_MS = 3000;
 /** How long the framing takes to grow out of the whole video: the first time ever, and when it gets ready on screen. */
 const FOCUS_INTRO_EASE_MS = 700;
@@ -103,12 +98,12 @@ function clearOldExports() {
 }
 
 /**
- * One screen to edit, preview and send a lance: cut, speed, sound and zoom on the exact frame that gets exported
- * (9:16 with the app mark), then save to Photos or share. Deleting and renaming live in the top bar.
+ * One clip: watch it clean (Salvar, Enviar, hold for 2x) or edit it (tool bar over the cut; Cancelar undoes). The preview
+ * is the exact frame that gets exported (with the app mark).
  */
 export default function ClipScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  // Keyed by clip: moving to another clip starts the editor from that clip's own state.
+  // Keyed by clip: moving to another clip starts the screen from that clip's own state.
   return <ClipEditor key={id} id={id} />;
 }
 
@@ -132,15 +127,20 @@ function ClipEditor({ id }: { id: string }) {
   const maxMs = session ? effectiveSettings(session.sport, repo.getPrefs()).bufferSeconds * 1000 : undefined;
   const { tier } = useEntitlement();
 
-  const [trim, setTrim] = useState(() => clip?.trim ?? { startMs: 0, endMs: 0 });
+  const [trim, setTrim] = useState(() => (clip ? clip.trim : { startMs: 0, endMs: 0 }));
   const edit = readEdit(clip?.edit);
   const floor = clip?.contentStartMs ?? 0;
   // The track covers only what the clip was first saved with, so the cut can be shortened but never reach moments
   // that already belong to the previous clip.
   const win = clip ? clipWindow(clip, floor) : { startMs: 0, endMs: 0 };
-  // Bumped to start the zoomed video over from the saved zoom (reset, or switching to/from full screen).
+  // Bumped to start the zoomed video over from the saved zoom (reset, turn, Modo Foco back on, mode switch).
   const [zoomKey, setZoomKey] = useState(0);
-  const [full, setFull] = useState(false);
+  // Watch (clean, Salvar/Enviar) or edit (tool bar, Cancelar/Concluir); edit keeps what Cancelar puts back.
+  const [mode, setMode] = useState<'watch' | 'edit'>('watch');
+  const snapshot = useRef<EditSnapshot | undefined>(undefined);
+  const [openTool, setOpenTool] = useState<ToolId>(lastTool);
+  // A finger held on the video in watch mode: 2x while it stays down.
+  const [fast, setFast] = useState(false);
   const window = useWindowDimensions();
   const [name, setName] = useState(() => clip?.name ?? '');
   const [playing, setPlayingState] = useState(true);
@@ -294,6 +294,16 @@ function ClipEditor({ id }: { id: string }) {
     return () => sub.remove();
   }, [player, trim, edit.speed, edit.muted]);
 
+  // Android back while editing works as Cancelar, asking first when something changed (iOS has no back gesture here).
+  useEffect(() => {
+    if (mode !== 'edit') return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      askCancelEdit();
+      return true;
+    });
+    return () => sub.remove();
+  });
+
   if (!clip || !session || !options) {
     return (
       <SafeAreaView style={styles.missingRoot}>
@@ -346,9 +356,44 @@ function ClipEditor({ id }: { id: string }) {
     setZoomKey((k) => k + 1);
   }
 
-  function openFull(on: boolean) {
-    setFull(on);
+  function enterEdit(tool?: ToolId) {
+    const current = repo.getClip(id);
+    if (!current) return;
+    snapshot.current = beginEdit(current);
+    const first = tool ? tool : lastTool();
+    // Where Modo Foco cannot run there is no Foco tool to open.
+    setOpenTool(first === 'focus' && !focusSupported ? 'speed' : first);
+    setMode('edit');
     setZoomKey((k) => k + 1);
+  }
+
+  function leaveEdit() {
+    snapshot.current = undefined;
+    setMode('watch');
+    setZoomKey((k) => k + 1);
+  }
+
+  /** Cancelar: the clip's cut and choices go back to what they were when edit mode opened. */
+  function cancelEdit() {
+    const before = snapshot.current;
+    if (before) {
+      repo.updateClip(id, restorePatch(before));
+      setTrim(before.trim);
+      seek(player, before.trim.startMs);
+    }
+    leaveEdit();
+  }
+
+  function pickTool(tool: ToolId) {
+    setOpenTool(tool);
+    rememberTool(tool);
+  }
+
+  /** Watch mode, like Reels: 2x (silent) while a finger is held on the video; the clip's own speed after. */
+  function holdFast(down: boolean) {
+    setFast(down);
+    if (down) applyPlayback(player, 2, true);
+    else applyPlayback(player, edit.speed, edit.muted);
   }
 
   function togglePlay() {
@@ -467,70 +512,54 @@ function ClipEditor({ id }: { id: string }) {
       repo.updateClip(id, { sharedAt: Date.now() });
     });
 
-  // Preview: the export's frame as large as the whole screen allows; the controls sit over it.
-  const previewHeight = Math.min(window.height, (window.width * frame.height) / frame.width);
-  const scale = previewHeight / frame.height;
-  const pr = PixelRatio.get();
-  const zoomed = (edit.zoom?.scale ?? 1) > 1;
-  const videoBox = {
-    left: layout.video.x * scale,
-    top: layout.video.y * scale,
-    width: layout.video.width * scale,
-    height: layout.video.height * scale,
-  };
-  const busyActions = busy || !sizeKnown;
-
-  if (full) {
-    // The whole screen shows the raw video, so a pinch has room; the zoom is the same one the export uses.
-    const fit = Math.min(window.width / shape.width, window.height / shape.height);
-    const w = shape.width * fit;
-    const h = shape.height * fit;
-    return (
-      <Animated.View style={[styles.full, { transform: [{ translateX: slide }] }]}>
-        <ZoomableVideo
-          key={zoomKey}
-          player={player}
-          area={window}
-          box={{ left: (window.width - w) / 2, top: (window.height - h) / 2, width: w, height: h }}
-          zoom={edit.zoom}
-          rotation={edit.rotation}
-          onCommit={commitZoom}
-          onTap={togglePlay}
-          onSwipe={goBy}
-          follow={follow}
-          enterMs={focusEnterMs}
-        />
-        {!playing ? (
-          <View pointerEvents="none" style={styles.pausedBadge}>
-            <PlayIcon color={colors.text} size={36} />
-          </View>
-        ) : null}
-        <SafeAreaView pointerEvents="box-none" style={styles.fullTop}>
-          <View style={styles.sideLeft}>
-            {focusChip ? <FocusChip state={focusChip} onToggle={toggleFocus} /> : null}
-            {zoomed ? (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Voltar zoom para 1x"
-                onPress={() => {
-                  setEdit({ zoom: undefined });
-                  setZoomKey((k) => k + 1);
-                }}
-                style={styles.zoomBadge}>
-                <Text style={styles.zoomText}>{`${edit.zoom!.scale.toFixed(1)}x  ✕`}</Text>
-              </Pressable>
-            ) : null}
-          </View>
-          <IconButton label="Sair da tela cheia" onPress={() => openFull(false)}>
-            <CloseIcon />
-          </IconButton>
-        </SafeAreaView>
-      </Animated.View>
-    );
+  /** Back while editing: nothing changed leaves at once; changes ask before they are thrown away. */
+  function askCancelEdit() {
+    const current = repo.getClip(id);
+    const before = snapshot.current;
+    if (!current || !before || !hasChanges(before, current)) return cancelEdit();
+    Alert.alert(DISCARD_TITLE, undefined, [
+      { text: 'Continuar editando', style: 'cancel' },
+      { text: 'Descartar', style: 'destructive', onPress: cancelEdit },
+    ]);
   }
 
-  return (
-    <Animated.View style={[styles.root, { transform: [{ translateX: slide }] }]}>
+  const pr = PixelRatio.get();
+  const busyActions = busy || !sizeKnown;
+  const editing = mode === 'edit';
+
+  let focusUi: FocusUi = 'unavailable';
+  if (focusChip === 'on' || focusChip === 'off' || focusChip === 'preparing') focusUi = focusChip;
+  // A ready framing is read once the video's shape is known: until then it is still on its way, not impossible.
+  else if (focusFile && !sizeKnown && edit.rotation === 0) focusUi = 'preparing';
+  const tools = focusSupported ? EDIT_TOOLS : EDIT_TOOLS.filter((t) => t.id !== 'focus');
+  const ctx: ToolContext = {
+    edit,
+    setEdit,
+    focus: focusUi,
+    toggleFocus,
+    resetZoom: () => {
+      setEdit({ zoom: undefined });
+      setZoomKey((k) => k + 1);
+    },
+    turn: () => {
+      // A zoom window means something else after a turn, so start from the whole picture again.
+      setEdit({ rotation: nextRotation(edit.rotation), zoom: undefined });
+      setZoomKey((k) => k + 1);
+    },
+  };
+  const tool = (tools.find((t) => t.id === openTool) as EditTool | undefined) || tools[0];
+
+  /** The export's frame as large as `area` allows, the video in it, the app mark over it. */
+  function renderStage(area: { width: number; height: number }) {
+    const previewHeight = Math.min(area.height, (area.width * frame.height) / frame.width);
+    const scale = previewHeight / frame.height;
+    const videoBox = {
+      left: layout.video.x * scale,
+      top: layout.video.y * scale,
+      width: layout.video.width * scale,
+      height: layout.video.height * scale,
+    };
+    return (
       <View style={styles.stage}>
         <View style={[styles.preview, { width: frame.width * scale, height: previewHeight }]}>
           <ZoomableVideo
@@ -540,22 +569,17 @@ function ClipEditor({ id }: { id: string }) {
             box={videoBox}
             zoom={edit.zoom}
             rotation={edit.rotation}
-            onCommit={commitZoom}
+            onCommit={editing ? commitZoom : () => {}}
             onTap={togglePlay}
-            onSwipe={goBy}
+            onSwipe={editing ? undefined : goBy}
             follow={follow}
             enterMs={focusEnterMs}
+            pinch={editing}
+            onHold={editing ? undefined : holdFast}
           />
           <View pointerEvents="none" style={StyleSheet.absoluteFill}>
             <ShareOverlay frame={frame} layout={layout} scale={scale} />
           </View>
-          {showIntro ? (
-            <View pointerEvents="none" style={styles.focusIntroWrap}>
-              <Text accessibilityRole="alert" style={styles.focusIntro}>
-                {FOCUS_INTRO}
-              </Text>
-            </View>
-          ) : null}
           {!playing ? (
             <View pointerEvents="none" style={styles.pausedBadge}>
               <View style={styles.pausedDisc}>
@@ -565,81 +589,92 @@ function ClipEditor({ id }: { id: string }) {
           ) : null}
         </View>
       </View>
+    );
+  }
+
+  return (
+    <Animated.View style={[styles.root, { transform: [{ translateX: slide }] }]}>
+      {editing ? (
+        <ClipEdit
+          renderStage={renderStage}
+          onCancel={cancelEdit}
+          onDone={leaveEdit}
+          panel={<tool.Panel ctx={ctx} />}
+          cut={
+            <>
+              <View style={styles.trimLabels}>
+                <Text style={styles.small}>{`-${seconds(win.endMs - win.startMs)}`}</Text>
+                <Text style={styles.cut}>{`Corte: ${seconds(outputMs(trim, edit.speed))}`}</Text>
+                <Text style={styles.small}>gatilho</Text>
+              </View>
+              <View style={styles.trimRow}>
+                <IconButton label={playing ? 'Pausar' : 'Reproduzir'} onPress={togglePlay}>
+                  {playing ? <PauseIcon /> : <PlayIcon />}
+                </IconButton>
+                <View style={styles.trimBar}>
+                  <TrimBar
+                    durationMs={win.endMs}
+                    floorMs={win.startMs}
+                    trim={trim}
+                    maxMs={maxMs}
+                    onChange={scrub}
+                    onCommit={commitTrim}>
+                    <Playhead
+                      player={player}
+                      durationMs={win.endMs}
+                      floorMs={win.startMs}
+                      trim={trim}
+                      speed={edit.speed}
+                      scrubMs={scrubMs}
+                      onScrub={scrubTo}
+                      onScrubEnd={endScrub}
+                    />
+                  </TrimBar>
+                </View>
+              </View>
+            </>
+          }
+          toolBar={<ToolBar open={tool.id} focusOn={focusUi === 'on'} onOpen={pickTool} tools={tools} />}
+        />
+      ) : (
+        <ClipWatch
+          renderStage={renderStage}
+          name={name}
+          placeholder={`Clipe #${ownNumber} · ${timeOfDay(clip.createdAt)}`}
+          onChangeName={setName}
+          onSaveName={saveName}
+          onBack={() => router.back()}
+          onDelete={confirmDelete}
+          focusTag={focusChip === 'on' ? 'on' : focusChip === 'preparing' ? 'preparing' : undefined}
+          onFocusTag={() => enterEdit('focus')}
+          notice={busy ? undefined : notice}
+          position={siblings.length > 1 ? `${number} de ${siblings.length} · deslize para trocar` : undefined}
+          progress={
+            <WatchProgress
+              player={player}
+              trim={trim}
+              speed={edit.speed}
+              playing={playing}
+              onTogglePlay={togglePlay}
+              onSeek={scrubTo}
+              onSeekEnd={endScrub}
+            />
+          }
+          onEdit={() => enterEdit()}
+          onSave={() => void save()}
+          onShare={() => void share()}
+          actionsDisabled={busyActions}
+          saving={job !== undefined && job.kind === 'save'}
+          sharing={job !== undefined && job.kind === 'share'}
+          fast={fast}
+          caption={showIntro ? FOCUS_INTRO : undefined}
+        />
+      )}
 
       {/* Off-screen copy at exactly the export's pixel size, captured to PNG for the video overlay. */}
       <View pointerEvents="none" style={styles.offscreen}>
         <ShareOverlay ref={captureRefView} frame={frame} layout={layout} scale={1 / pr} />
       </View>
-
-      {/* Everything below floats over the video, on dark translucent backgrounds so it reads in the sun. */}
-      <SafeAreaView edges={['top']} pointerEvents="box-none" style={styles.overTop}>
-        <View style={styles.top}>
-          <IconButton label="Voltar" onPress={() => router.back()}>
-            <BackIcon />
-          </IconButton>
-          <TextInput
-            accessibilityLabel="Nome do clipe"
-            value={name}
-            onChangeText={setName}
-            onSubmitEditing={saveName}
-            onBlur={saveName}
-            placeholder={`Clipe #${ownNumber} · ${timeOfDay(clip.createdAt)}`}
-            placeholderTextColor={colors.soft}
-            maxLength={MAX_CLIP_NAME}
-            returnKeyType="done"
-            selectTextOnFocus
-            style={styles.nameInput}
-          />
-          <IconButton label="Apagar clipe" onPress={confirmDelete}>
-            <TrashIcon />
-          </IconButton>
-          <IconButton
-            label="Salvar na galeria"
-            disabled={busyActions}
-            loading={job !== undefined && job.kind === 'save'}
-            onPress={() => void save()}>
-            <DownloadIcon />
-          </IconButton>
-          <IconButton
-            label="Compartilhar"
-            disabled={busyActions}
-            loading={job !== undefined && job.kind === 'share'}
-            onPress={() => void share()}>
-            <ShareIcon />
-          </IconButton>
-        </View>
-        <View pointerEvents="box-none" style={styles.sideRow}>
-          <View style={styles.sideLeft}>
-            {focusChip ? <FocusChip state={focusChip} onToggle={toggleFocus} /> : null}
-            {zoomed ? (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Voltar zoom para 1x"
-                onPress={() => {
-                  setEdit({ zoom: undefined });
-                  setZoomKey((k) => k + 1);
-                }}
-                style={styles.zoomBadge}>
-                <Text style={styles.zoomText}>{`${edit.zoom!.scale.toFixed(1)}x  ✕`}</Text>
-              </Pressable>
-            ) : null}
-          </View>
-          <View style={styles.sideColumn}>
-            <IconButton
-              label="Girar vídeo"
-              onPress={() => {
-                // A zoom window means something else after a turn, so start from the whole picture again.
-                setEdit({ rotation: nextRotation(edit.rotation), zoom: undefined });
-                setZoomKey((k) => k + 1);
-              }}>
-              <RotateIcon />
-            </IconButton>
-            <IconButton label="Tela cheia" onPress={() => openFull(true)}>
-              <ExpandIcon />
-            </IconButton>
-          </View>
-        </View>
-      </SafeAreaView>
 
       {saved && !job ? (
         <Pressable accessibilityRole="alert" onPress={() => setSaved(false)} style={styles.savedWrap}>
@@ -653,187 +688,15 @@ function ClipEditor({ id }: { id: string }) {
         </Pressable>
       ) : null}
       {job ? <ExportProgress job={job} /> : null}
-
-      <SafeAreaView edges={['bottom']} pointerEvents="box-none" style={styles.overBottom}>
-        <View style={styles.panel}>
-          {busy ? null : notice ? (
-            <Text style={styles.notice}>{notice}</Text>
-          ) : null}
-          {siblings.length > 1 ? (
-            <Text style={styles.position}>{`${number} de ${siblings.length} · deslize para trocar`}</Text>
-          ) : null}
-          <View style={styles.trimLabels}>
-            <Text style={styles.small}>{`-${seconds(win.endMs - win.startMs)}`}</Text>
-            <Text style={styles.cut}>{`Corte: ${seconds(outputMs(trim, edit.speed))}`}</Text>
-            <Text style={styles.small}>gatilho</Text>
-          </View>
-          <View style={styles.trimRow}>
-            <IconButton label={playing ? 'Pausar' : 'Reproduzir'} onPress={togglePlay}>
-              {playing ? <PauseIcon /> : <PlayIcon />}
-            </IconButton>
-            <View style={styles.trimBar}>
-              <TrimBar
-                durationMs={win.endMs}
-                floorMs={win.startMs}
-                trim={trim}
-                maxMs={maxMs}
-                onChange={scrub}
-                onCommit={commitTrim}>
-                <Playhead
-                  player={player}
-                  durationMs={win.endMs}
-                  floorMs={win.startMs}
-                  trim={trim}
-                  speed={edit.speed}
-                  scrubMs={scrubMs}
-                  onScrub={scrubTo}
-                  onScrubEnd={endScrub}
-                />
-              </TrimBar>
-            </View>
-          </View>
-          <View style={styles.tools}>
-            {SPEEDS.map((speed) => (
-              <Tool
-                key={speed}
-                label={`${speed}x`}
-                a11y={`Velocidade ${speed}x`}
-                active={edit.speed === speed}
-                onPress={() => setEdit({ speed })}
-              />
-            ))}
-            <Tool
-              label={edit.muted || edit.speed !== 1 ? 'Sem som' : 'Som'}
-              a11y="Som"
-              active={!edit.muted && edit.speed === 1}
-              onPress={edit.speed !== 1 ? undefined : () => setEdit({ muted: !edit.muted })}
-            />
-          </View>
-        </View>
-      </SafeAreaView>
     </Animated.View>
   );
 }
 
-function IconButton({
-  label,
-  onPress,
-  disabled,
-  loading,
-  children,
-}: {
-  label: string;
-  onPress: () => void;
-  disabled?: boolean;
-  /** Shows a spinner in place of the icon: this is the button whose job is running. */
-  loading?: boolean;
-  children: ReactNode;
-}) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      disabled={disabled}
-      onPress={onPress}
-      accessibilityState={{ disabled: !!disabled, busy: !!loading }}
-      style={[styles.icon, disabled && !loading && styles.iconOff]}>
-      {loading ? <ActivityIndicator color={colors.text} /> : children}
-    </Pressable>
-  );
-}
-
-function Tool({
-  label,
-  a11y,
-  active,
-  onPress,
-}: {
-  label: string;
-  a11y?: string;
-  active: boolean;
-  onPress?: () => void;
-}) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={a11y ?? label}
-      accessibilityState={{ selected: active }}
-      disabled={!onPress}
-      onPress={onPress}
-      style={[styles.tool, active && styles.toolOn]}>
-      <Text style={styles.toolText}>{label}</Text>
-    </Pressable>
-  );
-}
-
-const SCRIM = 'rgba(15,16,13,0.74)';
-const EDGE = 'rgba(243,239,228,0.22)';
-
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.ground },
   missingRoot: { flex: 1, backgroundColor: colors.ground, paddingHorizontal: 16, gap: 12 },
-  stage: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center' },
+  stage: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   preview: { overflow: 'hidden', backgroundColor: colors.ground },
-  overTop: { position: 'absolute', left: 0, right: 0, top: 0, paddingHorizontal: 12 },
-  overBottom: { position: 'absolute', left: 0, right: 0, bottom: 0 },
-  top: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 },
-  sideRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginTop: 10 },
-  sideColumn: { gap: 8 },
-  sideLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  focusIntroWrap: { position: 'absolute', left: 0, right: 0, bottom: 24, alignItems: 'center' },
-  focusIntro: {
-    fontFamily: fonts.bodyBold,
-    fontSize: 14,
-    color: colors.onAccent,
-    backgroundColor: colors.accent,
-    borderRadius: 999,
-    overflow: 'hidden',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-  },
-  icon: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: SCRIM,
-    borderWidth: 1,
-    borderColor: EDGE,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  iconOff: { opacity: 0.4 },
-  nameInput: {
-    flex: 1,
-    minHeight: 42,
-    borderRadius: 21,
-    backgroundColor: SCRIM,
-    borderWidth: 1,
-    borderColor: EDGE,
-    paddingHorizontal: 14,
-    fontFamily: fonts.bodySemi,
-    fontSize: 14,
-    color: colors.text,
-  },
-  panel: {
-    marginHorizontal: 8,
-    marginBottom: 8,
-    padding: 12,
-    gap: 10,
-    borderRadius: 22,
-    backgroundColor: SCRIM,
-    borderWidth: 1,
-    borderColor: EDGE,
-  },
-  full: { flex: 1, backgroundColor: '#000' },
-  fullTop: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: 0,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    padding: 16,
-  },
   pausedBadge: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center' },
   pausedDisc: {
     width: 76,
@@ -844,15 +707,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingLeft: 4,
   },
-  zoomBadge: {
-    backgroundColor: colors.accent,
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  zoomText: { fontFamily: fonts.bodyBold, fontSize: 13, color: colors.onAccent },
   offscreen: { position: 'absolute', left: -10000, top: 0 },
-  position: { fontFamily: fonts.body, fontSize: 12, color: colors.text, opacity: 0.8, textAlign: 'center' },
   savedWrap: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center' },
   savedCard: {
     alignItems: 'center',
@@ -873,24 +728,10 @@ const styles = StyleSheet.create({
   savedCheckMark: { fontFamily: fonts.bodyBold, fontSize: 24, color: colors.ground },
   savedText: { fontFamily: fonts.bodyBold, fontSize: 17, color: colors.text },
   savedHint: { fontFamily: fonts.body, fontSize: 13, color: colors.text, opacity: 0.8 },
-  notice: { fontFamily: fonts.bodySemi, fontSize: 13, color: colors.text, textAlign: 'center' },
   trimLabels: { flexDirection: 'row', justifyContent: 'space-between' },
   trimRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   trimBar: { flex: 1 },
   small: { fontFamily: fonts.body, fontSize: 12, color: colors.text, opacity: 0.8 },
   cut: { fontFamily: fonts.bodyBold, fontSize: 13, color: colors.text },
-  tools: { flexDirection: 'row', gap: 6 },
-  tool: {
-    flex: 1,
-    minHeight: 46,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: EDGE,
-    backgroundColor: 'rgba(243,239,228,0.08)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  toolOn: { borderWidth: 2, borderColor: colors.accent },
-  toolText: { fontFamily: fonts.bodyBold, fontSize: 13, color: colors.text },
   missing: { fontFamily: fonts.body, fontSize: 15, color: colors.soft, textAlign: 'center', marginTop: 40 },
 });

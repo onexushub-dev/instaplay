@@ -1,6 +1,7 @@
 import { render } from '@testing-library/react-native';
 import * as Reanimated from 'react-native-reanimated';
 
+import * as gestureModule from '../useZoomGesture';
 import { ZoomableVideo } from '../ZoomableVideo';
 
 jest.mock('expo-video', () => ({ VideoView: () => null }));
@@ -28,4 +29,16 @@ test('the framing eases in once when following starts, not again when the ease l
   await view.rerender(<ZoomableVideo {...props} follow={f} enterMs={400} />);
   expect(glide).toHaveBeenCalledTimes(1);
   glide.mockRestore();
+});
+
+test('a hold handler from the screen gets the hold even when the picture does not follow', async () => {
+  const gesture = jest.spyOn(gestureModule, 'useZoomGesture');
+  const onHold = jest.fn();
+  await render(<ZoomableVideo {...props} onHold={onHold} pinch={false} />);
+  const last = gesture.mock.calls[gesture.mock.calls.length - 1][0] as { onHold?: (down: boolean) => void; pinch?: boolean };
+  expect(last.pinch).toBe(false);
+  last.onHold!(true);
+  last.onHold!(false);
+  expect(onHold.mock.calls).toEqual([[true], [false]]);
+  gesture.mockRestore();
 });

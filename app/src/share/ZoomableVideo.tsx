@@ -26,10 +26,14 @@ type Props = {
   follow?: FocusFollow;
   /** When `follow` starts: ease from the whole video into the framing over this long (0 = at once). */
   enterMs?: number;
+  /** False in watch mode: no zoom by hand. */
+  pinch?: boolean;
+  /** The screen's own hold (watch mode: 2x while held); replaces the "whole video" peek. */
+  onHold?: (down: boolean) => void;
 };
 
 /** The video with pinch zoom (around the fingers), drag to move it, and tap. Remount it to start again from `zoom`. */
-export function ZoomableVideo({ player, area, box, zoom, rotation, onCommit, onTap, onSwipe, follow, enterMs = 0 }: Props) {
+export function ZoomableVideo({ player, area, box, zoom, rotation, onCommit, onTap, onSwipe, follow, enterMs = 0, pinch, onHold }: Props) {
   const [live, setLive] = useState<Zoom>(zoom ?? NO_ZOOM);
   // A gesture on a followed picture takes over from where the framing is, and the picture stops following.
   // Which framing a gesture took over from: a new framing (Modo Foco turned on again) is followed afresh.
@@ -57,7 +61,8 @@ export function ZoomableVideo({ player, area, box, zoom, rotation, onCommit, onT
     },
     onTap,
     onSwipe,
-    onHold: following ? setPeek : undefined,
+    onHold: onHold ? onHold : following ? setPeek : undefined,
+    pinch,
   });
 
   // 0 = the whole video, 1 = the framing: eases in when following starts.

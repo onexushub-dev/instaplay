@@ -6,6 +6,8 @@ import { NO_ZOOM, panZoom, pinchZoom, type Zoom } from './editing';
 type Touch = { pageX: number; pageY: number };
 type Props = {
   zoom: Zoom;
+  /** False (watch mode): fingers never zoom or move the picture; tap, swipe and hold still work. Default true. */
+  pinch?: boolean;
   /** Where a gesture starts from when the picture is not showing `zoom` (Modo Foco's moving framing). */
   baseZoom?: () => Zoom;
   /** Where the video sits inside the touch area, to turn finger movement into a fraction of it. */
@@ -109,7 +111,7 @@ export function useZoomGesture(props: Props) {
           travelled += Math.hypot(dx, dy);
           totalX += dx;
           totalY += dy;
-          if (following && !multi) {
+          if ((following && !multi) || latest.current.pinch === false) {
             previous = next;
             return;
           }
@@ -130,14 +132,16 @@ export function useZoomGesture(props: Props) {
         if (endHold()) return;
         const tap = !multi && travelled < TAP_SLOP && Date.now() - startedAt < TAP_MS;
         const swipe =
-          !multi && (following || latest.current.zoom.scale <= 1.01) && Math.abs(totalX) > SWIPE_MIN && Math.abs(totalX) > 2 * Math.abs(totalY);
+          !multi &&
+          (following || latest.current.pinch === false || latest.current.zoom.scale <= 1.01) &&
+          Math.abs(totalX) > SWIPE_MIN && Math.abs(totalX) > 2 * Math.abs(totalY);
         if (tap) latest.current.onTap();
         else if (swipe && latest.current.onSwipe) latest.current.onSwipe(totalX < 0 ? 1 : -1);
-        else latest.current.onCommit(current);
+        else if (latest.current.pinch !== false) latest.current.onCommit(current);
       },
       onPanResponderTerminate: () => {
         if (endHold()) return;
-        latest.current.onCommit(current);
+        if (latest.current.pinch !== false) latest.current.onCommit(current);
       },
     });
   });
