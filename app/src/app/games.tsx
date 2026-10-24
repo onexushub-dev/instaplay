@@ -104,7 +104,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  title: { fontFamily: fonts.displayBold, fontSize: 44, color: colors.text },
+  title: { fontFamily: fonts.displayBold, fontSize: 44, lineHeight: 46, color: colors.text },
   list: { gap: 10, paddingBottom: 24 },
   footer: { paddingBottom: 12, gap: 10 },
   empty: { fontFamily: fonts.body, fontSize: 15, color: colors.soft, textAlign: 'center', marginTop: 40 },
